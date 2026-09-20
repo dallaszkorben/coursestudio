@@ -60,7 +60,8 @@ class MapWidget(QWidget):
         self.selected_point_color = self._hex_to_rgb(config.get_str('Map.turning_points.selected.color', 'FFFF00'))
         
         # Turning points settings
-        self.show_turning_points = config.get_bool('Map.turning_points.show', True)
+        # NOTE: Read from last_state to get user's preference, not the default
+        self.show_turning_points = config.get_bool('Map.last_state.show_turning_points', True)
         self.turning_point_color = self._hex_to_rgb(config.get_str('Map.turning_points.color', 'FFFF00'))
         self.selected_turning_point_color = self._hex_to_rgb(config.get_str('Map.turning_points.selected.color', '0000FF'))
         self.turning_point_size = config.get_int('Map.turning_points.size', 4)

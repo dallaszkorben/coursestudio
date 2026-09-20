@@ -290,11 +290,17 @@ class TrackListWidget(QWidget):
         current_item = self.list_widget.currentItem()
         
         if current_item:
+            # Clear background color of all items first
+            for i in range(self.list_widget.count()):
+                item = self.list_widget.item(i)
+                if item:
+                    item.setBackground(QColor())  # Reset to default (white/transparent)
+            
             # Get track index from item data
             track_index = current_item.data(Qt.UserRole)
             self.current_selection = track_index
             
-            # Highlight selected item
+            # Highlight selected item with blue background
             current_item.setBackground(QColor(200, 220, 255))
             
             # Emit signal
