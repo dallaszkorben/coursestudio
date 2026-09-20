@@ -24,7 +24,7 @@ import gpxpy.gpx
 
 from PyQt5.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
-    QStatusBar, QMenu, QAction, QFileDialog, QMessageBox, QSplitter
+    QStatusBar, QMenu, QAction, QFileDialog, QMessageBox, QDialog
 )
 from PyQt5.QtGui import QIcon, QKeySequence
 from PyQt5.QtCore import Qt, QSize, pyqtSignal
@@ -95,7 +95,7 @@ class MainWindow(QMainWindow):
         # Initialize application components
         self.config = AppConfig()
         self.gpx_handler = GPXHandler()
-        self.track_manager = TrackManager()
+        self.track_manager = TrackManager(use_history=True)  # Enable undo/redo
         self.track_manager.config = self.config  # Give track manager access to config
         
         # Initialize map provider
@@ -247,6 +247,14 @@ class MainWindow(QMainWindow):
         edit_menu.addAction(delete_trackpoint_action)
         self.delete_trackpoint_action = delete_trackpoint_action
         
+        # Edit > Add Trackpoint
+        add_trackpoint_action = QAction('&Add Trackpoint', self)
+        add_trackpoint_action.setShortcut(Qt.CTRL + Qt.Key_N)
+        add_trackpoint_action.setStatusTip('Add new trackpoint')
+        add_trackpoint_action.triggered.connect(self.action_add_trackpoint)
+        edit_menu.addAction(add_trackpoint_action)
+        self.add_trackpoint_action = add_trackpoint_action
+        
         edit_menu.addSeparator()
         
         # Edit > Preferences
@@ -362,45 +370,45 @@ class MainWindow(QMainWindow):
         main_layout.addWidget(self.track_list_widget)
         
         # ====================================================================
-        # Right Panel: Splitter with trackpoint list and map
+        # Right Panel: Vertical layout with trackpoint list and map
         # ====================================================================
         
-        right_splitter = QSplitter(Qt.Vertical)
+        right_panel = QWidget()
+        right_layout = QVBoxLayout()
+        right_panel.setLayout(right_layout)
+        right_layout.setContentsMargins(0, 0, 0, 0)
+        right_layout.setSpacing(5)
         
-        # Map Widget (bottom) - Create first since trackpoint list needs it
+        # Map Widget (bottom) - SHOULD EXPAND to fill remaining space
         self.map_widget = MapWidget(mbtiles_provider=self.mbtiles_provider)
         self.map_widget.setMinimumHeight(300)
         self.map_widget.set_track_manager(self.track_manager)
         
         # Trackpoint List Widget (top)
         self.trackpoint_list_widget = TrackpointListWidget(self.track_manager, self.map_widget)
+        self.trackpoint_list_widget.setMaximumHeight(250)
         self.trackpoint_list_widget.setMinimumHeight(100)
         
         # Connect trackpoint list signals
         self.trackpoint_list_widget.point_selected.connect(self._on_trackpoint_selected)
         self.trackpoint_list_widget.point_double_clicked.connect(self._on_trackpoint_double_clicked)
         self.trackpoint_list_widget.coordinate_format_changed.connect(self._on_coordinate_format_changed)
+        self.trackpoint_list_widget.history_changed.connect(self._update_undo_redo_menu_states)
+        
+        right_layout.addWidget(self.trackpoint_list_widget, 0)  # Fixed size with stretch factor 0
+        
+        # CRITICAL FIX: Map must have stretch factor 1 to expand to fill available space
+        right_layout.addWidget(self.map_widget, 1)  # Stretch factor 1 = expand
         
         # Connect map signals
         self.map_widget.map_ready.connect(self._on_map_ready)
         self.map_widget.track_clicked.connect(self._on_map_track_clicked)
         self.map_widget.point_clicked.connect(self._on_map_point_clicked)
         
-        # Add widgets to splitter
-        right_splitter.addWidget(self.trackpoint_list_widget)
-        right_splitter.addWidget(self.map_widget)
-        
-        # Set splitter sizes (40% trackpoints, 60% map)
-        right_splitter.setSizes([400, 600])
-        
-        # Allow user to resize by dragging splitter handle
-        right_splitter.setCollapsible(0, False)  # Trackpoint list can't be collapsed
-        right_splitter.setCollapsible(1, False)  # Map can't be collapsed
-        
         # Connect track list to map widget to update highlighted track
         self.track_list_widget.track_selected.connect(self.map_widget.on_track_list_selection_changed)
         
-        main_layout.addWidget(right_splitter, 1)  # Right splitter gets remaining space
+        main_layout.addWidget(right_panel, 1)
         
         logger.info("Central widget created with track list, trackpoint list, and map")
     
@@ -590,13 +598,84 @@ class MainWindow(QMainWindow):
     
     def action_undo(self):
         """Undo last action."""
-        logger.debug("Undo action triggered (not yet implemented)")
-        self.statusBar().showMessage("Undo not yet implemented")
+        
+        if not self.track_manager.can_undo():
+            self.statusBar().showMessage("Nothing to undo")
+            return
+        
+        success = self.track_manager.undo()
+        
+        if success:
+            # Refresh display
+            if hasattr(self, 'track_list_widget'):
+                self.track_list_widget.refresh_tracks()
+            
+            if hasattr(self, 'trackpoint_list_widget'):
+                self.trackpoint_list_widget.refresh_trackpoints()
+            
+            if hasattr(self, 'map_widget'):
+                current_index = self.track_manager.get_selected_track_index()
+                if current_index >= 0:
+                    self.map_widget.on_track_list_selection_changed(current_index)
+            
+            desc = self.track_manager.get_undo_description()
+            self.statusBar().showMessage(f"Undone: {desc}", 3000)
+            logger.info(f"Undo: {desc}")
+            
+            # Update menu states
+            self._update_undo_redo_menu_states()
+        else:
+            self.statusBar().showMessage("Failed to undo")
     
     def action_redo(self):
         """Redo last action."""
-        logger.debug("Redo action triggered (not yet implemented)")
-        self.statusBar().showMessage("Redo not yet implemented")
+        
+        if not self.track_manager.can_redo():
+            self.statusBar().showMessage("Nothing to redo")
+            return
+        
+        success = self.track_manager.redo()
+        
+        if success:
+            # Refresh display
+            if hasattr(self, 'track_list_widget'):
+                self.track_list_widget.refresh_tracks()
+            
+            if hasattr(self, 'trackpoint_list_widget'):
+                self.trackpoint_list_widget.refresh_trackpoints()
+            
+            if hasattr(self, 'map_widget'):
+                current_index = self.track_manager.get_selected_track_index()
+                if current_index >= 0:
+                    self.map_widget.on_track_list_selection_changed(current_index)
+            
+            desc = self.track_manager.get_redo_description()
+            self.statusBar().showMessage(f"Redone: {desc}", 3000)
+            logger.info(f"Redo: {desc}")
+            
+            # Update menu states
+            self._update_undo_redo_menu_states()
+        else:
+            self.statusBar().showMessage("Failed to redo")
+    
+    def _update_undo_redo_menu_states(self):
+        """Update undo/redo menu item states and text."""
+        
+        # Update undo action
+        if self.track_manager.can_undo():
+            self.undo_action.setEnabled(True)
+            self.undo_action.setText(self.track_manager.get_undo_description())
+        else:
+            self.undo_action.setEnabled(False)
+            self.undo_action.setText("&Undo")
+        
+        # Update redo action
+        if self.track_manager.can_redo():
+            self.redo_action.setEnabled(True)
+            self.redo_action.setText(self.track_manager.get_redo_description())
+        else:
+            self.redo_action.setEnabled(False)
+            self.redo_action.setText("&Redo")
     
     # ========================================================================
     # View Operations
@@ -655,6 +734,54 @@ A PyQt5 application for reading, editing, and exporting GPX navigation tracks.
                 self.trackpoint_list_widget._delete_trackpoint(selected_row)
             else:
                 QMessageBox.information(self, "No Selection", "Please select a trackpoint to delete")
+    
+    def action_add_trackpoint(self):
+        """Add a new trackpoint to the selected track."""
+        
+        if not self.track_manager.is_track_selected():
+            QMessageBox.information(self, "No Track Selected", "Please select a track first")
+            return
+        
+        # Import here to avoid circular imports
+        from src.gui.dialogs.add_trackpoint_dialog import AddTrackpointDialog
+        
+        # Get current track point count for dialog
+        trackpoints = self.track_manager.get_selected_trackpoints()
+        max_index = len(trackpoints) if trackpoints else 0
+        
+        # Show dialog
+        dialog = AddTrackpointDialog(self, max_index=max_index)
+        if dialog.exec_() == QDialog.Accepted:
+            try:
+                latitude, longitude, altitude, position = dialog.get_trackpoint()
+                
+                # Add trackpoint using command history (undoable)
+                success = self.track_manager.add_trackpoint_selected_with_history(
+                    latitude, longitude, altitude, position
+                )
+                
+                if success:
+                    # Refresh display
+                    if hasattr(self, 'trackpoint_list_widget'):
+                        self.trackpoint_list_widget.refresh_trackpoints()
+                    
+                    if hasattr(self, 'map_widget'):
+                        current_index = self.track_manager.get_selected_track_index()
+                        self.map_widget.on_track_list_selection_changed(current_index)
+                    
+                    # Update undo/redo menu states
+                    self._update_undo_redo_menu_states()
+                    
+                    self.statusBar().showMessage(
+                        f"Added trackpoint at ({latitude:.4f}, {longitude:.4f})",
+                        3000
+                    )
+                    logger.info(f"Trackpoint added: lat={latitude}, lon={longitude}")
+                else:
+                    QMessageBox.critical(self, "Error", "Failed to add trackpoint")
+            except ValueError as e:
+                QMessageBox.critical(self, "Invalid Input", str(e))
+                logger.error(f"Add trackpoint error: {e}")
     
     # ========================================================================
     # Signal Handlers

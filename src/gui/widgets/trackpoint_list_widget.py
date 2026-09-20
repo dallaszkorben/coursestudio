@@ -76,6 +76,7 @@ class TrackpointListWidget(QWidget):
     point_selected = pyqtSignal(int)  # Emitted with point index
     point_double_clicked = pyqtSignal(int)  # Emitted with point index
     coordinate_format_changed = pyqtSignal(str)  # Emitted with new format
+    history_changed = pyqtSignal()  # Emitted when history changes (undo/redo available)
     
     # Column indices
     COL_INDEX = 0
@@ -180,7 +181,7 @@ class TrackpointListWidget(QWidget):
         self.table_widget.setSelectionMode(QAbstractItemView.SingleSelection)
         self.table_widget.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.table_widget.setAlternatingRowColors(True)
-        self.table_widget.setMinimumHeight(300)
+        self.table_widget.setMinimumHeight(100)
         self.table_widget.setContextMenuPolicy(Qt.CustomContextMenu)
         
         # Set column widths
@@ -588,8 +589,8 @@ class TrackpointListWidget(QWidget):
         )
         
         if reply == QMessageBox.Yes:
-            # Remove trackpoint
-            removed = self.track_manager.remove_trackpoint(self.current_track_index, row_index)
+            # Remove trackpoint using command history (undoable)
+            removed = self.track_manager.remove_trackpoint_with_history(self.current_track_index, row_index)
             if removed:
                 logger.info(f"Deleted trackpoint {row_index} from track '{track.name}'")
                 # Refresh display
@@ -597,8 +598,9 @@ class TrackpointListWidget(QWidget):
                 # Update map - re-select the current track to force redraw
                 if self.map_widget:
                     self.map_widget.on_track_list_selection_changed(self.current_track_index)
-                # Emit signal
+                # Emit signals
                 self.point_selected.emit(-1)
+                self.history_changed.emit()  # Notify that history state changed
             else:
                 QMessageBox.warning(self, "Error", "Could not delete trackpoint")
     
@@ -636,13 +638,17 @@ class TrackpointListWidget(QWidget):
         )
         
         if reply == QMessageBox.Yes:
-            removed = self.track_manager.remove_trackpoints_from_start(self.current_track_index, to_row_index)
-            if removed:
-                logger.info(f"Deleted {len(removed)} trackpoints from start of track '{track.name}'")
+            # Use command-based range removal (undoable)
+            success = self.track_manager.remove_trackpoints_range_with_history(
+                self.current_track_index, 0, to_row_index
+            )
+            if success:
+                logger.info(f"Deleted {count_to_delete} trackpoints from start of track '{track.name}'")
                 self.refresh_trackpoints()
                 if self.map_widget:
                     self.map_widget.on_track_list_selection_changed(self.current_track_index)
                 self.point_selected.emit(-1)
+                self.history_changed.emit()  # Notify that history state changed
             else:
                 QMessageBox.warning(self, "Error", "Could not delete trackpoints")
     
@@ -680,13 +686,18 @@ class TrackpointListWidget(QWidget):
         )
         
         if reply == QMessageBox.Yes:
-            removed = self.track_manager.remove_trackpoints_from_end(self.current_track_index, from_row_index)
-            if removed:
-                logger.info(f"Deleted {len(removed)} trackpoints from end of track '{track.name}'")
+            # Use command-based range removal (undoable)
+            end_index = len(track.trackpoints) - 1
+            success = self.track_manager.remove_trackpoints_range_with_history(
+                self.current_track_index, from_row_index, end_index
+            )
+            if success:
+                logger.info(f"Deleted {count_to_delete} trackpoints from end of track '{track.name}'")
                 self.refresh_trackpoints()
                 if self.map_widget:
                     self.map_widget.on_track_list_selection_changed(self.current_track_index)
                 self.point_selected.emit(-1)
+                self.history_changed.emit()  # Notify that history state changed
             else:
                 QMessageBox.warning(self, "Error", "Could not delete trackpoints")
 

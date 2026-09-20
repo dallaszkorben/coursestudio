@@ -43,7 +43,7 @@ Coordinates:
   decimal_places: 4
   dms_seconds_decimals: 1
   last_state:
-    format: dms
+    format: decimal
 File:
   backup:
     create: true

@@ -196,12 +196,26 @@ class TrackManager:
         >>> print(manager.get_selected_track().name)  # "New Name"
     """
     
-    def __init__(self):
-        """Initialize TrackManager with empty state."""
+    def __init__(self, use_history: bool = False):
+        """
+        Initialize TrackManager with empty state.
+        
+        Args:
+            use_history: If True, enable undo/redo command history
+        """
         self.tracks: List[TrackData] = []
         self.selected_track_index: int = -1
         self.gpx_file_path: Optional[str] = None
-        logger.debug("TrackManager initialized")
+        self.use_history = use_history
+        
+        # Optional command history for undo/redo
+        if use_history:
+            from src.core.command_history import CommandHistory
+            self.history: Optional['CommandHistory'] = CommandHistory()
+        else:
+            self.history = None
+        
+        logger.debug(f"TrackManager initialized (history={'enabled' if use_history else 'disabled'})")
     
     # ========================================================================
     # Loading & Initialization
@@ -509,6 +523,40 @@ class TrackManager:
         
         logger.info(f"Renamed track: '{old_name}' → '{new_name}'")
         return True
+    
+    def rename_track_with_history(self, track_index: int, new_name: str) -> bool:
+        """
+        Rename a track using command history (undoable).
+        
+        Args:
+            track_index (int): Track index (0-based)
+            new_name (str): New name for the track
+        
+        Returns:
+            bool: True if renamed successfully, False if invalid index or history disabled
+        
+        Example:
+            >>> manager = TrackManager(use_history=True)
+            >>> manager.rename_track_with_history(0, "New Name")
+            True
+            >>> manager.history.undo()  # Undo the rename
+        """
+        
+        if not self.history:
+            logger.warning("Command history not enabled")
+            return False
+        
+        track = self.get_track_by_index(track_index)
+        if not track:
+            logger.warning(f"Cannot rename: invalid track index {track_index}")
+            return False
+        
+        from src.core.command_history import RenameTrackCommand
+        
+        old_name = track.name
+        cmd = RenameTrackCommand(self, track_index, old_name, new_name)
+        
+        return self.history.execute(cmd)
     
     def rename_selected_track(self, new_name: str) -> bool:
         """
@@ -876,6 +924,257 @@ class TrackManager:
         track.is_dirty = True
         
         return removed_points
+
+    def add_trackpoint(self, track_index: int, latitude: float, longitude: float,
+                       altitude: Optional[float] = None, position: Optional[int] = None) -> bool:
+        """
+        Add a new trackpoint to the track.
+        
+        Args:
+            track_index (int): Index of track to modify
+            latitude (float): Latitude in decimal degrees (-90 to 90)
+            longitude (float): Longitude in decimal degrees (-180 to 180)
+            altitude (Optional[float]): Elevation in meters
+            position (Optional[int]): Index where to insert. If None, appends at end.
+        
+        Returns:
+            bool: True if successful, False otherwise
+        
+        Example:
+            >>> manager = TrackManager()
+            >>> manager.select_track(0)
+            >>> success = manager.add_trackpoint(0, 57.5126, 12.2584, altitude=42.5)
+            >>> print(f"Added: {success}")
+        """
+        
+        # Validate track index
+        if not isinstance(track_index, int) or track_index < 0 or track_index >= len(self.tracks):
+            logger.error(f"Invalid track index: {track_index}")
+            return False
+        
+        track = self.tracks[track_index]
+        
+        # Validate coordinates
+        if not isinstance(latitude, (int, float)) or not isinstance(longitude, (int, float)):
+            logger.error(f"Coordinates must be numeric: lat={latitude}, lon={longitude}")
+            return False
+        
+        if not (-90.0 <= latitude <= 90.0):
+            logger.error(f"Latitude out of range: {latitude}")
+            return False
+        
+        if not (-180.0 <= longitude <= 180.0):
+            logger.error(f"Longitude out of range: {longitude}")
+            return False
+        
+        # Validate altitude if provided
+        if altitude is not None and not isinstance(altitude, (int, float)):
+            logger.error(f"Altitude must be numeric: {altitude}")
+            return False
+        
+        # Validate position if provided
+        if position is not None:
+            if not isinstance(position, int) or position < 0 or position > len(track.trackpoints):
+                logger.error(f"Invalid position: {position} (track has {len(track.trackpoints)} points)")
+                return False
+        
+        # Create new trackpoint with next index
+        next_index = len(track.trackpoints)
+        new_point = Trackpoint(
+            latitude=latitude,
+            longitude=longitude,
+            elevation=altitude,
+            timestamp=None,
+            index=next_index
+        )
+        
+        # Insert at position or append
+        if position is None:
+            track.trackpoints.append(new_point)
+            logger.info(f"Added trackpoint to end of track '{track.name}' (lat={latitude}, lon={longitude})")
+        else:
+            track.trackpoints.insert(position, new_point)
+            # Update indices for all points from insertion point onwards
+            for i in range(position, len(track.trackpoints)):
+                track.trackpoints[i].index = i
+            logger.info(f"Inserted trackpoint at position {position} in track '{track.name}' (lat={latitude}, lon={longitude})")
+        
+        # Recalculate distance
+        self.recalculate_distance(track_index)
+        
+        # Mark as dirty
+        track.is_dirty = True
+        
+        return True
+
+    def add_trackpoint_selected(self, latitude: float, longitude: float,
+                                altitude: Optional[float] = None, position: Optional[int] = None) -> bool:
+        """
+        Add a trackpoint to the currently selected track.
+        
+        Args:
+            latitude (float): Latitude in decimal degrees
+            longitude (float): Longitude in decimal degrees
+            altitude (Optional[float]): Elevation in meters
+            position (Optional[int]): Index where to insert. If None, appends at end.
+        
+        Returns:
+            bool: True if successful, False otherwise
+        """
+        
+        if self.selected_track_index < 0:
+            logger.error("No track selected")
+            return False
+        
+        return self.add_trackpoint(self.selected_track_index, latitude, longitude, altitude, position)
+
+    def add_trackpoint_with_history(self, track_index: int, latitude: float, longitude: float,
+                                    altitude: Optional[float] = None, position: Optional[int] = None) -> bool:
+        """
+        Add a trackpoint using command history (undoable).
+        
+        Args:
+            track_index (int): Index of track
+            latitude (float): Latitude in decimal degrees
+            longitude (float): Longitude in decimal degrees
+            altitude (Optional[float]): Elevation in meters
+            position (Optional[int]): Index where to insert. If None, appends at end.
+        
+        Returns:
+            bool: True if successful, False if history not enabled
+        """
+        
+        if not self.history:
+            logger.warning("Command history not enabled")
+            return False
+        
+        from src.core.command_history import AddTrackpointCommand
+        
+        cmd = AddTrackpointCommand(self, track_index, latitude, longitude, altitude, position)
+        return self.history.execute(cmd)
+
+    def add_trackpoint_selected_with_history(self, latitude: float, longitude: float,
+                                            altitude: Optional[float] = None, position: Optional[int] = None) -> bool:
+        """
+        Add a trackpoint to selected track using command history (undoable).
+        
+        Args:
+            latitude (float): Latitude in decimal degrees
+            longitude (float): Longitude in decimal degrees
+            altitude (Optional[float]): Elevation in meters
+            position (Optional[int]): Index where to insert. If None, appends at end.
+        
+        Returns:
+            bool: True if successful, False if no track selected or history disabled
+        """
+        
+        if self.selected_track_index < 0:
+            logger.error("No track selected")
+            return False
+        
+        return self.add_trackpoint_with_history(self.selected_track_index, latitude, longitude, altitude, position)
+
+    def remove_trackpoint_with_history(self, track_index: int, point_index: int) -> bool:
+        """
+        Remove a trackpoint using command history (undoable).
+        
+        Args:
+            track_index (int): Index of track
+            point_index (int): Index of trackpoint to remove
+        
+        Returns:
+            bool: True if successful, False if history not enabled
+        """
+        
+        if not self.history:
+            logger.warning("Command history not enabled")
+            return False
+        
+        from src.core.command_history import RemoveTrackpointCommand
+        
+        cmd = RemoveTrackpointCommand(self, track_index, point_index)
+        return self.history.execute(cmd)
+
+    def remove_trackpoint_selected_with_history(self, point_index: int) -> bool:
+        """
+        Remove a trackpoint from selected track using command history (undoable).
+        
+        Args:
+            point_index (int): Index of trackpoint to remove
+        
+        Returns:
+            bool: True if successful, False if no track selected or history disabled
+        """
+        
+        if self.selected_track_index < 0:
+            logger.error("No track selected")
+            return False
+        
+        return self.remove_trackpoint_with_history(self.selected_track_index, point_index)
+
+    def remove_trackpoints_range_with_history(self, track_index: int, 
+                                              start_index: int, end_index: int) -> bool:
+        """
+        Remove a range of trackpoints using command history (undoable).
+        
+        Args:
+            track_index (int): Index of track
+            start_index (int): First index to remove (inclusive)
+            end_index (int): Last index to remove (inclusive)
+        
+        Returns:
+            bool: True if successful, False if history not enabled
+        """
+        
+        if not self.history:
+            logger.warning("Command history not enabled")
+            return False
+        
+        from src.core.command_history import RemoveTrackpointRangeCommand
+        
+        cmd = RemoveTrackpointRangeCommand(self, track_index, start_index, end_index)
+        return self.history.execute(cmd)
+
+    def can_undo(self) -> bool:
+        """Check if undo is available."""
+        return self.history is not None and self.history.can_undo()
+
+    def can_redo(self) -> bool:
+        """Check if redo is available."""
+        return self.history is not None and self.history.can_redo()
+
+    def undo(self) -> bool:
+        """Undo the last command."""
+        if self.history is None:
+            logger.warning("Command history not enabled")
+            return False
+        
+        return self.history.undo()
+
+    def redo(self) -> bool:
+        """Redo the last undone command."""
+        if self.history is None:
+            logger.warning("Command history not enabled")
+            return False
+        
+        return self.history.redo()
+
+    def get_undo_description(self) -> str:
+        """Get description of next undo operation."""
+        if self.history is None:
+            return "Undo"
+        return self.history.get_undo_description()
+
+    def get_redo_description(self) -> str:
+        """Get description of next redo operation."""
+        if self.history is None:
+            return "Redo"
+        return self.history.get_redo_description()
+
+    def clear_history(self):
+        """Clear undo/redo history."""
+        if self.history is not None:
+            self.history.clear()
 
 
 # ============================================================================

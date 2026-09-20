@@ -1267,7 +1267,11 @@ Update this section after each step completion:
 | 11.1 | ✅ DONE | 2026-09-20 | YAML Configuration Migration - hierarchical settings with persistence ✅ |
 | 12 | ✅ DONE | 2026-09-20 | Remove trackpoint - 13 tests (85 total ✅), context menu, keyboard, range deletion, map update, index fix |
 | 18 | ✅ DONE | 2026-09-20 | Save GPX file - Full implementation with backup, validation, Garmin compatibility ✅ |
-| 13 | ⏳ TODO | | |
+| 13 | ✅ DONE | 2026-09-20 | Add Trackpoint - 16 new tests (101 total ✅), dialog with DMS/Decimal support, position selection, elevation input |
+| BUG FIX | ✅ DONE | 2026-09-20 | Fixed: Show Points config persistence on restart, Track selection visual state |
+| 15 | ✅ DONE | 2026-09-20 | Command Pattern & History Stack - 21 new tests (122 total ✅), all commands reversible, undo/redo infrastructure |
+| 16 | ✅ DONE | 2026-09-20 | Integrate Undo/Redo into TrackManager - 23 new tests (145 total ✅), command-based operations, history queries |
+| 17 | ⏳ TODO | | |
 | ... | | | |
 
 ---
