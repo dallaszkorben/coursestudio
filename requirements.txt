@@ -1,0 +1,73 @@
+# mangpx - GPX File Manipulator
+# Requirements file for Python dependencies
+#
+# Usage:
+#   pip install -r requirements.txt
+#
+# Created: 2026-09-20
+
+# ==============================================================================
+# Core GUI Framework
+# ==============================================================================
+
+PyQt5==5.15.7              # PyQt5 GUI framework
+PyQtWebEngine==5.15.7      # Web engine for map rendering
+
+# ==============================================================================
+# GPX File Handling
+# ==============================================================================
+
+gpxpy==1.6.2               # GPX file parsing and manipulation
+lxml==4.9.3                # XML processing (required by gpxpy)
+
+# ==============================================================================
+# Map Tile Management
+# ==============================================================================
+
+# Note: Using sqlite3 (standard library) to read MBTiles files
+# mbtiles library not used - direct SQL queries instead
+
+# ==============================================================================
+# Geospatial Calculations
+# ==============================================================================
+
+# Note: Haversine formula implemented in pure Python (no dependency)
+
+# ==============================================================================
+# Testing & Development
+# ==============================================================================
+
+pytest==7.4.3              # Unit testing framework
+pytest-timeout==2.1.0      # Timeout plugin for pytest
+
+# ==============================================================================
+# Documentation
+# ==============================================================================
+
+# No additional dependencies for Markdown documentation
+
+# ==============================================================================
+# Python Version Requirement
+# ==============================================================================
+
+# Python >= 3.10 required
+# Tested with: Python 3.10.x
+
+# ==============================================================================
+# Installation Instructions
+# ==============================================================================
+
+# 1. Create virtual environment:
+#    python3 -m venv venv
+#
+# 2. Activate virtual environment:
+#    source venv/bin/activate  (Linux/Mac)
+#    venv\Scripts\activate     (Windows)
+#
+# 3. Install dependencies:
+#    pip install -r requirements.txt
+#
+# 4. Verify installation:
+#    python -c "import PyQt5; import gpxpy; print('✅ All dependencies installed')"
+#
+# ==============================================================================

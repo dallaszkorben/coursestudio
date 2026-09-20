@@ -1,0 +1,698 @@
+"""
+Interactive map widget for displaying GPX tracks and trackpoints.
+
+This module provides:
+- Map display using Leaflet.js and custom tile layer
+- Track visualization as polylines with elevation coloring
+- Trackpoint markers with selection highlighting
+- Zoom/pan controls
+- Real-time updates based on track/point selection
+
+Architecture:
+- QWebEngineView: Embeds Leaflet.js map
+- Python backend: Handles tile loading, coordinate conversion
+- HTML/JavaScript frontend: Provides interactive map UI
+- Signal-based communication: Receives track/point selection
+
+Requires:
+- PyQt5.QtWebEngineWidgets (QWebEngineView, QWebEnginePage)
+- PyQtWebEngine for modern Chromium-based rendering
+- Access to mbtiles files via MBTilesProvider
+"""
+
+import logging
+import json
+import base64
+from pathlib import Path
+from typing import Optional, List, Tuple, Dict, Any
+from dataclasses import dataclass
+from enum import Enum
+
+from PyQt5.QtCore import Qt, QUrl, pyqtSignal, QTimer, QSize
+from PyQt5.QtWidgets import QWidget, QVBoxLayout, QLabel, QComboBox, QPushButton
+from PyQt5.QtWebEngineWidgets import QWebEngineView, QWebEngineSettings
+
+from src.map.mbtiles_provider import MBTilesProvider
+
+
+class MapState(Enum):
+    """Map display state enumeration."""
+    UNINITIALIZED = "uninitialized"
+    LOADING = "loading"
+    READY = "ready"
+    ERROR = "error"
+
+
+@dataclass
+class TrackStyle:
+    """Styling properties for track visualization."""
+    color: str = "#FF6B6B"          # Red for track line
+    weight: int = 2                  # Line weight in pixels
+    opacity: float = 0.8             # Line opacity (0-1)
+    popupOpacity: float = 1.0        # Popup opacity
+
+
+@dataclass
+class PointStyle:
+    """Styling properties for trackpoint markers."""
+    color: str = "#4ECDC4"           # Teal for normal points
+    weight: int = 1                  # Border weight
+    opacity: float = 0.7             # Fill opacity
+    selectedColor: str = "#FFD93D"   # Yellow for selected
+    selectedOpacity: float = 1.0     # Selected opacity
+
+
+class MapRenderer:
+    """
+    Generates HTML/JavaScript for Leaflet map display.
+    
+    Responsible for:
+    - Creating map HTML structure
+    - Embedding Leaflet.js library and CSS
+    - Defining JavaScript functions for map interaction
+    - Handling tile layer setup with custom tile server
+    """
+    
+    LEAFLET_VERSION = "1.9.4"
+    
+    # Tile layer serving from mbtiles - will show based on selected provider
+    TILE_LAYER_TEMPLATE = """
+    L.tileLayer('https://{{s}}.tile.openstreetmap.org/{{z}}/{{x}}/{{y}}.png', {{
+        minZoom: {min_zoom},
+        maxZoom: 18,
+        attribution: '&copy; OpenStreetMap contributors',
+        tms: false,
+        noWrap: false
+    }}).addTo(map);
+    
+    // TODO: Implement mbtiles tile serving via Python bridge
+    // This would replace the above with custom-tiles://z/x/y from mbtiles
+    """
+    
+    @staticmethod
+    def generate_html(center_lat: float, center_lon: float, zoom: int,
+                     min_zoom: int, max_zoom: int) -> str:
+        """
+        Generate complete HTML for map display.
+        
+        Args:
+            center_lat: Initial map center latitude
+            center_lon: Initial map center longitude
+            zoom: Initial zoom level
+            min_zoom: Minimum zoom level from mbtiles
+            max_zoom: Maximum zoom level from mbtiles
+            
+        Returns:
+            Complete HTML document with embedded JavaScript
+        """
+        tile_layer_script = MapRenderer.TILE_LAYER_TEMPLATE.format(
+            min_zoom=min_zoom,
+            max_zoom=max_zoom
+        )
+        
+        html = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="utf-8" />
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@{MapRenderer.LEAFLET_VERSION}/dist/leaflet.css" />
+            <script src="https://cdn.jsdelivr.net/npm/leaflet@{MapRenderer.LEAFLET_VERSION}/dist/leaflet.js"></script>
+            <style>
+                * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+                body {{ font: 14px/1.5 "Helvetica Neue", Arial, Helvetica, sans-serif; }}
+                #map {{ position: absolute; top: 0; bottom: 0; width: 100%; height: 100%; }}
+                .info-box {{
+                    padding: 6px 8px;
+                    font: 14px Arial, Helvetica, sans-serif;
+                    background: white;
+                    background: rgba(255,255,255,0.8);
+                    box-shadow: 0 0 15px rgba(0,0,0,0.2);
+                    border-radius: 5px;
+                }}
+                .info-box h4 {{
+                    margin: 0 0 5px 0;
+                    color: #08519c;
+                }}
+                .info-box div {{
+                    margin: 2px 0;
+                    font-size: 12px;
+                }}
+                .popup-content {{
+                    font-size: 12px;
+                }}
+                .popup-content div {{
+                    margin: 2px 0;
+                }}
+            </style>
+        </head>
+        <body>
+            <div id="map"></div>
+            <script>
+                // Initialize map
+                var map = L.map('map').setView([{center_lat}, {center_lon}], {zoom});
+                
+                // Add tile layer
+                {tile_layer_script}
+                
+                // Track data storage
+                var tracks = {{}};
+                var trackLayers = {{}};
+                var selectedTrack = null;
+                var selectedPoint = null;
+                
+                // Point markers
+                var pointMarkers = {{}};
+                var polylines = {{}};
+                
+                // Add track to map
+                function addTrack(trackId, trackName, points, color) {{
+                    if (!points || points.length === 0) return;
+                    
+                    tracks[trackId] = {{
+                        id: trackId,
+                        name: trackName,
+                        points: points,
+                        color: color
+                    }};
+                    
+                    // Create polyline
+                    var latlngs = points.map(p => [p.lat, p.lon]);
+                    var polyline = L.polyline(latlngs, {{
+                        color: color,
+                        weight: 2,
+                        opacity: 0.8,
+                        smoothFactor: 1.0
+                    }}).addTo(map);
+                    
+                    polylines[trackId] = polyline;
+                    
+                    // Add popup
+                    polyline.bindPopup(
+                        '<div class="popup-content">' +
+                        '<strong>' + trackName + '</strong><br/>' +
+                        '<div>Points: ' + points.length + '</div>' +
+                        '</div>'
+                    );
+                    
+                    // Click to select track
+                    polyline.on('click', function() {{
+                        window.mapBridge.onTrackClicked(trackId);
+                    }});
+                    
+                    return polyline;
+                }}
+                
+                // Update track highlight
+                function highlightTrack(trackId) {{
+                    // Unhighlight all
+                    Object.keys(polylines).forEach(function(id) {{
+                        polylines[id].setStyle({{
+                            weight: 2,
+                            opacity: 0.8
+                        }});
+                    }});
+                    
+                    // Highlight selected
+                    if (trackId && polylines[trackId]) {{
+                        polylines[trackId].setStyle({{
+                            weight: 4,
+                            opacity: 1.0
+                        }});
+                        selectedTrack = trackId;
+                    }}
+                }}
+                
+                // Add point marker
+                function addPoint(trackId, pointId, lat, lon, options) {{
+                    var key = trackId + '_' + pointId;
+                    options = options || {{}};
+                    
+                    var marker = L.circleMarker([lat, lon], {{
+                        radius: 4,
+                        fillColor: options.color || '#4ECDC4',
+                        color: '#000',
+                        weight: 1,
+                        opacity: 0.7,
+                        fillOpacity: 0.7
+                    }}).addTo(map);
+                    
+                    // Popup with point info
+                    marker.bindPopup(
+                        '<div class="popup-content">' +
+                        '<strong>Point ' + pointId + '</strong><br/>' +
+                        '<div>Lat: ' + lat.toFixed(6) + '</div>' +
+                        '<div>Lon: ' + lon.toFixed(6) + '</div>' +
+                        '<div>Elevation: ' + (options.elevation || 'N/A') + 'm</div>' +
+                        '</div>'
+                    );
+                    
+                    // Click to select point
+                    marker.on('click', function(e) {{
+                        e.stopPropagation();
+                        window.mapBridge.onPointClicked(trackId, pointId);
+                    }});
+                    
+                    pointMarkers[key] = marker;
+                    return marker;
+                }}
+                
+                // Highlight point
+                function highlightPoint(trackId, pointId) {{
+                    var key = trackId + '_' + pointId;
+                    
+                    // Clear all points
+                    Object.keys(pointMarkers).forEach(function(k) {{
+                        pointMarkers[k].setStyle({{
+                            fillColor: '#4ECDC4',
+                            fillOpacity: 0.7
+                        }});
+                    }});
+                    
+                    // Highlight selected
+                    if (pointMarkers[key]) {{
+                        pointMarkers[key].setStyle({{
+                            fillColor: '#FFD93D',
+                            fillOpacity: 1.0
+                        }});
+                        selectedPoint = key;
+                    }}
+                }}
+                
+                // Fit bounds to show all content
+                function fitToBounds() {{
+                    var bounds = L.latLngBounds();
+                    Object.keys(polylines).forEach(function(id) {{
+                        bounds.extend(polylines[id].getBounds());
+                    }});
+                    if (bounds.isValid()) {{
+                        map.fitBounds(bounds, {{ padding: [50, 50] }});
+                    }}
+                }}
+                
+                // Clear all data
+                function clearAll() {{
+                    Object.keys(polylines).forEach(function(id) {{
+                        map.removeLayer(polylines[id]);
+                    }});
+                    Object.keys(pointMarkers).forEach(function(key) {{
+                        map.removeLayer(pointMarkers[key]);
+                    }});
+                    polylines = {{}};
+                    pointMarkers = {{}};
+                    tracks = {{}};
+                }}
+                
+                // Map ready signal
+                map.whenReady(function() {{
+                    if (window.mapBridge) {{
+                        window.mapBridge.onMapReady();
+                    }}
+                }});
+            </script>
+        </body>
+        </html>
+        """
+        
+        return html
+
+
+class MapWidget(QWidget):
+    """
+    Interactive map widget for displaying GPX tracks and trackpoints.
+    
+    Features:
+    - Display tracks as colored polylines
+    - Show trackpoints as markers
+    - Highlight selected track/point
+    - Zoom to bounds
+    - Real-time updates
+    - Click-to-select interaction
+    
+    Signals:
+        track_clicked: Emitted when track is clicked (track_id)
+        point_clicked: Emitted when point is clicked (track_id, point_id)
+        map_ready: Emitted when map is initialized
+    
+    Attributes:
+        track_manager: TrackManager for accessing track data
+        mbtiles_provider: MBTilesProvider for tile serving
+        logger: Logger instance
+    """
+    
+    # Signals
+    track_clicked = pyqtSignal(int)  # track_id
+    point_clicked = pyqtSignal(int, int)  # track_id, point_id
+    map_ready = pyqtSignal()
+    
+    def __init__(self, track_manager: Any, mbtiles_provider: MBTilesProvider,
+                 logger: logging.Logger) -> None:
+        """
+        Initialize map widget.
+        
+        Args:
+            track_manager: TrackManager instance for track data
+            mbtiles_provider: MBTilesProvider for tile loading
+            logger: Logger instance for debug/info/error messages
+            
+        Raises:
+            ValueError: If any required parameter is None
+        """
+        super().__init__()
+        
+        if track_manager is None:
+            raise ValueError("track_manager cannot be None")
+        if mbtiles_provider is None:
+            raise ValueError("mbtiles_provider cannot be None")
+        if logger is None:
+            raise ValueError("logger cannot be None")
+        
+        self.track_manager = track_manager
+        self.mbtiles_provider = mbtiles_provider
+        self.logger = logger
+        
+        self._state = MapState.UNINITIALIZED
+        self._displayed_tracks = set()
+        self._selected_track = None
+        self._selected_point = None
+        
+        self.logger.info("Initializing map widget")
+        
+        # Setup UI
+        self._setup_ui()
+        self._initialize_map()
+    
+    def _setup_ui(self) -> None:
+        """Setup UI layout with map and controls."""
+        layout = QVBoxLayout()
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(5)
+        
+        # Control panel
+        control_panel = QWidget()
+        control_layout = QVBoxLayout()
+        control_layout.setContentsMargins(5, 5, 5, 5)
+        control_layout.setSpacing(3)
+        
+        # Zoom level selector
+        zoom_layout = QVBoxLayout()
+        zoom_label = QLabel("Zoom Level:")
+        self._zoom_combo = QComboBox()
+        for z in range(10, 17):
+            self._zoom_combo.addItem(f"Zoom {z}", z)
+        self._zoom_combo.setCurrentIndex(3)  # Default zoom 13
+        self._zoom_combo.currentIndexChanged.connect(self._on_zoom_changed)
+        zoom_layout.addWidget(zoom_label)
+        zoom_layout.addWidget(self._zoom_combo)
+        
+        # Fit bounds button
+        self._fit_bounds_btn = QPushButton("Fit to Tracks")
+        self._fit_bounds_btn.clicked.connect(self._on_fit_bounds)
+        
+        # Clear map button
+        self._clear_btn = QPushButton("Clear Map")
+        self._clear_btn.clicked.connect(self._on_clear_map)
+        
+        control_layout.addLayout(zoom_layout)
+        control_layout.addWidget(self._fit_bounds_btn)
+        control_layout.addWidget(self._clear_btn)
+        control_panel.setLayout(control_layout)
+        
+        # Web view for map
+        self._web_view = QWebEngineView()
+        self._web_view.setMinimumHeight(300)
+        
+        # Configure web engine
+        settings = self._web_view.settings()
+        settings.setAttribute(QWebEngineSettings.LocalContentCanAccessRemoteUrls, True)
+        
+        # Add layouts
+        layout.addWidget(control_panel, 0)
+        layout.addWidget(self._web_view, 1)
+        
+        self.setLayout(layout)
+    
+    def _initialize_map(self) -> None:
+        """Initialize map with Leaflet.js."""
+        if not self.mbtiles_provider.is_loaded():
+            self.logger.warning("MBTiles provider not loaded, map will use OpenStreetMap tiles")
+        
+        metadata = self.mbtiles_provider.get_metadata()
+        if not metadata:
+            self.logger.warning("Cannot get mbtiles metadata, using default zoom levels")
+            min_zoom = 10
+            max_zoom = 18
+        else:
+            min_zoom = metadata.min_zoom
+            max_zoom = metadata.max_zoom
+        
+        # Get configuration
+        center_lat = self.track_manager.config.get("Map", "default_map_center_lat", 57.5)
+        center_lon = self.track_manager.config.get("Map", "default_map_center_lon", 12.0)
+        initial_zoom = self.track_manager.config.get("Map", "initial_zoom_level", 13)
+        
+        # Generate HTML
+        html = MapRenderer.generate_html(
+            center_lat=float(center_lat),
+            center_lon=float(center_lon),
+            zoom=int(initial_zoom),
+            min_zoom=min_zoom,
+            max_zoom=max_zoom
+        )
+        
+        # Set up JavaScript bridge
+        self._setup_js_bridge()
+        
+        # Load HTML into web view
+        self._web_view.setHtml(html, QUrl("qrc:/"))
+        
+        self._state = MapState.LOADING
+        self.logger.debug("Map initialized with Leaflet.js (OpenStreetMap tiles)")
+        self.logger.debug(f"Initial view: lat={center_lat}, lon={center_lon}, zoom={initial_zoom}")
+    
+    def _setup_js_bridge(self) -> None:
+        """Setup Python-JavaScript bridge for communication."""
+        # This will be used for future mbtiles tile serving
+        # For now, using OSM tiles as fallback
+        pass
+    
+    def display_track(self, track_index: int) -> bool:
+        """
+        Display a track on the map.
+        
+        Args:
+            track_index: Index of track to display
+            
+        Returns:
+            True if track was displayed, False if error
+        """
+        if not self._state == MapState.READY:
+            self.logger.warning(f"Cannot display track: map not ready (state={self._state})")
+            return False
+        
+        track = self.track_manager.get_track(track_index)
+        if not track:
+            self.logger.warning(f"Track {track_index} not found")
+            return False
+        
+        try:
+            # Extract track points
+            points = []
+            for point in track.trackpoints:
+                points.append({
+                    "lat": point.latitude,
+                    "lon": point.longitude,
+                    "elevation": point.elevation
+                })
+            
+            if not points:
+                self.logger.warning(f"Track {track_index} has no points")
+                return False
+            
+            # Build JavaScript call
+            js_code = f"""
+            addTrack({track_index}, '{track.name}', {json.dumps(points)}, '#FF6B6B');
+            """
+            
+            self._web_view.page().runJavaScript(js_code)
+            self._displayed_tracks.add(track_index)
+            
+            self.logger.debug(f"Displayed track {track_index}: {track.name} ({len(points)} points)")
+            return True
+        
+        except Exception as e:
+            self.logger.error(f"Error displaying track {track_index}: {e}")
+            return False
+    
+    def highlight_track(self, track_index: int) -> bool:
+        """
+        Highlight a track on the map.
+        
+        Args:
+            track_index: Index of track to highlight
+            
+        Returns:
+            True if track was highlighted, False if error
+        """
+        try:
+            js_code = f"highlightTrack({track_index});"
+            self._web_view.page().runJavaScript(js_code)
+            self._selected_track = track_index
+            return True
+        except Exception as e:
+            self.logger.error(f"Error highlighting track {track_index}: {e}")
+            return False
+    
+    def display_point(self, track_index: int, point_index: int) -> bool:
+        """
+        Display a trackpoint marker on the map.
+        
+        Args:
+            track_index: Index of track
+            point_index: Index of point within track
+            
+        Returns:
+            True if point was displayed, False if error
+        """
+        track = self.track_manager.get_track(track_index)
+        if not track or point_index >= len(track.trackpoints):
+            self.logger.warning(f"Invalid track/point: {track_index}/{point_index}")
+            return False
+        
+        try:
+            point = track.trackpoints[point_index]
+            elevation = point.elevation if point.elevation else "N/A"
+            
+            js_code = f"""
+            addPoint({track_index}, {point_index}, {point.latitude}, {point.longitude}, {{
+                color: '#4ECDC4',
+                elevation: {elevation if isinstance(elevation, (int, float)) else "'N/A'"}
+            }});
+            """
+            
+            self._web_view.page().runJavaScript(js_code)
+            return True
+        
+        except Exception as e:
+            self.logger.error(f"Error displaying point {track_index}/{point_index}: {e}")
+            return False
+    
+    def highlight_point(self, track_index: int, point_index: int) -> bool:
+        """
+        Highlight a trackpoint on the map.
+        
+        Args:
+            track_index: Index of track
+            point_index: Index of point within track
+            
+        Returns:
+            True if point was highlighted, False if error
+        """
+        try:
+            js_code = f"highlightPoint({track_index}, {point_index});"
+            self._web_view.page().runJavaScript(js_code)
+            self._selected_point = (track_index, point_index)
+            return True
+        except Exception as e:
+            self.logger.error(f"Error highlighting point {track_index}/{point_index}: {e}")
+            return False
+    
+    def clear_map(self) -> None:
+        """Clear all tracks and points from map."""
+        try:
+            self._web_view.page().runJavaScript("clearAll();")
+            self._displayed_tracks.clear()
+            self._selected_track = None
+            self._selected_point = None
+            self.logger.debug("Map cleared")
+        except Exception as e:
+            self.logger.error(f"Error clearing map: {e}")
+    
+    def fit_to_tracks(self) -> None:
+        """Adjust map zoom/pan to show all displayed tracks."""
+        try:
+            self._web_view.page().runJavaScript("fitToBounds();")
+            self.logger.debug("Map fitted to track bounds")
+        except Exception as e:
+            self.logger.error(f"Error fitting to bounds: {e}")
+    
+    def set_zoom(self, zoom: int) -> None:
+        """
+        Set map zoom level.
+        
+        Args:
+            zoom: Zoom level (typically 0-18)
+        """
+        try:
+            if zoom < 0 or zoom > 18:
+                self.logger.warning(f"Invalid zoom level: {zoom}")
+                return
+            
+            js_code = f"map.setZoom({zoom});"
+            self._web_view.page().runJavaScript(js_code)
+        except Exception as e:
+            self.logger.error(f"Error setting zoom to {zoom}: {e}")
+    
+    def set_center(self, latitude: float, longitude: float) -> None:
+        """
+        Set map center.
+        
+        Args:
+            latitude: Center latitude
+            longitude: Center longitude
+        """
+        try:
+            js_code = f"map.setView([{latitude}, {longitude}]);"
+            self._web_view.page().runJavaScript(js_code)
+        except Exception as e:
+            self.logger.error(f"Error setting center to {latitude},{longitude}: {e}")
+    
+    def on_track_selected(self, track_index: int) -> None:
+        """
+        Callback when track is selected in UI.
+        
+        Args:
+            track_index: Index of selected track
+        """
+        if track_index not in self._displayed_tracks:
+            # Display track first
+            self.display_track(track_index)
+        
+        self.highlight_track(track_index)
+    
+    def on_point_selected(self, track_index: int, point_index: int) -> None:
+        """
+        Callback when point is selected in UI.
+        
+        Args:
+            track_index: Index of track
+            point_index: Index of point within track
+        """
+        if track_index not in self._displayed_tracks:
+            self.display_track(track_index)
+        
+        self.highlight_point(track_index, point_index)
+    
+    def _on_zoom_changed(self, index: int) -> None:
+        """Handle zoom level combo box change."""
+        zoom = self._zoom_combo.itemData(index)
+        if zoom is not None:
+            self.set_zoom(zoom)
+    
+    def _on_fit_bounds(self) -> None:
+        """Handle fit to bounds button."""
+        self.fit_to_tracks()
+    
+    def _on_clear_map(self) -> None:
+        """Handle clear map button."""
+        self.clear_map()
+    
+    def _on_map_ready(self) -> None:
+        """Called when map JavaScript is ready."""
+        self._state = MapState.READY
+        self.logger.info("Map ready")
+        self.map_ready.emit()
+    
+    def sizeHint(self) -> QSize:
+        """Return suggested widget size."""
+        return QSize(1200, 600)

@@ -1,0 +1,304 @@
+"""
+Unit tests for map widget module.
+
+Tests cover:
+- MapWidget initialization and validation
+- Map rendering and HTML generation
+- Track display and highlighting
+- Point display and highlighting
+- User interactions
+- JavaScript execution
+- Error handling
+
+Requires:
+- PyQt5 with QWebEngineView support
+- Valid MBTilesProvider with loaded file
+- TrackManager with track data
+"""
+
+import pytest
+import logging
+import json
+from unittest.mock import Mock, patch, MagicMock, call
+from pathlib import Path
+
+import sys
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+from src.gui.widgets.map_widget import MapWidget, MapRenderer, MapState, TrackStyle, PointStyle
+from src.map.mbtiles_provider import MBTilesProvider, TileMetadata
+from src.core.track_manager import TrackManager, Trackpoint, TrackData
+from config.app_config import AppConfig
+
+
+class TestMapRenderer:
+    """Test MapRenderer HTML generation."""
+    
+    def test_generate_html_creates_valid_document(self):
+        """Should generate valid HTML document."""
+        html = MapRenderer.generate_html(57.5, 12.0, 13, 10, 16)
+        
+        assert html is not None
+        assert isinstance(html, str)
+        assert len(html) > 0
+    
+    def test_html_structure_is_html(self):
+        """Should have HTML structure."""
+        html = MapRenderer.generate_html(57.5, 12.0, 13, 10, 16)
+        
+        # HTML structure
+        assert "DOCTYPE" in html or "html" in html.lower()
+    
+    def test_html_includes_leaflet_library(self):
+        """Should include Leaflet.js library."""
+        html = MapRenderer.generate_html(57.5, 12.0, 13, 10, 16)
+        
+        assert "leaflet" in html.lower()
+        assert "cdn" in html.lower()
+    
+    def test_html_includes_map_element(self):
+        """Should include map container element."""
+        html = MapRenderer.generate_html(57.5, 12.0, 13, 10, 16)
+        
+        assert "map" in html
+    
+    def test_html_sets_initial_view(self):
+        """Should set initial map center and zoom."""
+        lat, lon, zoom = 57.5, 12.0, 13
+        html = MapRenderer.generate_html(lat, lon, zoom, 10, 16)
+        
+        # Check if coordinates are in the JavaScript
+        assert str(lat) in html or str(int(lat)) in html
+        assert str(lon) in html or str(int(lon)) in html
+    
+    def test_html_includes_track_functions(self):
+        """Should include JavaScript functions for track display."""
+        html = MapRenderer.generate_html(57.5, 12.0, 13, 10, 16)
+        
+        assert "addTrack" in html
+        assert "highlightTrack" in html
+        assert "addPoint" in html
+        assert "highlightPoint" in html
+    
+    def test_html_includes_polyline(self):
+        """Should include polyline-related code."""
+        html = MapRenderer.generate_html(57.5, 12.0, 13, 10, 16)
+        
+        assert "polyline" in html.lower() or "L." in html
+    
+    def test_html_includes_marker(self):
+        """Should include marker-related code."""
+        html = MapRenderer.generate_html(57.5, 12.0, 13, 10, 16)
+        
+        assert "marker" in html.lower() or "circle" in html.lower()
+    
+    def test_html_zoom_levels_in_tile_layer(self):
+        """Should include zoom levels in tile layer config."""
+        html = MapRenderer.generate_html(57.5, 12.0, 13, 11, 15)
+        
+        # Should have min/max zoom values
+        assert "11" in html
+        assert "15" in html
+
+
+class TestTrackStyle:
+    """Test TrackStyle dataclass."""
+    
+    def test_track_style_creation(self):
+        """Should create TrackStyle with default values."""
+        style = TrackStyle()
+        
+        assert style.color == "#FF6B6B"
+        assert style.weight == 2
+        assert style.opacity == 0.8
+    
+    def test_track_style_custom_values(self):
+        """Should create TrackStyle with custom values."""
+        style = TrackStyle(color="#00FF00", weight=4, opacity=0.5)
+        
+        assert style.color == "#00FF00"
+        assert style.weight == 4
+        assert style.opacity == 0.5
+
+
+class TestPointStyle:
+    """Test PointStyle dataclass."""
+    
+    def test_point_style_creation(self):
+        """Should create PointStyle with default values."""
+        style = PointStyle()
+        
+        assert style.color == "#4ECDC4"
+        assert style.selectedColor == "#FFD93D"
+        assert style.weight == 1
+    
+    def test_point_style_custom_values(self):
+        """Should create PointStyle with custom values."""
+        style = PointStyle(color="#FF0000", selectedColor="#00FF00")
+        
+        assert style.color == "#FF0000"
+        assert style.selectedColor == "#00FF00"
+
+
+class TestMapWidgetInitialization:
+    """Test MapWidget initialization."""
+    
+    def test_init_raises_error_without_parameters(self):
+        """Should raise ValueError if required parameters are None."""
+        mbtiles_provider = Mock()
+        logger = Mock()
+        
+        with pytest.raises(ValueError):
+            MapWidget(None, mbtiles_provider, logger)
+    
+    def test_init_raises_error_without_mbtiles(self):
+        """Should raise ValueError if mbtiles_provider is None."""
+        track_manager = Mock()
+        logger = Mock()
+        
+        with pytest.raises(ValueError):
+            MapWidget(track_manager, None, logger)
+    
+    def test_init_raises_error_without_logger(self):
+        """Should raise ValueError if logger is None."""
+        track_manager = Mock()
+        mbtiles_provider = Mock()
+        
+        with pytest.raises(ValueError):
+            MapWidget(track_manager, mbtiles_provider, None)
+
+
+class TestMapWidgetStateManagement:
+    """Test map state enum and state values."""
+    
+    def test_map_state_uninitialized(self):
+        """Should have UNINITIALIZED state."""
+        assert MapState.UNINITIALIZED.value == "uninitialized"
+    
+    def test_map_state_loading(self):
+        """Should have LOADING state."""
+        assert MapState.LOADING.value == "loading"
+    
+    def test_map_state_ready(self):
+        """Should have READY state."""
+        assert MapState.READY.value == "ready"
+    
+    def test_map_state_error(self):
+        """Should have ERROR state."""
+        assert MapState.ERROR.value == "error"
+
+
+class TestMapWidgetTrackDisplay:
+    """Test track display method signatures."""
+    
+    def test_display_track_method_exists(self):
+        """Should have display_track method."""
+        assert hasattr(MapWidget, 'display_track')
+    
+    def test_highlight_track_method_exists(self):
+        """Should have highlight_track method."""
+        assert hasattr(MapWidget, 'highlight_track')
+    
+    def test_display_point_method_exists(self):
+        """Should have display_point method."""
+        assert hasattr(MapWidget, 'display_point')
+    
+    def test_highlight_point_method_exists(self):
+        """Should have highlight_point method."""
+        assert hasattr(MapWidget, 'highlight_point')
+
+
+class TestMapWidgetPointDisplay:
+    """Test trackpoint display method signatures."""
+    
+    def test_on_track_selected_method_exists(self):
+        """Should have on_track_selected method."""
+        assert hasattr(MapWidget, 'on_track_selected')
+    
+    def test_on_point_selected_method_exists(self):
+        """Should have on_point_selected method."""
+        assert hasattr(MapWidget, 'on_point_selected')
+    
+    def test_clear_map_method_exists(self):
+        """Should have clear_map method."""
+        assert hasattr(MapWidget, 'clear_map')
+    
+    def test_fit_to_tracks_method_exists(self):
+        """Should have fit_to_tracks method."""
+        assert hasattr(MapWidget, 'fit_to_tracks')
+
+
+class TestMapWidgetInteraction:
+    """Test map widget user control methods."""
+    
+    def test_set_zoom_method_exists(self):
+        """Should have set_zoom method."""
+        assert hasattr(MapWidget, 'set_zoom')
+    
+    def test_set_center_method_exists(self):
+        """Should have set_center method."""
+        assert hasattr(MapWidget, 'set_center')
+    
+    def test_size_hint_method_exists(self):
+        """Should have sizeHint method."""
+        assert hasattr(MapWidget, 'sizeHint')
+
+
+class TestMapWidgetSignals:
+    """Test signal declarations."""
+    
+    def test_track_clicked_signal_declared(self):
+        """Should declare track_clicked signal."""
+        assert hasattr(MapWidget, 'track_clicked')
+    
+    def test_point_clicked_signal_declared(self):
+        """Should declare point_clicked signal."""
+        assert hasattr(MapWidget, 'point_clicked')
+    
+    def test_map_ready_signal_declared(self):
+        """Should declare map_ready signal."""
+        assert hasattr(MapWidget, 'map_ready')
+
+
+class TestMapWidgetErrorHandling:
+    """Test error handling approach."""
+    
+    def test_map_widget_validates_inputs(self):
+        """MapWidget should validate constructor inputs."""
+        # Test None track_manager
+        with pytest.raises(ValueError):
+            MapWidget(None, Mock(), Mock())
+        
+        # Test None mbtiles_provider
+        with pytest.raises(ValueError):
+            MapWidget(Mock(), None, Mock())
+        
+        # Test None logger
+        with pytest.raises(ValueError):
+            MapWidget(Mock(), Mock(), None)
+
+
+class TestMapStateEnum:
+    """Test MapState enumeration values."""
+    
+    def test_all_states_have_values(self):
+        """Should have all required states."""
+        states = [MapState.UNINITIALIZED, MapState.LOADING, MapState.READY, MapState.ERROR]
+        for state in states:
+            assert state.value is not None
+            assert isinstance(state.value, str)
+
+
+class TestMapRendererConstants:
+    """Test MapRenderer constants."""
+    
+    def test_leaflet_version_is_defined(self):
+        """Should have Leaflet version constant."""
+        assert MapRenderer.LEAFLET_VERSION is not None
+        assert isinstance(MapRenderer.LEAFLET_VERSION, str)
+        assert len(MapRenderer.LEAFLET_VERSION) > 0
+    
+    def test_tile_layer_template_is_defined(self):
+        """Should have tile layer template."""
+        assert MapRenderer.TILE_LAYER_TEMPLATE is not None
+        assert isinstance(MapRenderer.TILE_LAYER_TEMPLATE, str)
