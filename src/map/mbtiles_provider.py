@@ -221,6 +221,9 @@ class MBTilesProvider:
         Extracts key-value metadata from the metadata table and constructs
         TileMetadata object with parsed values.
         
+        If metadata minzoom/maxzoom don't match actual tiles, query the tiles
+        table to get accurate zoom levels.
+        
         Returns:
             TileMetadata object with extracted metadata
             
@@ -257,9 +260,29 @@ class MBTilesProvider:
             except (ValueError, IndexError):
                 self.logger.warning(f"Invalid center format: {metadata_dict.get('center')}")
         
-        # Parse zoom levels
+        # Parse zoom levels from metadata
         min_zoom = int(metadata_dict.get("minzoom", 0))
         max_zoom = int(metadata_dict.get("maxzoom", 14))
+        
+        # Verify and correct zoom levels by querying actual tiles
+        # (metadata can be inaccurate)
+        try:
+            cursor.execute("SELECT MIN(zoom_level) as min_z, MAX(zoom_level) as max_z FROM tiles")
+            result = cursor.fetchone()
+            if result and result[0] is not None and result[1] is not None:
+                actual_min_zoom = result[0]
+                actual_max_zoom = result[1]
+                
+                # Use actual zoom levels if they differ from metadata
+                if actual_min_zoom != min_zoom or actual_max_zoom != max_zoom:
+                    self.logger.debug(
+                        f"Metadata zoom ({min_zoom}-{max_zoom}) differs from actual tiles "
+                        f"({actual_min_zoom}-{actual_max_zoom}). Using actual tile ranges."
+                    )
+                    min_zoom = actual_min_zoom
+                    max_zoom = actual_max_zoom
+        except Exception as e:
+            self.logger.warning(f"Could not query actual zoom levels from tiles table: {e}")
         
         return TileMetadata(
             name=metadata_dict.get("name", "Unknown"),

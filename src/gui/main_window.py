@@ -135,11 +135,15 @@ class MainWindow(QMainWindow):
         # Get configuration values
         app_name = self.config.get('Application', 'app_name', 'mangpx')
         version = self.config.get('Application', 'version', '1.0.0')
+        window_title = self.config.get('Application', 'window_title', '{app_name} - GPX File Manipulator v{version}')
         window_width = self.config.get_int('UI', 'window_width', 1400)
         window_height = self.config.get_int('UI', 'window_height', 900)
         
+        # Format window title with substitutions
+        window_title = window_title.format(app_name=app_name, version=version)
+        
         # Set window title
-        self.setWindowTitle(f"{app_name} v{version}")
+        self.setWindowTitle(window_title)
         
         # Set window size
         self.resize(window_width, window_height)

@@ -203,7 +203,17 @@ class MapWidget(QWidget):
             print(f"Error rendering map: {e}")
     
     def _draw_tracks_on_image(self, pil_image, map_renderer):
-        """Draw tracks on the map."""
+        """
+        Draw tracks on the map.
+        
+        Logic:
+        - Always draw the track path if a track is selected
+        - show_turning_points controls visibility of turning points:
+          - If True: Draw all turning points (yellow), selected one in blue
+          - If False: Draw no turning points normally
+        - Exception: If show_turning_points is False BUT a trackpoint is selected,
+          draw only that selected turning point in blue
+        """
         if not self.track_manager:
             return pil_image
         
@@ -221,7 +231,7 @@ class MapWidget(QWidget):
             trackpoints = track.trackpoints
             
             if trackpoints:
-                # Draw selected track in the selected track color
+                # ALWAYS draw the track path (regardless of show_turning_points)
                 line_color = self.selected_track_color
                 
                 # Draw track line
@@ -237,8 +247,9 @@ class MapWidget(QWidget):
                     if screen1 and screen2:
                         draw.line([screen1, screen2], fill=line_color, width=self.track_path_width)
                 
-                # Draw turning points (all trackpoints) if enabled
+                # Draw turning points based on show_turning_points setting
                 if self.show_turning_points:
+                    # Draw all turning points (yellow for normal, blue for selected)
                     for i, tp in enumerate(trackpoints):
                         screen = map_renderer.gps_to_screen(tp.latitude, tp.longitude)
                         
@@ -254,6 +265,21 @@ class MapWidget(QWidget):
                             # Draw circle for turning point
                             r = self.turning_point_size
                             draw.ellipse([(x-r, y-r), (x+r, y+r)], fill=point_color, outline=(255,255,255), width=1)
+                
+                # NEW FEATURE: If show_turning_points is False but a trackpoint is selected,
+                # show only that selected turning point in blue
+                elif self.selected_trackpoint_index is not None:
+                    if self.selected_trackpoint_index < len(trackpoints):
+                        tp = trackpoints[self.selected_trackpoint_index]
+                        screen = map_renderer.gps_to_screen(tp.latitude, tp.longitude)
+                        
+                        if screen:
+                            x, y = screen
+                            # Draw only the selected point in blue
+                            r = self.turning_point_size
+                            draw.ellipse([(x-r, y-r), (x+r, y+r)], 
+                                       fill=self.selected_turning_point_color, 
+                                       outline=(255,255,255), width=1)
         
         return pil_image
     

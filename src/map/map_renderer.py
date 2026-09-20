@@ -39,6 +39,10 @@ class MapRenderer:
         self.mbtiles_provider = mbtiles_provider
         self.zoom_level = zoom_level
         
+        # Store GPS center for zoom adjustments
+        self.center_lat = center_lat
+        self.center_lon = center_lon
+        
         # Current view center in tile coordinates
         self.center_tile_x, self.center_tile_y = self._latlon_to_tile(center_lat, center_lon, zoom_level)
     
@@ -180,3 +184,45 @@ class MapRenderer:
         # Convert tile coordinates to GPS
         latitude, longitude = self._tile_to_latlon(tile_x, tile_y, self.zoom_level)
         return (latitude, longitude)
+    
+    def set_center_gps(self, latitude: float, longitude: float):
+        """
+        Set the map center from GPS coordinates.
+        
+        Args:
+            latitude (float): Latitude in decimal degrees
+            longitude (float): Longitude in decimal degrees
+        """
+        self.center_lat = latitude
+        self.center_lon = longitude
+        self.center_tile_x, self.center_tile_y = self._latlon_to_tile(latitude, longitude, self.zoom_level)
+    
+    def set_zoom_level(self, zoom_level: int):
+        """
+        Change the zoom level.
+        
+        When zooming, maintain the current map center position.
+        
+        Args:
+            zoom_level (int): New zoom level
+        """
+        old_zoom = self.zoom_level
+        self.zoom_level = zoom_level
+        
+        # Recalculate tile coordinates for the new zoom level
+        # The relationship between zoom levels is: tile_coord *= (2 ^ delta_zoom)
+        zoom_factor = 2 ** (zoom_level - old_zoom)
+        self.center_tile_x *= zoom_factor
+        self.center_tile_y *= zoom_factor
+    
+    def pan_by_gps_delta(self, delta_lat: float, delta_lon: float):
+        """
+        Pan the map by GPS coordinate delta.
+        
+        Args:
+            delta_lat (float): Latitude delta in degrees
+            delta_lon (float): Longitude delta in degrees
+        """
+        self.center_lat += delta_lat
+        self.center_lon += delta_lon
+        self.center_tile_x, self.center_tile_y = self._latlon_to_tile(self.center_lat, self.center_lon, self.zoom_level)
