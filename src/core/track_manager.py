@@ -691,6 +691,191 @@ class TrackManager:
         for track in self.tracks:
             track.is_dirty = False
         logger.debug("All tracks marked as clean")
+    
+    # ========================================================================
+    # Trackpoint Operations
+    # ========================================================================
+    
+    def remove_trackpoint(self, track_index: int, point_index: int) -> Optional[Trackpoint]:
+        """
+        Remove a single trackpoint from a track.
+        
+        Removes the trackpoint at the specified index, recalculates track
+        distance, and marks track as dirty for saving.
+        
+        Args:
+            track_index (int): Index of track to modify
+            point_index (int): Index of trackpoint to remove (0-based)
+        
+        Returns:
+            Optional[Trackpoint]: Removed trackpoint if successful, None otherwise
+        
+        Raises:
+            ValueError: If indices are invalid or out of range
+        
+        Example:
+            >>> manager = TrackManager()
+            >>> # ... load tracks ...
+            >>> manager.select_track(0)
+            >>> removed = manager.remove_trackpoint(0, 5)
+            >>> if removed:
+            ...     print(f"Removed point at ({removed.latitude}, {removed.longitude})")
+            >>> else:
+            ...     print("Failed to remove trackpoint")
+        """
+        
+        # Validate track index
+        if not isinstance(track_index, int) or track_index < 0 or track_index >= len(self.tracks):
+            logger.error(f"Invalid track index: {track_index}")
+            return None
+        
+        track = self.tracks[track_index]
+        
+        # Validate point index
+        if not isinstance(point_index, int) or point_index < 0 or point_index >= len(track.trackpoints):
+            logger.error(f"Invalid trackpoint index {point_index} for track with {len(track.trackpoints)} points")
+            return None
+        
+        # Cannot remove if only one point left
+        if len(track.trackpoints) <= 1:
+            logger.warning(f"Cannot remove trackpoint: Track '{track.name}' would be empty")
+            return None
+        
+        # Remove the trackpoint
+        removed_point = track.trackpoints.pop(point_index)
+        logger.info(f"Removed trackpoint {point_index} from track '{track.name}' at ({removed_point.latitude:.4f}, {removed_point.longitude:.4f})")
+        
+        # Recalculate distance
+        self.recalculate_distance(track_index)
+        
+        # Mark as dirty
+        track.is_dirty = True
+        
+        return removed_point
+    
+    def remove_trackpoint_selected(self, point_index: int) -> Optional[Trackpoint]:
+        """
+        Remove trackpoint from currently selected track.
+        
+        Args:
+            point_index (int): Index of trackpoint to remove
+        
+        Returns:
+            Optional[Trackpoint]: Removed trackpoint if successful, None otherwise
+        
+        Example:
+            >>> manager = TrackManager()
+            >>> manager.select_track(0)
+            >>> removed = manager.remove_trackpoint_selected(5)
+        """
+        if self.selected_track_index < 0:
+            logger.warning("No track selected")
+            return None
+        
+        return self.remove_trackpoint(self.selected_track_index, point_index)
+    
+    def remove_trackpoints_from_start(self, track_index: int, to_index: int) -> Optional[List[Trackpoint]]:
+        """
+        Remove trackpoints from start up to (and including) the specified index.
+        
+        Deletes points [0, 1, ..., to_index], keeping points after to_index.
+        
+        Args:
+            track_index (int): Index of track to modify
+            to_index (int): Index up to which to remove (inclusive)
+        
+        Returns:
+            Optional[List[Trackpoint]]: Removed trackpoints if successful, None otherwise
+        
+        Example:
+            >>> manager = TrackManager()
+            >>> manager.select_track(0)
+            >>> removed = manager.remove_trackpoints_from_start(0, 10)
+            >>> print(f"Removed {len(removed)} points from start")
+        """
+        
+        # Validate track index
+        if not isinstance(track_index, int) or track_index < 0 or track_index >= len(self.tracks):
+            logger.error(f"Invalid track index: {track_index}")
+            return None
+        
+        track = self.tracks[track_index]
+        
+        # Validate to_index
+        if not isinstance(to_index, int) or to_index < 0 or to_index >= len(track.trackpoints):
+            logger.error(f"Invalid to_index: {to_index}")
+            return None
+        
+        # Need at least one point left
+        remaining = len(track.trackpoints) - (to_index + 1)
+        if remaining <= 0:
+            logger.warning(f"Cannot remove: Track would be empty (to_index={to_index}, total={len(track.trackpoints)})")
+            return None
+        
+        # Remove from start to to_index
+        removed_points = track.trackpoints[:to_index + 1]
+        track.trackpoints = track.trackpoints[to_index + 1:]
+        
+        logger.info(f"Removed {len(removed_points)} trackpoints from start of track '{track.name}'")
+        
+        # Recalculate distance
+        self.recalculate_distance(track_index)
+        
+        # Mark as dirty
+        track.is_dirty = True
+        
+        return removed_points
+    
+    def remove_trackpoints_from_end(self, track_index: int, from_index: int) -> Optional[List[Trackpoint]]:
+        """
+        Remove trackpoints from the specified index to the end of track.
+        
+        Keeps points [0, 1, ..., from_index-1], deletes points [from_index, ...].
+        
+        Args:
+            track_index (int): Index of track to modify
+            from_index (int): Index from which to start removing
+        
+        Returns:
+            Optional[List[Trackpoint]]: Removed trackpoints if successful, None otherwise
+        
+        Example:
+            >>> manager = TrackManager()
+            >>> manager.select_track(0)
+            >>> removed = manager.remove_trackpoints_from_end(0, 500)
+            >>> print(f"Removed {len(removed)} points from end")
+        """
+        
+        # Validate track index
+        if not isinstance(track_index, int) or track_index < 0 or track_index >= len(self.tracks):
+            logger.error(f"Invalid track index: {track_index}")
+            return None
+        
+        track = self.tracks[track_index]
+        
+        # Validate from_index
+        if not isinstance(from_index, int) or from_index < 0 or from_index >= len(track.trackpoints):
+            logger.error(f"Invalid from_index: {from_index}")
+            return None
+        
+        # Need at least one point left
+        if from_index <= 0:
+            logger.warning(f"Cannot remove: Track would be empty (from_index={from_index})")
+            return None
+        
+        # Remove from from_index to end
+        removed_points = track.trackpoints[from_index:]
+        track.trackpoints = track.trackpoints[:from_index]
+        
+        logger.info(f"Removed {len(removed_points)} trackpoints from end of track '{track.name}'")
+        
+        # Recalculate distance
+        self.recalculate_distance(track_index)
+        
+        # Mark as dirty
+        track.is_dirty = True
+        
+        return removed_points
 
 
 # ============================================================================

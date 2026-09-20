@@ -108,7 +108,7 @@ class MBTilesProvider:
             Path object if file exists, None otherwise
         """
         # Get project root from config
-        project_root = Path(self.config.get("Application", "project_root", "./"))
+        project_root = Path(self.config.get_str("Application.project_root", "./"))
         mbtiles_path = project_root / "mbtiles" / filename
         
         if mbtiles_path.exists() and mbtiles_path.is_file():
@@ -130,7 +130,7 @@ class MBTilesProvider:
             sqlite3.Error: If database connection fails
         """
         # Get default filename from config
-        default_file = self.config.get("Map", "default_mbtiles", None)
+        default_file = self.config.get_str("Map.tiles.mbtiles_file", None)
         
         if not default_file:
             self.logger.error("No default_mbtiles configured in settings.ini")
@@ -144,10 +144,8 @@ class MBTilesProvider:
         self.logger.warning(f"Failed to load default mbtiles: {default_file}")
         
         # Try fallback files
-        fallback_str = self.config.get("Map", "fallback_mbtiles", "")
-        if fallback_str:
-            fallback_files = [f.strip() for f in fallback_str.split(",") if f.strip()]
-            
+        fallback_files = self.config.get_list("Map.tiles.fallback_files", [])
+        if fallback_files:
             for fallback_file in fallback_files:
                 if self._load_file(fallback_file):
                     self.logger.info(f"Successfully loaded fallback mbtiles: {fallback_file}")

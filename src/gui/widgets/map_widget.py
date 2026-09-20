@@ -51,22 +51,23 @@ class MapWidget(QWidget):
         self.show_turning_points = True  # Show/hide turning points
         
         # Load track display settings from config
-        from config.app_config import AppConfig
+        from config.app_config_yaml import AppConfig
         config = AppConfig()
         
         # Parse colors from config (hex format: RRGGBB)
-        self.track_color = self._hex_to_rgb(config.get_str('Map', 'track_path_color', 'FF0000'))
-        self.selected_track_color = self._hex_to_rgb(config.get_str('Map', 'selected_track_path_color', 'FF3232'))
-        self.selected_point_color = self._hex_to_rgb(config.get_str('Map', 'selected_trackpoint_color', 'FFFF00'))
+        self.track_color = self._hex_to_rgb(config.get_str('Map.track.path.color', 'FF0000'))
+        self.selected_track_color = self._hex_to_rgb(config.get_str('Map.track.selected.color', 'FF3232'))
+        self.selected_point_color = self._hex_to_rgb(config.get_str('Map.turning_points.selected.color', 'FFFF00'))
         
         # Turning points settings
-        self.show_turning_points = config.get_bool('Map', 'show_turning_points', True)
-        self.turning_point_color = self._hex_to_rgb(config.get_str('Map', 'turning_point_color', 'FFFF00'))
-        self.selected_turning_point_color = self._hex_to_rgb(config.get_str('Map', 'selected_turning_point_color', '0000FF'))
-        self.turning_point_size = config.get_int('Map', 'turning_point_size', 4)
+        self.show_turning_points = config.get_bool('Map.turning_points.show', True)
+        self.turning_point_color = self._hex_to_rgb(config.get_str('Map.turning_points.color', 'FFFF00'))
+        self.selected_turning_point_color = self._hex_to_rgb(config.get_str('Map.turning_points.selected.color', '0000FF'))
+        self.turning_point_size = config.get_int('Map.turning_points.size', 4)
+        self.selected_turning_point_size = config.get_int('Map.turning_points.selected.size', 5)
         
         # Track path width
-        self.track_path_width = config.get_int('Map', 'track_path_width', 3)
+        self.track_path_width = config.get_int('Map.track.path.width', 3)
         
         # Map state
         self.center_lat = 56.168
@@ -256,14 +257,15 @@ class MapWidget(QWidget):
                         if screen:
                             x, y = screen
                             
-                            # Determine color: selected point is blue, others are yellow
+                            # Determine color and size: selected point is blue and larger, others are yellow
                             if i == self.selected_trackpoint_index:
                                 point_color = self.selected_turning_point_color
+                                r = self.selected_turning_point_size
                             else:
                                 point_color = self.turning_point_color
+                                r = self.turning_point_size
                             
                             # Draw circle for turning point
-                            r = self.turning_point_size
                             draw.ellipse([(x-r, y-r), (x+r, y+r)], fill=point_color, outline=(255,255,255), width=1)
                 
                 # NEW FEATURE: If show_turning_points is False but a trackpoint is selected,
@@ -275,8 +277,8 @@ class MapWidget(QWidget):
                         
                         if screen:
                             x, y = screen
-                            # Draw only the selected point in blue
-                            r = self.turning_point_size
+                            # Draw only the selected point in blue with larger radius
+                            r = self.selected_turning_point_size
                             draw.ellipse([(x-r, y-r), (x+r, y+r)], 
                                        fill=self.selected_turning_point_color, 
                                        outline=(255,255,255), width=1)

@@ -20,6 +20,8 @@ import logging
 from pathlib import Path
 from typing import Optional
 
+import gpxpy.gpx
+
 from PyQt5.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QStatusBar, QMenu, QAction, QFileDialog, QMessageBox
@@ -27,7 +29,7 @@ from PyQt5.QtWidgets import (
 from PyQt5.QtGui import QIcon, QKeySequence
 from PyQt5.QtCore import Qt, QSize, pyqtSignal
 
-from config.app_config import AppConfig
+from config.app_config_yaml import AppConfig
 from src.core.gpx_handler import GPXHandler
 from src.core.track_manager import TrackManager
 from src.gui.widgets.track_list_widget import TrackListWidget
@@ -104,6 +106,7 @@ class MainWindow(QMainWindow):
         # Application state
         self.current_file_path: Optional[str] = None
         self.is_modified = False
+        self.gpx_data: Optional[gpxpy.gpx.GPX] = None  # Store current GPX object for saving
         self._current_track_index: Optional[int] = None
         self._current_point_index: Optional[int] = None
         
@@ -133,14 +136,14 @@ class MainWindow(QMainWindow):
         """Configure window properties and geometry."""
         
         # Get configuration values
-        app_name = self.config.get('Application', 'app_name', 'mangpx')
-        version = self.config.get('Application', 'version', '1.0.0')
-        window_title = self.config.get('Application', 'window_title', '{app_name} - GPX File Manipulator v{version}')
-        window_width = self.config.get_int('UI', 'window_width', 1400)
-        window_height = self.config.get_int('UI', 'window_height', 900)
+        app_name = self.config.get_str('Application.name', 'mangpx')
+        version = self.config.get_str('Application.version', '1.0.0')
+        window_title = self.config.get_str('Application.window_title', '{app_name} - GPX File Manipulator v{version}')
+        window_width = self.config.get_int('UI.window.width', 1400)
+        window_height = self.config.get_int('UI.window.height', 900)
         
         # Format window title with substitutions
-        window_title = window_title.format(app_name=app_name, version=version)
+        window_title = window_title.format(name=app_name, version=version)
         
         # Set window title
         self.setWindowTitle(window_title)
@@ -158,7 +161,7 @@ class MainWindow(QMainWindow):
         
         # Enable window state saving (use legacy attribute for compatibility)
         window_state = Qt.WindowState.WindowMaximized if self.config.get_bool(
-            'UI', 'start_maximized', False
+            'UI.start_maximized', False
         ) else Qt.WindowState.WindowNoState
         self.setWindowState(window_state)
     
@@ -233,6 +236,16 @@ class MainWindow(QMainWindow):
         redo_action.setEnabled(False)
         edit_menu.addAction(redo_action)
         self.redo_action = redo_action
+        
+        edit_menu.addSeparator()
+        
+        # Edit > Delete Trackpoint
+        delete_trackpoint_action = QAction('&Delete Trackpoint', self)
+        delete_trackpoint_action.setShortcut(Qt.CTRL + Qt.Key_D)
+        delete_trackpoint_action.setStatusTip('Delete selected trackpoint')
+        delete_trackpoint_action.triggered.connect(self.action_delete_trackpoint)
+        edit_menu.addAction(delete_trackpoint_action)
+        self.delete_trackpoint_action = delete_trackpoint_action
         
         edit_menu.addSeparator()
         
@@ -459,6 +472,9 @@ class MainWindow(QMainWindow):
                 self.show_error("Failed to open file", f"Could not parse GPX file: {file_path}")
                 return False
             
+            # Store GPX object for later saving
+            self.gpx_data = gpx
+            
             # Load tracks into manager
             count = self.track_manager.load_from_gpx(gpx, file_path)
             
@@ -511,23 +527,59 @@ class MainWindow(QMainWindow):
         """
         
         try:
+            if not self.gpx_data:
+                self.show_error("Error", "No GPX data loaded")
+                return False
+            
             # Get all tracks from manager
             tracks = self.track_manager.get_all_tracks()
             
             if not tracks:
-                self.show_warning("Warning", "No tracks to save")
+                self.show_error("Warning", "No tracks to save")
                 return False
             
-            # TODO: Implement actual save functionality
-            # For now, just update state
-            self.current_file_path = file_path
-            self.is_modified = False
+            # Update GPX object with current track data
+            # Clear existing tracks
+            self.gpx_data.tracks.clear()
             
-            # Emit signal
-            self.file_saved.emit(file_path)
+            # Add modified tracks back to GPX
+            for track_data in tracks:
+                # Create new GPX track
+                gpx_track = gpxpy.gpx.GPXTrack(name=track_data.name)
+                
+                # Create track segment
+                segment = gpxpy.gpx.GPXTrackSegment()
+                
+                # Add trackpoints to segment
+                for trackpoint in track_data.trackpoints:
+                    gpx_point = gpxpy.gpx.GPXTrackPoint(
+                        latitude=trackpoint.latitude,
+                        longitude=trackpoint.longitude,
+                        elevation=trackpoint.elevation,
+                        time=None  # Preserve timestamp if available
+                    )
+                    segment.points.append(gpx_point)
+                
+                # Add segment to track
+                gpx_track.segments.append(segment)
+                
+                # Add track to GPX
+                self.gpx_data.tracks.append(gpx_track)
             
-            logger.info(f"Saved file: {file_path}")
-            return True
+            # Save GPX file
+            success, message = self.gpx_handler.save_gpx(file_path, self.gpx_data)
+            
+            if success:
+                self.current_file_path = file_path
+                self.is_modified = False
+                self.file_saved.emit(file_path)
+                logger.info(f"Saved file: {file_path}")
+                self.show_info("Success", message)
+                return True
+            else:
+                logger.error(f"Error saving file: {message}")
+                self.show_error("Error", f"Failed to save file: {message}")
+                return False
         
         except Exception as e:
             logger.error(f"Error saving file: {e}")
@@ -574,8 +626,8 @@ class MainWindow(QMainWindow):
     def action_about(self):
         """Show about dialog."""
         
-        app_name = self.config.get('Application', 'app_name', 'mangpx')
-        version = self.config.get('Application', 'version', '1.0.0')
+        app_name = self.config.get_str('Application.name', 'mangpx')
+        version = self.config.get_str('Application.version', '1.0.0')
         
         about_text = f"""
 <b>{app_name}</b> v{version}
@@ -596,6 +648,15 @@ A PyQt5 application for reading, editing, and exporting GPX navigation tracks.
     def action_about_qt(self):
         """Show about Qt dialog."""
         QMessageBox.aboutQt(self)
+    
+    def action_delete_trackpoint(self):
+        """Delete selected trackpoint."""
+        if hasattr(self, 'trackpoint_list_widget'):
+            selected_row = self.trackpoint_list_widget.table_widget.currentRow()
+            if selected_row >= 0:
+                self.trackpoint_list_widget._delete_trackpoint(selected_row)
+            else:
+                QMessageBox.information(self, "No Selection", "Please select a trackpoint to delete")
     
     # ========================================================================
     # Signal Handlers

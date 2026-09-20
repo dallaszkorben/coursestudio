@@ -1264,8 +1264,10 @@ Update this section after each step completion:
 | 9 | ✅ DONE | 2026-09-20 | Leaflet.js-based map widget (Leaflet integration) |
 | 10 | ✅ DONE | 2026-09-20 | UI integration of all 3 panels + signal connections |
 | 11 | ✅ DONE | 2026-09-20 | PIL-based map rendering (direct mbtiles, Leaflet → PIL migration) |
-| 11.1 | 🔧 FIXING | 2026-09-20 | CRITICAL BUGS: Trackpoints not displaying, GUI crashes, map pan/zoom broken, layout issues |
-| 12 | ⏳ TODO | | |
+| 11.1 | ✅ DONE | 2026-09-20 | YAML Configuration Migration - hierarchical settings with persistence ✅ |
+| 12 | ✅ DONE | 2026-09-20 | Remove trackpoint - 13 tests (85 total ✅), context menu, keyboard, range deletion, map update, index fix |
+| 18 | ✅ DONE | 2026-09-20 | Save GPX file - Full implementation with backup, validation, Garmin compatibility ✅ |
+| 13 | ⏳ TODO | | |
 | ... | | | |
 
 ---

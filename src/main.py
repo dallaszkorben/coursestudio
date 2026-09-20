@@ -16,6 +16,7 @@ import sys
 import argparse
 import os
 import logging
+import traceback
 from pathlib import Path
 
 # Add project root to path so imports work correctly
@@ -23,7 +24,7 @@ project_root = Path(__file__).parent.parent.absolute()
 sys.path.insert(0, str(project_root))
 
 from PyQt5.QtWidgets import QApplication
-from config.app_config import AppConfig
+from config.app_config_yaml import AppConfig
 from src.gui.main_window import MainWindow
 
 
@@ -91,8 +92,8 @@ def main():
     parser.add_argument(
         '--config',
         type=str,
-        default='config/settings.ini',
-        help='Configuration file path (default: config/settings.ini)'
+        default='config/settings.yaml',
+        help='Configuration file path (default: config/settings.yaml)'
     )
     parser.add_argument(
         '--debug',
@@ -121,8 +122,8 @@ def main():
     
     try:
         config = AppConfig(args.config)
-        app_name = config.get('Application', 'app_name', 'mangpx')
-        version = config.get('Application', 'version', '1.0.0')
+        app_name = config.get_str('Application.name', 'mangpx')
+        version = config.get_str('Application.version', '1.0.0')
         logger.info(f"Configuration loaded: {app_name} v{version}")
         print(f"✅ Application: {app_name} v{version}")
     except FileNotFoundError as e:
@@ -177,8 +178,11 @@ def main():
         print("✅ Main window created")
     
     except Exception as e:
-        logger.error(f"Error creating main window: {e}")
+        tb = traceback.format_exc()
+        logger.error(f"Error creating main window: {e}\n{tb}")
         print(f"❌ Error creating main window: {e}")
+        print("\nFull traceback:")
+        print(tb)
         sys.exit(1)
     
     # ====================================================================

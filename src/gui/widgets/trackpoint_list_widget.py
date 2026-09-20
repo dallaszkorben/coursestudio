@@ -103,7 +103,12 @@ class TrackpointListWidget(QWidget):
         self.map_widget = map_widget
         self.current_track_index = -1
         self.current_selection = -1
-        self.coordinate_format = 'dms'  # 'dms' or 'decimal'
+        
+        # Load saved settings or use defaults
+        from config.app_config_yaml import AppConfig
+        config = AppConfig()
+        self.coordinate_format = config.get_str('Coordinates.last_state.format', 'dms')
+        self.show_points = config.get_bool('Map.last_state.show_turning_points', True)
         
         # Setup UI
         self._setup_ui()
@@ -143,7 +148,11 @@ class TrackpointListWidget(QWidget):
         self.format_combo = QComboBox()
         self.format_combo.addItem("DMS", "dms")
         self.format_combo.addItem("Decimal", "decimal")
-        self.format_combo.setCurrentIndex(0)
+        # Set to saved format
+        if self.coordinate_format == "decimal":
+            self.format_combo.setCurrentIndex(1)
+        else:
+            self.format_combo.setCurrentIndex(0)
         self.format_combo.setMaximumWidth(120)
         header_layout.addWidget(self.format_combo)
         
@@ -152,7 +161,11 @@ class TrackpointListWidget(QWidget):
         self.show_points_combo = QComboBox()
         self.show_points_combo.addItem("Yes", True)
         self.show_points_combo.addItem("No", False)
-        self.show_points_combo.setCurrentIndex(0)  # Default: Yes
+        # Set to saved show points setting
+        if self.show_points:
+            self.show_points_combo.setCurrentIndex(0)  # Yes
+        else:
+            self.show_points_combo.setCurrentIndex(1)  # No
         self.show_points_combo.setMaximumWidth(80)
         header_layout.addWidget(self.show_points_combo)
         
@@ -168,6 +181,7 @@ class TrackpointListWidget(QWidget):
         self.table_widget.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.table_widget.setAlternatingRowColors(True)
         self.table_widget.setMinimumHeight(300)
+        self.table_widget.setContextMenuPolicy(Qt.CustomContextMenu)
         
         # Set column widths
         header = self.table_widget.horizontalHeader()
@@ -200,6 +214,7 @@ class TrackpointListWidget(QWidget):
         # Table widget signals
         self.table_widget.itemSelectionChanged.connect(self._on_selection_changed)
         self.table_widget.cellDoubleClicked.connect(self._on_cell_double_clicked)
+        self.table_widget.customContextMenuRequested.connect(self._on_context_menu)
         
         # Format combo signal
         self.format_combo.currentIndexChanged.connect(self._on_format_changed)
@@ -326,9 +341,11 @@ class TrackpointListWidget(QWidget):
         time_item.setFlags(time_item.flags() & ~Qt.ItemIsEditable)
         self.table_widget.setItem(row, self.COL_TIMESTAMP, time_item)
         
-        # Store point index as data
+        # Store row index as data (this is the trackpoint index in the current track)
+        # We store the row index, not point.index, because point.index is from the original
+        # trackpoint data which doesn't change after deletion
         for col in range(5):
-            self.table_widget.item(row, col).setData(Qt.UserRole, point.index)
+            self.table_widget.item(row, col).setData(Qt.UserRole, row)
     
     def _format_coordinate(self, value: float, is_latitude: bool) -> str:
         """
@@ -438,6 +455,12 @@ class TrackpointListWidget(QWidget):
         
         self.coordinate_format = self.format_combo.currentData()
         
+        # Save to config file
+        from config.app_config_yaml import AppConfig
+        config = AppConfig()
+        config.set('Coordinates.last_state.format', self.coordinate_format)
+        config.save_to_file()
+        
         # Refresh display
         self.refresh_trackpoints()
         
@@ -450,6 +473,13 @@ class TrackpointListWidget(QWidget):
         """Handle show points toggle."""
         
         show_points = self.show_points_combo.currentData()
+        self.show_points = show_points
+        
+        # Save to config file
+        from config.app_config_yaml import AppConfig
+        config = AppConfig()
+        config.set('Map.last_state.show_turning_points', show_points)
+        config.save_to_file()
         
         # Update map widget if available
         if self.map_widget:
@@ -488,6 +518,177 @@ class TrackpointListWidget(QWidget):
                 item = self.table_widget.item(point_index, col)
                 if item:
                     item.setBackground(QColor())  # Default background
+    
+    # ========================================================================
+    # Context Menu & Deletion
+    # ========================================================================
+    
+    def _on_context_menu(self, position):
+        """Handle context menu on trackpoint table."""
+        
+        selected_row = self.table_widget.rowAt(position.y())
+        if selected_row < 0:
+            return
+        
+        # Create context menu
+        from PyQt5.QtWidgets import QMenu
+        menu = QMenu()
+        
+        delete_action = menu.addAction("Delete Trackpoint")
+        delete_from_start_action = menu.addAction("Delete from Start to Here")
+        delete_from_end_action = menu.addAction("Delete from Here to End")
+        
+        # Execute menu
+        action = menu.exec_(self.table_widget.mapToGlobal(position))
+        
+        # Handle actions
+        if action == delete_action:
+            self._delete_trackpoint(selected_row)
+        elif action == delete_from_start_action:
+            self._delete_from_start(selected_row)
+        elif action == delete_from_end_action:
+            self._delete_from_end(selected_row)
+    
+    def keyPressEvent(self, event):
+        """Handle keyboard events (Delete key for removing trackpoints)."""
+        from PyQt5.QtGui import QKeySequence
+        from PyQt5.QtWidgets import QMessageBox
+        
+        # Delete key to remove trackpoint
+        if event.key() == Qt.Key_Delete:
+            if self.table_widget.hasFocus():
+                selected_row = self.table_widget.currentRow()
+                if selected_row >= 0:
+                    self._delete_trackpoint(selected_row)
+                return
+        
+        super().keyPressEvent(event)
+    
+    def _delete_trackpoint(self, row_index: int):
+        """Delete a single trackpoint with confirmation."""
+        from PyQt5.QtWidgets import QMessageBox
+        
+        if self.current_track_index < 0 or row_index < 0:
+            return
+        
+        track = self.track_manager.get_track_by_index(self.current_track_index)
+        if not track or row_index >= len(track.trackpoints):
+            return
+        
+        # Get trackpoint info
+        point = track.trackpoints[row_index]
+        
+        # Show confirmation dialog
+        reply = QMessageBox.question(
+            self,
+            "Delete Trackpoint",
+            f"Delete trackpoint {row_index + 1}?\n\n({point.latitude:.4f}°, {point.longitude:.4f}°)",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No
+        )
+        
+        if reply == QMessageBox.Yes:
+            # Remove trackpoint
+            removed = self.track_manager.remove_trackpoint(self.current_track_index, row_index)
+            if removed:
+                logger.info(f"Deleted trackpoint {row_index} from track '{track.name}'")
+                # Refresh display
+                self.refresh_trackpoints()
+                # Update map - re-select the current track to force redraw
+                if self.map_widget:
+                    self.map_widget.on_track_list_selection_changed(self.current_track_index)
+                # Emit signal
+                self.point_selected.emit(-1)
+            else:
+                QMessageBox.warning(self, "Error", "Could not delete trackpoint")
+    
+    def _delete_from_start(self, to_row_index: int):
+        """Delete trackpoints from start to specified row (inclusive)."""
+        from PyQt5.QtWidgets import QMessageBox
+        
+        if self.current_track_index < 0 or to_row_index < 0:
+            return
+        
+        track = self.track_manager.get_track_by_index(self.current_track_index)
+        if not track:
+            return
+        
+        # Calculate how many will be deleted
+        count_to_delete = to_row_index + 1
+        count_remaining = len(track.trackpoints) - count_to_delete
+        
+        if count_remaining <= 0:
+            QMessageBox.warning(
+                self,
+                "Cannot Delete",
+                "This would delete all trackpoints. Track must have at least one point."
+            )
+            return
+        
+        # Show confirmation
+        reply = QMessageBox.question(
+            self,
+            "Delete from Start",
+            f"Delete {count_to_delete} trackpoint(s) from start to row {to_row_index + 1}?\n\n"
+            f"{count_remaining} point(s) will remain.",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No
+        )
+        
+        if reply == QMessageBox.Yes:
+            removed = self.track_manager.remove_trackpoints_from_start(self.current_track_index, to_row_index)
+            if removed:
+                logger.info(f"Deleted {len(removed)} trackpoints from start of track '{track.name}'")
+                self.refresh_trackpoints()
+                if self.map_widget:
+                    self.map_widget.on_track_list_selection_changed(self.current_track_index)
+                self.point_selected.emit(-1)
+            else:
+                QMessageBox.warning(self, "Error", "Could not delete trackpoints")
+    
+    def _delete_from_end(self, from_row_index: int):
+        """Delete trackpoints from specified row to end."""
+        from PyQt5.QtWidgets import QMessageBox
+        
+        if self.current_track_index < 0 or from_row_index < 0:
+            return
+        
+        track = self.track_manager.get_track_by_index(self.current_track_index)
+        if not track:
+            return
+        
+        # Calculate how many will be deleted
+        count_to_delete = len(track.trackpoints) - from_row_index
+        count_remaining = from_row_index
+        
+        if count_remaining <= 0:
+            QMessageBox.warning(
+                self,
+                "Cannot Delete",
+                "This would delete all trackpoints. Track must have at least one point."
+            )
+            return
+        
+        # Show confirmation
+        reply = QMessageBox.question(
+            self,
+            "Delete from End",
+            f"Delete {count_to_delete} trackpoint(s) from row {from_row_index + 1} to end?\n\n"
+            f"{count_remaining} point(s) will remain.",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No
+        )
+        
+        if reply == QMessageBox.Yes:
+            removed = self.track_manager.remove_trackpoints_from_end(self.current_track_index, from_row_index)
+            if removed:
+                logger.info(f"Deleted {len(removed)} trackpoints from end of track '{track.name}'")
+                self.refresh_trackpoints()
+                if self.map_widget:
+                    self.map_widget.on_track_list_selection_changed(self.current_track_index)
+                self.point_selected.emit(-1)
+            else:
+                QMessageBox.warning(self, "Error", "Could not delete trackpoints")
 
 
 # ============================================================================

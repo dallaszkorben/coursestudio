@@ -1,0 +1,72 @@
+Application:
+  name: mangpx
+  version: 1.0.0
+  window_title: '{name} - GPX File Manipulator v{version}'
+  debug: false
+  project_root: ./
+UI:
+  window:
+    width: 1400
+    height: 900
+    x: -1
+    y: -1
+    remember_size: true
+  table_row_height: 25
+  show_keyboard_shortcuts: true
+Map:
+  tiles:
+    mbtiles_file: Sweden-Raster-Z10-Z16.mbtiles
+    fallback_files:
+    - OSM-OpenCPN2-Baltic.mbtiles
+    - OSM-OpenCPN-Baltic.mbtiles
+    initial_zoom: 13
+    default_center:
+      lat: 57.5
+      lon: 12.0
+  track:
+    path:
+      color: FF0000
+      width: 3
+    selected:
+      color: FF3232
+  turning_points:
+    show: true
+    color: FFFF00
+    size: 4
+    selected:
+      color: 0000FF
+      size: 7
+  last_state:
+    show_turning_points: false
+Coordinates:
+  format: dms
+  decimal_places: 4
+  dms_seconds_decimals: 1
+  last_state:
+    format: dms
+File:
+  backup:
+    create: true
+    extension: bak
+  remember_last_directory: true
+Performance:
+  max_trackpoints_no_warning: 5000
+  max_file_size_warning_mb: 25
+  max_file_size_error_mb: 100
+  max_undo_redo_stack: 50
+  max_history_memory_mb: 500
+  map_render_timer_ms: 100
+Logging:
+  level: INFO
+  file: ./mangpx.log
+  file_max_size_mb: 10
+  file_backup_count: 5
+Garmin:
+  gpx_version: '1.1'
+  validate_before_save: true
+  show_import_guide: false
+Advanced:
+  file_operation_timeout_s: 30
+  map_render_timeout_s: 10
+  experimental_features: false
+  max_threads: 4

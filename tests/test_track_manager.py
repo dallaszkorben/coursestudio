@@ -949,5 +949,178 @@ class TestTrackManagerIntegration:
         assert manager.is_any_track_dirty() is False
 
 
+# ============================================================================
+# Trackpoint Removal Tests
+# ============================================================================
+
+class TestTrackpointRemoval:
+    """Tests for trackpoint removal operations."""
+    
+    @pytest.fixture
+    def manager_with_track(self):
+        """Manager with a track containing 10 trackpoints."""
+        manager = TrackManager()
+        
+        # Create mock GPX with one track
+        mock_gpx = MagicMock()
+        mock_track = MagicMock()
+        mock_track.name = "Test Track"
+        mock_track.segments = []
+        
+        # Create 10 trackpoints
+        trackpoints = []
+        for i in range(10):
+            tp = MagicMock(spec=gpxpy.gpx.GPXTrackPoint)
+            tp.latitude = 57.5 + (i * 0.001)
+            tp.longitude = 17.2 + (i * 0.001)
+            tp.elevation = 10.0 + (i * 5)
+            tp.time = None
+            trackpoints.append(tp)
+        
+        segment = MagicMock()
+        segment.points = trackpoints
+        mock_track.segments = [segment]
+        
+        mock_gpx.tracks = [mock_track]
+        
+        manager.load_from_gpx(mock_gpx)
+        manager.select_track(0)
+        
+        return manager
+    
+    def test_remove_trackpoint_valid(self, manager_with_track):
+        """Test removing a valid trackpoint."""
+        manager = manager_with_track
+        initial_count = len(manager.get_selected_trackpoints())
+        
+        # Remove middle trackpoint
+        removed = manager.remove_trackpoint_selected(5)
+        
+        assert removed is not None
+        assert removed.latitude == 57.505
+        assert len(manager.get_selected_trackpoints()) == initial_count - 1
+        assert manager.is_selected_track_dirty() is True
+    
+    def test_remove_trackpoint_invalid_index(self, manager_with_track):
+        """Test removing trackpoint with invalid index."""
+        manager = manager_with_track
+        
+        # Invalid indices
+        assert manager.remove_trackpoint_selected(-1) is None
+        assert manager.remove_trackpoint_selected(100) is None
+        assert manager.remove_trackpoint_selected(999) is None
+    
+    def test_remove_trackpoint_last_point(self, manager_with_track):
+        """Test preventing removal of last trackpoint."""
+        manager = manager_with_track
+        track = manager.get_selected_track()
+        
+        # Remove all but one point
+        while len(track.trackpoints) > 1:
+            manager.remove_trackpoint_selected(0)
+        
+        # Cannot remove last point
+        assert manager.remove_trackpoint_selected(0) is None
+        assert len(track.trackpoints) == 1
+    
+    def test_remove_trackpoint_recalculates_distance(self, manager_with_track):
+        """Test that distance is recalculated after removal."""
+        manager = manager_with_track
+        old_distance = manager.get_selected_track().distance_km
+        
+        # Remove middle point
+        manager.remove_trackpoint_selected(5)
+        new_distance = manager.get_selected_track().distance_km
+        
+        # Distance should change (usually decrease)
+        assert new_distance != old_distance
+    
+    def test_remove_trackpoint_no_track_selected(self):
+        """Test removing trackpoint without selected track."""
+        manager = TrackManager()
+        assert manager.remove_trackpoint_selected(0) is None
+    
+    def test_remove_from_start(self, manager_with_track):
+        """Test removing trackpoints from start."""
+        manager = manager_with_track
+        initial_count = len(manager.get_selected_trackpoints())
+        
+        # Remove first 3 points (indices 0, 1, 2)
+        removed = manager.remove_trackpoints_from_start(0, 2)
+        
+        assert removed is not None
+        assert len(removed) == 3
+        assert len(manager.get_selected_trackpoints()) == initial_count - 3
+        assert manager.is_selected_track_dirty() is True
+    
+    def test_remove_from_start_keeps_correct_points(self, manager_with_track):
+        """Test that removing from start keeps correct points."""
+        manager = manager_with_track
+        track = manager.get_selected_track()
+        first_point_lat_before = track.trackpoints[3].latitude  # Point at index 3
+        
+        # Remove first 3 points
+        manager.remove_trackpoints_from_start(0, 2)
+        
+        # Original point 3 should now be at index 0
+        assert track.trackpoints[0].latitude == first_point_lat_before
+    
+    def test_remove_from_end(self, manager_with_track):
+        """Test removing trackpoints from end."""
+        manager = manager_with_track
+        initial_count = len(manager.get_selected_trackpoints())
+        
+        # Remove last 3 points (from index 7 to end)
+        removed = manager.remove_trackpoints_from_end(0, 7)
+        
+        assert removed is not None
+        assert len(removed) == 3
+        assert len(manager.get_selected_trackpoints()) == initial_count - 3
+        assert manager.is_selected_track_dirty() is True
+    
+    def test_remove_from_end_keeps_correct_points(self, manager_with_track):
+        """Test that removing from end keeps correct points."""
+        manager = manager_with_track
+        track = manager.get_selected_track()
+        last_point_lat_before = track.trackpoints[6].latitude  # Point at index 6 (will be last after removal)
+        
+        # Remove from index 7 to end
+        manager.remove_trackpoints_from_end(0, 7)
+        
+        # Original point 6 should now be the last point
+        assert track.trackpoints[-1].latitude == last_point_lat_before
+    
+    def test_remove_from_start_invalid_index(self, manager_with_track):
+        """Test removing from start with invalid index."""
+        manager = manager_with_track
+        
+        # Invalid indices
+        assert manager.remove_trackpoints_from_start(0, -1) is None
+        assert manager.remove_trackpoints_from_start(0, 100) is None
+    
+    def test_remove_from_end_invalid_index(self, manager_with_track):
+        """Test removing from end with invalid index."""
+        manager = manager_with_track
+        
+        # Invalid indices
+        assert manager.remove_trackpoints_from_end(0, -1) is None
+        assert manager.remove_trackpoints_from_end(0, 100) is None
+    
+    def test_remove_from_start_would_be_empty(self, manager_with_track):
+        """Test preventing removal that would leave empty track."""
+        manager = manager_with_track
+        track = manager.get_selected_track()
+        
+        # Try to remove all points
+        assert manager.remove_trackpoints_from_start(0, len(track.trackpoints) - 1) is None
+    
+    def test_remove_from_end_would_be_empty(self, manager_with_track):
+        """Test preventing removal that would leave empty track."""
+        manager = manager_with_track
+        
+        # Try to remove from index 0 (would remove everything)
+        assert manager.remove_trackpoints_from_end(0, 0) is None
+
+
 if __name__ == '__main__':
     pytest.main([__file__, '-v', '--tb=short'])
