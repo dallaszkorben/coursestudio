@@ -416,6 +416,28 @@ Mikael - Initial development and design
 | Zoom | Use buttons or mouse wheel |
 | Recenter Map | Click ⊙ button |
 
+## Documentation & Guides
+
+### User Documentation
+- **[USER_GUIDE.md](doc/USER_GUIDE.md)** - Complete user guide with all features
+  - Opening and saving files
+  - Map navigation (zooming, panning)
+  - Layout control with splitter handles
+  - Track and trackpoint management
+  - Coordinate formats
+  - Undo/redo
+  - All keyboard shortcuts
+
+- **[QUICK_REFERENCE.md](doc/QUICK_REFERENCE.md)** - Quick reference for common tasks
+  - ⭐ **Mouse wheel zooming** (cursor-centered)
+  - **Splitter handle** (resize panels)
+  - Quick tips and workflows
+  - Keyboard shortcuts cheat sheet
+
+### Developer Documentation
+- **[ARCHITECTURE.md](doc/ARCHITECTURE.md)** - System architecture and design
+- **[CONFIGURATION_GUIDE.md](doc/CONFIGURATION_GUIDE.md)** - Configuration options
+
 ## System Requirements
 
 - **OS**: Linux, macOS, or Windows
@@ -462,6 +484,7 @@ python src/main.py --debug
 - Issues & Bug Reports: GitHub Issues
 - Feature Requests: GitHub Discussions
 - Questions: GitHub Discussions or Issues
+- **User Guide**: See [USER_GUIDE.md](doc/USER_GUIDE.md) for detailed help
 
 ---
 

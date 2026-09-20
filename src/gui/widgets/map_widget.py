@@ -382,11 +382,75 @@ class MapWidget(QWidget):
             self.pan_start_y = None
     
     def wheelEvent(self, event):
-        """Handle mouse wheel for zooming."""
-        if event.angleDelta().y() > 0:
-            self.zoom_in()
-        else:
-            self.zoom_out()
+        """Handle mouse wheel for zooming centered on cursor position."""
+        if not self.mbtiles_provider:
+            return
+        
+        # Get mouse cursor position relative to map widget
+        mouse_pos = event.pos()
+        mouse_x = mouse_pos.x()
+        mouse_y = mouse_pos.y()
+        
+        # Create renderer at CURRENT state to get cursor GPS location
+        current_renderer = MapRenderer(
+            self.width(),
+            self.height(),
+            self.mbtiles_provider,
+            self.center_lat,
+            self.center_lon,
+            self.zoom_level
+        )
+        
+        # Get what GPS point is currently under the cursor
+        cursor_lat, cursor_lon = current_renderer.screen_to_gps(mouse_x, mouse_y)
+        
+        # Determine zoom direction and get available zooms
+        zoom_in = event.angleDelta().y() > 0
+        available_zooms = self.mbtiles_provider.get_available_zooms()
+        
+        if available_zooms:
+            min_zoom = min(available_zooms)
+            max_zoom = max(available_zooms)
+            
+            if zoom_in:
+                new_zoom = min(self.zoom_level + 1, max_zoom)
+            else:
+                new_zoom = max(self.zoom_level - 1, min_zoom)
+            
+            # Only proceed if zoom actually changed
+            if new_zoom != self.zoom_level:
+                self.zoom_level = new_zoom
+                self.zoom_level_label.setText(f"Z:{new_zoom}")
+                
+                # Create new renderer with NEW zoom level, but centered on the cursor's GPS location
+                # This way, the GPS point that was under the cursor will stay under the cursor
+                new_renderer = MapRenderer(
+                    self.width(),
+                    self.height(),
+                    self.mbtiles_provider,
+                    cursor_lat,  # Center on the GPS point under cursor
+                    cursor_lon,
+                    new_zoom
+                )
+                
+                # Now find where that GPS point appears on screen in the new zoom
+                # We want it to be at (mouse_x, mouse_y)
+                cursor_screen_x, cursor_screen_y = new_renderer.gps_to_screen(cursor_lat, cursor_lon)
+                
+                # Calculate the offset (how far from center the cursor point is)
+                offset_x = mouse_x - self.width() / 2
+                offset_y = mouse_y - self.height() / 2
+                
+                # The GPS point is currently at screen center. We need to move it to mouse position.
+                # Convert the screen offset to GPS offset
+                screen_center_lat, screen_center_lon = new_renderer.screen_to_gps(self.width() / 2, self.height() / 2)
+                mouse_pos_lat, mouse_pos_lon = new_renderer.screen_to_gps(mouse_x, mouse_y)
+                
+                # Adjust center so cursor point appears at mouse location
+                self.center_lat = cursor_lat + (screen_center_lat - mouse_pos_lat)
+                self.center_lon = cursor_lon + (screen_center_lon - mouse_pos_lon)
+                
+                self.render_map()
     
     def resizeEvent(self, event):
         """Handle window resize."""
