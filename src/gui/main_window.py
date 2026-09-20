@@ -24,7 +24,7 @@ import gpxpy.gpx
 
 from PyQt5.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
-    QStatusBar, QMenu, QAction, QFileDialog, QMessageBox, QDialog
+    QStatusBar, QMenu, QAction, QFileDialog, QMessageBox, QDialog, QSplitter
 )
 from PyQt5.QtGui import QIcon, QKeySequence
 from PyQt5.QtCore import Qt, QSize, pyqtSignal
@@ -370,23 +370,18 @@ class MainWindow(QMainWindow):
         main_layout.addWidget(self.track_list_widget)
         
         # ====================================================================
-        # Right Panel: Vertical layout with trackpoint list and map
+        # Right Panel: Vertical splitter with trackpoint list and map
         # ====================================================================
         
-        right_panel = QWidget()
-        right_layout = QVBoxLayout()
-        right_panel.setLayout(right_layout)
-        right_layout.setContentsMargins(0, 0, 0, 0)
-        right_layout.setSpacing(5)
+        right_splitter = QSplitter(Qt.Vertical)
         
-        # Map Widget (bottom) - SHOULD EXPAND to fill remaining space
+        # Map Widget (bottom)
         self.map_widget = MapWidget(mbtiles_provider=self.mbtiles_provider)
         self.map_widget.setMinimumHeight(300)
         self.map_widget.set_track_manager(self.track_manager)
         
         # Trackpoint List Widget (top)
         self.trackpoint_list_widget = TrackpointListWidget(self.track_manager, self.map_widget)
-        self.trackpoint_list_widget.setMaximumHeight(250)
         self.trackpoint_list_widget.setMinimumHeight(100)
         
         # Connect trackpoint list signals
@@ -395,10 +390,16 @@ class MainWindow(QMainWindow):
         self.trackpoint_list_widget.coordinate_format_changed.connect(self._on_coordinate_format_changed)
         self.trackpoint_list_widget.history_changed.connect(self._update_undo_redo_menu_states)
         
-        right_layout.addWidget(self.trackpoint_list_widget, 0)  # Fixed size with stretch factor 0
+        # Add widgets to splitter
+        right_splitter.addWidget(self.trackpoint_list_widget)
+        right_splitter.addWidget(self.map_widget)
         
-        # CRITICAL FIX: Map must have stretch factor 1 to expand to fill available space
-        right_layout.addWidget(self.map_widget, 1)  # Stretch factor 1 = expand
+        # Set initial sizes (40% trackpoints, 60% map)
+        right_splitter.setSizes([400, 600])
+        
+        # Make splitter draggable - neither side can collapse
+        right_splitter.setCollapsible(0, False)  # Trackpoint list can't collapse
+        right_splitter.setCollapsible(1, False)  # Map can't collapse
         
         # Connect map signals
         self.map_widget.map_ready.connect(self._on_map_ready)
@@ -408,7 +409,7 @@ class MainWindow(QMainWindow):
         # Connect track list to map widget to update highlighted track
         self.track_list_widget.track_selected.connect(self.map_widget.on_track_list_selection_changed)
         
-        main_layout.addWidget(right_panel, 1)
+        main_layout.addWidget(right_splitter, 1)
         
         logger.info("Central widget created with track list, trackpoint list, and map")
     

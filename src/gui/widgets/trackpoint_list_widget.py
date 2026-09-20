@@ -181,7 +181,7 @@ class TrackpointListWidget(QWidget):
         self.table_widget.setSelectionMode(QAbstractItemView.SingleSelection)
         self.table_widget.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.table_widget.setAlternatingRowColors(True)
-        self.table_widget.setMinimumHeight(100)
+        self.table_widget.setMinimumHeight(50)
         self.table_widget.setContextMenuPolicy(Qt.CustomContextMenu)
         
         # Set column widths
