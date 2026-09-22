@@ -28,6 +28,7 @@ from PyQt5.QtWidgets import (
 )
 from PyQt5.QtGui import QIcon, QKeySequence
 from PyQt5.QtCore import Qt, QSize, pyqtSignal
+from PyQt5.QtWidgets import QTabWidget
 
 from config.app_config_yaml import AppConfig
 from src.core.gpx_handler import GPXHandler
@@ -35,6 +36,7 @@ from src.core.track_manager import TrackManager
 from src.gui.widgets.track_list_widget import TrackListWidget
 from src.gui.widgets.trackpoint_list_widget import TrackpointListWidget
 from src.gui.widgets.map_widget import MapWidget
+from src.gui.widgets.settings_widget import SettingsWidget
 from src.map.mbtiles_provider import MBTilesProvider
 
 
@@ -343,22 +345,32 @@ class MainWindow(QMainWindow):
     # ========================================================================
     
     def _create_central_widget(self):
-        """Create central widget with track list, trackpoint list, and map."""
+        """Create central widget with two main tabs: Editor (Tracks/Trackpoints/Map) and Settings."""
         
         # Central widget
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
         
-        # Main layout (horizontal - left panel and right panel)
+        # Main tab widget (top level - Editor vs Settings)
+        self.main_tab_widget = QTabWidget()
+        
         main_layout = QHBoxLayout()
         central_widget.setLayout(main_layout)
-        main_layout.setContentsMargins(5, 5, 5, 5)
-        main_layout.setSpacing(5)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.setSpacing(0)
+        main_layout.addWidget(self.main_tab_widget)
         
         # ====================================================================
+        # Tab 1: Editor (Tracks + Trackpoints/Map layout)
+        # ====================================================================
+        
+        editor_widget = QWidget()
+        editor_layout = QHBoxLayout()
+        editor_widget.setLayout(editor_layout)
+        editor_layout.setContentsMargins(5, 5, 5, 5)
+        editor_layout.setSpacing(5)
+        
         # Left Panel: Track List Widget
-        # ====================================================================
-        
         self.track_list_widget = TrackListWidget(self.track_manager)
         self.track_list_widget.setMaximumWidth(400)
         self.track_list_widget.setMinimumWidth(250)
@@ -367,21 +379,13 @@ class MainWindow(QMainWindow):
         self.track_list_widget.track_selected.connect(self._on_track_list_selection_changed)
         self.track_list_widget.track_double_clicked.connect(self._on_track_list_double_clicked)
         
-        main_layout.addWidget(self.track_list_widget)
+        editor_layout.addWidget(self.track_list_widget)
         
-        # ====================================================================
-        # Right Panel: Vertical splitter with trackpoint list and map
-        # ====================================================================
-        
+        # Right Panel: Vertical splitter with Trackpoints and Map
         right_splitter = QSplitter(Qt.Vertical)
         
-        # Map Widget (bottom)
-        self.map_widget = MapWidget(mbtiles_provider=self.mbtiles_provider)
-        self.map_widget.setMinimumHeight(300)
-        self.map_widget.set_track_manager(self.track_manager)
-        
         # Trackpoint List Widget (top)
-        self.trackpoint_list_widget = TrackpointListWidget(self.track_manager, self.map_widget)
+        self.trackpoint_list_widget = TrackpointListWidget(self.track_manager, None)
         self.trackpoint_list_widget.setMinimumHeight(100)
         
         # Connect trackpoint list signals
@@ -390,16 +394,12 @@ class MainWindow(QMainWindow):
         self.trackpoint_list_widget.coordinate_format_changed.connect(self._on_coordinate_format_changed)
         self.trackpoint_list_widget.history_changed.connect(self._update_undo_redo_menu_states)
         
-        # Add widgets to splitter
         right_splitter.addWidget(self.trackpoint_list_widget)
-        right_splitter.addWidget(self.map_widget)
         
-        # Set initial sizes (40% trackpoints, 60% map)
-        right_splitter.setSizes([400, 600])
-        
-        # Make splitter draggable - neither side can collapse
-        right_splitter.setCollapsible(0, False)  # Trackpoint list can't collapse
-        right_splitter.setCollapsible(1, False)  # Map can't collapse
+        # Map Widget (bottom)
+        self.map_widget = MapWidget(mbtiles_provider=self.mbtiles_provider)
+        self.map_widget.setMinimumHeight(300)
+        self.map_widget.set_track_manager(self.track_manager)
         
         # Connect map signals
         self.map_widget.map_ready.connect(self._on_map_ready)
@@ -409,9 +409,30 @@ class MainWindow(QMainWindow):
         # Connect track list to map widget to update highlighted track
         self.track_list_widget.track_selected.connect(self.map_widget.on_track_list_selection_changed)
         
-        main_layout.addWidget(right_splitter, 1)
+        # Update trackpoint list widget with map widget reference
+        self.trackpoint_list_widget.map_widget = self.map_widget
         
-        logger.info("Central widget created with track list, trackpoint list, and map")
+        right_splitter.addWidget(self.map_widget)
+        
+        # Set initial sizes (40% trackpoints, 60% map)
+        right_splitter.setSizes([400, 600])
+        
+        # Make splitter draggable - neither side can collapse
+        right_splitter.setCollapsible(0, False)  # Trackpoint list can't collapse
+        right_splitter.setCollapsible(1, False)  # Map can't collapse
+        
+        editor_layout.addWidget(right_splitter, 1)
+        
+        self.main_tab_widget.addTab(editor_widget, "Editor")
+        
+        # ====================================================================
+        # Tab 2: Settings (full-width)
+        # ====================================================================
+        
+        self.settings_widget = SettingsWidget()
+        self.main_tab_widget.addTab(self.settings_widget, "Settings")
+        
+        logger.info("Central widget created with Editor (Tracks/Trackpoints/Map) and Settings tabs")
     
     # ========================================================================
     # Status Bar
