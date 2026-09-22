@@ -37,7 +37,7 @@ Map:
       color: 0000FF
       size: 7
   last_state:
-    show_turning_points: false
+    show_turning_points: true
 Coordinates:
   format: dms
   decimal_places: 4

@@ -211,7 +211,7 @@ class MapWidget(QWidget):
         Logic:
         - Always draw the track path if a track is selected
         - show_turning_points controls visibility of turning points:
-          - If True: Draw all turning points (yellow), selected one in blue
+          - If True: Draw all turning points (yellow), selected one in blue (drawn last to appear on top)
           - If False: Draw no turning points normally
         - Exception: If show_turning_points is False BUT a trackpoint is selected,
           draw only that selected turning point in blue
@@ -251,22 +251,33 @@ class MapWidget(QWidget):
                 
                 # Draw turning points based on show_turning_points setting
                 if self.show_turning_points:
-                    # Draw all turning points (yellow for normal, blue for selected)
+                    # FIRST: Draw all unselected turning points (yellow)
                     for i, tp in enumerate(trackpoints):
+                        # Skip selected point - draw it last
+                        if i == self.selected_trackpoint_index:
+                            continue
+                        
                         screen = map_renderer.gps_to_screen(tp.latitude, tp.longitude)
                         
                         if screen:
                             x, y = screen
-                            
-                            # Determine color and size: selected point is blue and larger, others are yellow
-                            if i == self.selected_trackpoint_index:
-                                point_color = self.selected_turning_point_color
-                                r = self.selected_turning_point_size
-                            else:
-                                point_color = self.turning_point_color
-                                r = self.turning_point_size
+                            point_color = self.turning_point_color
+                            r = self.turning_point_size
                             
                             # Draw circle for turning point
+                            draw.ellipse([(x-r, y-r), (x+r, y+r)], fill=point_color, outline=(255,255,255), width=1)
+                    
+                    # SECOND: Draw selected point LAST so it appears on top
+                    if self.selected_trackpoint_index is not None and self.selected_trackpoint_index < len(trackpoints):
+                        tp = trackpoints[self.selected_trackpoint_index]
+                        screen = map_renderer.gps_to_screen(tp.latitude, tp.longitude)
+                        
+                        if screen:
+                            x, y = screen
+                            point_color = self.selected_turning_point_color
+                            r = self.selected_turning_point_size
+                            
+                            # Draw circle for selected turning point (on top)
                             draw.ellipse([(x-r, y-r), (x+r, y+r)], fill=point_color, outline=(255,255,255), width=1)
                 
                 # NEW FEATURE: If show_turning_points is False but a trackpoint is selected,
