@@ -1,5 +1,5 @@
 """
-Track List Widget for mangpx.
+Track List Widget for CourseStudio.
 
 Displays a list of all loaded GPX tracks with key information (name, distance,
 point count, segment count). Allows track selection and provides context menu

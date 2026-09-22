@@ -1,4 +1,4 @@
-# mangpx Quick Reference
+# CourseStudio Quick Reference
 
 ## Zooming with Mouse Wheel ⭐
 

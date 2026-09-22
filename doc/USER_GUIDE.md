@@ -1,7 +1,7 @@
-# mangpx User Guide
+# CourseStudio User Guide
 
 ## Overview
-mangpx is a PyQt5-based desktop application for viewing, editing, and manipulating GPX (GPS Exchange Format) files with interactive map visualization. This guide covers all features and how to use them.
+CourseStudio is a PyQt5-based desktop application for viewing, editing, and manipulating GPX (GPS Exchange Format) files with interactive map visualization. This guide covers all features and how to use them.
 
 ## Table of Contents
 1. [Getting Started](#getting-started)
@@ -418,7 +418,7 @@ To use different maps, place .mbtiles file in `mbtiles/` and update settings.
 
 ## Version Information
 
-- **Application**: mangpx v1.0.0
+- **Application**: CourseStudio v1.0.0
 - **Last Updated**: 2026-09-21
 - **Python**: 3.8+
 - **Framework**: PyQt5

@@ -77,7 +77,7 @@ class TestAppConfig(unittest.TestCase):
     def test_get_string_value(self):
         """Test retrieving string configuration values."""
         app_name = self.config.get_str('Application', 'app_name')
-        self.assertEqual(app_name, 'mangpx')
+        self.assertEqual(app_name, 'CourseStudio')
         print(f"✅ String retrieval: app_name = '{app_name}'")
     
     def test_get_int_value(self):
@@ -169,7 +169,7 @@ class TestAppConfig(unittest.TestCase):
     def test_app_name_configured(self):
         """Test that app name is configured correctly."""
         app_name = self.config.get_str('Application', 'app_name')
-        self.assertEqual(app_name, 'mangpx')
+        self.assertEqual(app_name, 'CourseStudio')
         print(f"✅ App name configured: {app_name}")
     
     def test_default_mbtiles_configured(self):

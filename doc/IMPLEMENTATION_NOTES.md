@@ -102,7 +102,7 @@
 
 | Date | Section | Key | Old Value | New Value | Reason |
 |------|---------|-----|-----------|-----------|--------|
-| 2026-09-20 | Application | app_name | [none] | mangpx | Project name per spec |
+| 2026-09-20 | Application | app_name | [none] | CourseStudio | Project name per spec |
 | 2026-09-20 | Map | default_mbtiles | [none] | Sweden-Raster-Z10-Z16.mbtiles | Per user requirement |
 | 2026-09-20 | Coordinates | coordinate_format | [none] | dms | Default per user request |
 

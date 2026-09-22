@@ -1,5 +1,5 @@
 """
-GUI module for mangpx.
+GUI module for CourseStudio.
 
 Contains all PyQt5 user interface components including:
 - main_window.py: Main application window

@@ -19,7 +19,7 @@ The previous attempt to fix map navigation failed because:
    - Event filter added but didn't solve core rendering problem
 
 3. **Wrong Architecture**: Using lat/lon coordinates instead of tile-based system
-   - MapRenderer in mangpx takes lat/lon directly
+   - MapRenderer in CourseStudio takes lat/lon directly
    - But proper Web Mercator requires tile coordinate system
 
 4. **Missing Proven Implementation**: Didn't reference working code properly
@@ -261,7 +261,7 @@ The difference is SUBTLE but CRITICAL: The pan calculation now uses correct Web 
 
 1. **Test the application**:
    ```bash
-   cd ~/Projects/boat/general/Code/mangpx
+   cd ~/Projects/boat/general/Code/CourseStudio
    source venv/bin/activate
    python src/main.py
    ```

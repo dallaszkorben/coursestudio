@@ -1,5 +1,5 @@
 """
-Utility modules for mangpx.
+Utility modules for CourseStudio.
 
 Modules:
 - coordinate_formatter.py: DMS and decimal degree conversions

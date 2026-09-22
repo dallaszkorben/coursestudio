@@ -412,7 +412,7 @@ doc/STEP11_ARCHITECTURE_FIXES.md - This document
 
 ### 1. Manual Testing (Required)
 ```bash
-cd ~/Projects/boat/general/Code/mangpx
+cd ~/Projects/boat/general/Code/CourseStudio
 # Activate venv and run
 python src/main.py
 
@@ -429,7 +429,7 @@ python src/main.py
 ### 2. Regression Testing
 ```bash
 # Run all remaining tests (old test_map_widget tests are now .bak)
-cd ~/Projects/boat/general/Code/mangpx
+cd ~/Projects/boat/general/Code/CourseStudio
 python -m pytest tests/ -v
 
 # Expected: All non-map-widget tests pass

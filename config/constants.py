@@ -1,5 +1,5 @@
 """
-Application constants for mangpx.
+Application constants for CourseStudio.
 
 Defines hardcoded application constants that rarely change.
 User-configurable settings are in settings.ini (loaded via AppConfig).
@@ -13,7 +13,7 @@ Date: 2026-09-20
 # ============================================================================
 
 APP_VERSION = "1.0.0"
-APP_NAME = "mangpx"
+APP_NAME = "CourseStudio"
 APP_AUTHOR = "Development Team"
 APP_DATE = "2026-09-20"
 
@@ -137,7 +137,7 @@ SHORTCUT_REFRESH = "Ctrl+F5"
 
 # GPX version for Garmin export
 GPX_VERSION = "1.1"
-GPX_CREATOR = "mangpx 1.0.0"
+GPX_CREATOR = "CourseStudio 1.0.0"
 
 # Garmin namespaces (required for device import)
 GARMIN_NAMESPACE_MAIN = "http://www.topografix.com/GPX/1/1"
@@ -206,5 +206,5 @@ VALID_LANGUAGES = ["en", "hu"]
 # ============================================================================
 
 if __name__ == "__main__":
-    print(f"mangpx Constants Module v{APP_VERSION}")
+    print(f"CourseStudio Constants Module v{APP_VERSION}")
     print(f"Loaded configuration constants for {APP_NAME}")

@@ -1,4 +1,4 @@
-# mangpx Project - Step 11 Complete: PIL Map Rendering
+# CourseStudio Project - Step 11 Complete: PIL Map Rendering
 
 **Last Updated**: Sunday, 2026-09-20T15:25:00+02:00
 
@@ -74,7 +74,7 @@ Successfully replaced Leaflet.js with PIL-based direct mbtiles rendering!
 - ✅ **Offline**: Complete local rendering, guaranteed offline functionality
 
 ## Known Working Resources
-- MBTiles files: `/home/akoel/Projects/boat/general/Code/mangpx/mbtiles/`
+- MBTiles files: `/home/akoel/Projects/boat/general/Code/CourseStudio/mbtiles/`
   - `Sweden-Raster-Z10-Z16.mbtiles` (primary, 3.2GB)
   - `OSM-OpenCPN2-Baltic.mbtiles` (fallback, 1.8GB)
 - Test GPX: `tests/gpx/Karlskrona-Hallarum.gpx` (519 points, 19.12 km)

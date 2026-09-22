@@ -1,5 +1,5 @@
 """
-Core business logic for mangpx.
+Core business logic for CourseStudio.
 
 Modules:
 - gpx_handler.py: GPX file reading, writing, and validation

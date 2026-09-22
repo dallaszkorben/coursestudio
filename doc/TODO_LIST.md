@@ -1,4 +1,4 @@
-# mangpx - Development TODO List
+# CourseStudio - Development TODO List
 
 **Project:** GPX File Manipulator (PyQt5-based)  
 **Status:** Task Breakdown Complete  
@@ -9,7 +9,7 @@
 
 ## OVERVIEW
 
-This document contains the complete step-by-step breakdown of all development tasks needed to build the mangpx application from scratch. Tasks are organized by **Phase** (1-5) and **Step** (1-N), progressing from foundational components to advanced features.
+This document contains the complete step-by-step breakdown of all development tasks needed to build the CourseStudio application from scratch. Tasks are organized by **Phase** (1-5) and **Step** (1-N), progressing from foundational components to advanced features.
 
 **Development Model:**
 - Complete each step in sequence
@@ -57,8 +57,8 @@ This document contains the complete step-by-step breakdown of all development ta
 - ✅ All directories created and accessible
 - ✅ `settings.ini` contains all required configuration keys with defaults
 - ✅ `AppConfig` class successfully loads and returns configuration values
-- ✅ Application can be run with `python src/main.py` (shows "Starting mangpx...")
-- ✅ Configuration can be accessed: `config.get('Application', 'app_name')` returns 'mangpx'
+- ✅ Application can be run with `python src/main.py` (shows "Starting CourseStudio...")
+- ✅ Configuration can be accessed: `config.get('Application', 'app_name')` returns 'CourseStudio'
 
 **Dependencies:** None
 
@@ -309,7 +309,7 @@ print(f'Error: {abs(dec - back):.6f}')
 - [ ] Create `gui/main_window.py`
   - [ ] Class `MainWindow(QMainWindow)`
   - [ ] Constructor setup:
-    - [ ] Window title: "mangpx - GPX File Manipulator"
+    - [ ] Window title: "CourseStudio - GPX File Manipulator"
     - [ ] Window size: 1400x900 (from config)
     - [ ] Window icon (use water-droplet.png)
     - [ ] Central widget placeholder
@@ -361,7 +361,7 @@ print(f'Error: {abs(dec - back):.6f}')
 # Run application
 python src/main.py
 
-# Should show: "Starting mangpx..." and GUI window
+# Should show: "Starting CourseStudio..." and GUI window
 ```
 
 ---
@@ -1039,7 +1039,7 @@ python src/main.py
   - [ ] Common issues and troubleshooting
 
 - [ ] Manual testing workflow:
-  - [ ] Export modified GPX from mangpx
+  - [ ] Export modified GPX from CourseStudio
   - [ ] Connect Garmin EchoMAP 50s to computer
   - [ ] Copy file to `/GARMIN/GPX/` directory
   - [ ] On device: Saved Tracks → Import from SD card
@@ -1086,7 +1086,7 @@ python src/main.py
 
 - [ ] Add logging
   - [ ] Create `utils/logger.py`
-  - [ ] Log all operations to `mangpx.log`
+  - [ ] Log all operations to `CourseStudio.log`
   - [ ] Log level configurable (DEBUG, INFO, WARNING, ERROR, CRITICAL)
 
 - [ ] Test error scenarios

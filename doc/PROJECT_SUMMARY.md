@@ -1,4 +1,4 @@
-# mangpx Project - Summary & Quick Reference
+# CourseStudio Project - Summary & Quick Reference
 
 **Project Status:** Specification & TODO List Complete - Ready for Development  
 **Start Date:** 2026-09-20  
@@ -22,7 +22,7 @@
 ## KEY DECISIONS
 
 ### 1. Project Name & Configuration
-- **Name:** mangpx (GPX Manipulator)
+- **Name:** CourseStudio (GPX Manipulator)
 - **Configurable via:** `config/settings.ini`
 - **Configuration changes update:** Application title, window UI, file operations
 
@@ -93,7 +93,7 @@
 Key sections:
 ```ini
 [Application]
-app_name = mangpx
+app_name = CourseStudio
 version = 1.0.0
 
 [Map]

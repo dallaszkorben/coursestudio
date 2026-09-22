@@ -1,5 +1,5 @@
 Application:
-  name: mangpx
+  name: CourseStudio
   version: 1.0.0
   window_title: '{name} - GPX File Manipulator v{version}'
   debug: false
@@ -58,7 +58,7 @@ Performance:
   map_render_timer_ms: 100
 Logging:
   level: INFO
-  file: ./mangpx.log
+  file: ./CourseStudio.log
   file_max_size_mb: 10
   file_backup_count: 5
 Garmin:

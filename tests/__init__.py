@@ -1,5 +1,5 @@
 """
-Unit tests for mangpx.
+Unit tests for CourseStudio.
 
 Test files:
 - test_gpx_handler.py: Tests for GPX file handling

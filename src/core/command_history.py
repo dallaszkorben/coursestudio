@@ -1,4 +1,4 @@
-"""Command Pattern & History Stack for mangpx.
+"""Command Pattern & History Stack for CourseStudio.
 
 Implements the Command Pattern to support undo/redo functionality.
 All track modifications are represented as reversible Command objects.

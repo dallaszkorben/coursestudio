@@ -1,5 +1,5 @@
 """
-Coordinate format conversion utilities for mangpx.
+Coordinate format conversion utilities for CourseStudio.
 
 Converts between DMS (Degrees-Minutes-Seconds) and Decimal Degrees formats.
 Supports parsing, validation, and formatting of geographic coordinates.

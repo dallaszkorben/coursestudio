@@ -1,6 +1,6 @@
-# mangpx Documentation Index
+# CourseStudio Documentation Index
 
-**Project:** mangpx - GPX File Manipulator  
+**Project:** CourseStudio - GPX File Manipulator  
 **Status:** Specification & Planning Complete - Ready for Development  
 **Last Updated:** 2026-09-20  
 
@@ -279,7 +279,7 @@ These will be created during development:
 
 | Decision | Value | Configurable |
 |----------|-------|---|
-| Project Name | mangpx | Yes (settings.ini) |
+| Project Name | CourseStudio | Yes (settings.ini) |
 | Default Map | Sweden-Raster-Z10-Z16.mbtiles | Yes (settings.ini) |
 | Coordinate Format | DMS (°-'-'') | Yes (settings.ini + UI menu) |
 | Alternative Format | Decimal degrees | Yes |

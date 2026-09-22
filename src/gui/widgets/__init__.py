@@ -1,5 +1,5 @@
 """
-Reusable PyQt5 widgets for mangpx GUI.
+Reusable PyQt5 widgets for CourseStudio GUI.
 
 Modules:
 - track_list.py: Displays all tracks from opened GPX file

@@ -88,7 +88,7 @@ class TestMainWindowInitialization:
     def test_window_title_set(self, main_window):
         """Test window title is set."""
         title = main_window.windowTitle()
-        assert 'mangpx' in title
+        assert 'CourseStudio' in title
         assert 'v' in title
     
     def test_window_size_valid(self, main_window):

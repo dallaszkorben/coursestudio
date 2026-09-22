@@ -1,6 +1,6 @@
-# mangpx - GPX File Manipulator - SPECIFICATION DOCUMENT
+# CourseStudio - GPX File Manipulator - SPECIFICATION DOCUMENT
 
-**Project Name:** mangpx (GPX Manipulator)  
+**Project Name:** CourseStudio (GPX Manipulator)  
 **Version:** 1.0 (Initial Specification)  
 **Date:** 2026-09-20  
 **Status:** Specification Approved  
@@ -211,7 +211,7 @@ Two methods:
 ### 3.2 Project Structure
 
 ```
-mangpx/
+CourseStudio/
 ├── src/
 │   ├── __init__.py
 │   ├── main.py                    # Application entry point
@@ -327,7 +327,7 @@ def convert_dms_to_decimal(degrees: int, minutes: int, seconds: float, direction
 ```ini
 [Application]
 # Application name (used in window title, about dialog)
-app_name = mangpx
+app_name = CourseStudio
 
 # Application version
 version = 1.0.0
@@ -375,7 +375,7 @@ max_file_size_warning = 25
 log_level = INFO
 
 # Log file location
-log_file = ./mangpx.log
+log_file = ./CourseStudio.log
 ```
 
 ### 4.2 Configuration Access
@@ -471,7 +471,7 @@ coord_format = config.get('Coordinates', 'coordinate_format')
 
 ### 5.3 Import Process (User Workflow)
 
-1. User modifies track in mangpx
+1. User modifies track in CourseStudio
 2. User saves file (with validation)
 3. File is written to Garmin-compatible format
 4. User transfers file to Garmin device:
@@ -551,7 +551,7 @@ def parse_coordinate(coord_string: str) -> float:
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
-│ mangpx - GPX File Manipulator [File Name]                          _ □ X│
+│ CourseStudio - GPX File Manipulator [File Name]                          _ □ X│
 ├─────────────────────────────────────────────────────────────────────────┤
 │ File  Edit  View  Help                                                  │
 ├─────────────────────────────────────────────────────────────────────────┤
@@ -610,7 +610,7 @@ def parse_coordinate(coord_string: str) -> float:
 - Refresh (Ctrl+R)
 
 **Help Menu:**
-- About mangpx
+- About CourseStudio
 - User Guide
 - Keyboard Shortcuts
 - Report Bug
@@ -634,7 +634,7 @@ def parse_coordinate(coord_string: str) -> float:
 1. **Blocking Dialogs:** File errors, validation errors (require user action)
 2. **Status Bar Messages:** Operation feedback, non-blocking (auto-hide after 5s)
 3. **Toast Notifications:** Quick confirmations (optional, Phase 2+)
-4. **Log File:** All errors logged to `mangpx.log` for debugging
+4. **Log File:** All errors logged to `CourseStudio.log` for debugging
 
 ---
 

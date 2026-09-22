@@ -2,7 +2,7 @@
 
 **Analysis Date:** 2026-08-29  
 **File Size:** 25 GB  
-**File Location:** `/home/akoel/Projects/boat/general/Code/mangpx/mbtiles/`
+**File Location:** `/home/akoel/Projects/boat/general/Code/CourseStudio/mbtiles/`
 
 ---
 

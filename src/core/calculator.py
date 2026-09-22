@@ -1,5 +1,5 @@
 """
-Distance and coordinate calculations for mangpx.
+Distance and coordinate calculations for CourseStudio.
 
 Provides utility functions for:
 - Haversine distance calculation (great-circle distance)

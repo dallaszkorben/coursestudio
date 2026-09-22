@@ -13,7 +13,7 @@ from typing import Any, Optional
 
 class AppConfig:
     """
-    YAML-based configuration manager for mangpx.
+    YAML-based configuration manager for CourseStudio.
     
     Supports nested configuration hierarchy with dot-notation access.
     Example: config.get('Map.track.path.color') returns 'FF0000'

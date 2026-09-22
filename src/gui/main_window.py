@@ -1,7 +1,7 @@
 """
-Main Application Window for mangpx.
+Main Application Window for CourseStudio.
 
-Provides the primary PyQt5 window for the mangpx application, including
+Provides the primary PyQt5 window for the CourseStudio application, including
 menu bar, toolbars, status bar, and central widget layout.
 
 Classes:
@@ -51,7 +51,7 @@ logger = logging.getLogger(__name__)
 
 class MainWindow(QMainWindow):
     """
-    Main application window for mangpx.
+    Main application window for CourseStudio.
     
     Provides the primary interface for GPX file manipulation with:
     - Menu bar (File, Edit, View, Help)
@@ -136,7 +136,7 @@ class MainWindow(QMainWindow):
         """Configure window properties and geometry."""
         
         # Get configuration values
-        app_name = self.config.get_str('Application.name', 'mangpx')
+        app_name = self.config.get_str('Application.name', 'CourseStudio')
         version = self.config.get_str('Application.version', '1.0.0')
         window_title = self.config.get_str('Application.window_title', '{app_name} - GPX File Manipulator v{version}')
         window_width = self.config.get_int('UI.window.width', 1400)
@@ -155,7 +155,7 @@ class MainWindow(QMainWindow):
         self._center_window()
         
         # Set application icon (if available)
-        icon_path = Path(__file__).parent / 'icons' / 'mangpx.png'
+        icon_path = Path(__file__).parent / 'icons' / 'CourseStudio.png'
         if icon_path.exists():
             self.setWindowIcon(QIcon(str(icon_path)))
         
@@ -704,7 +704,7 @@ class MainWindow(QMainWindow):
     def action_about(self):
         """Show about dialog."""
         
-        app_name = self.config.get_str('Application.name', 'mangpx')
+        app_name = self.config.get_str('Application.name', 'CourseStudio')
         version = self.config.get_str('Application.version', '1.0.0')
         
         about_text = f"""

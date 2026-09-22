@@ -1,5 +1,5 @@
 """
-Trackpoint List Widget for mangpx.
+Trackpoint List Widget for CourseStudio.
 
 Displays all trackpoints (individual waypoints) from a selected track with
 coordinates in DMS or Decimal format. Allows point selection, highlighting,

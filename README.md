@@ -1,4 +1,4 @@
-# mangpx - GPX File Manipulator
+# CourseStudio - GPX File Manipulator
 
 A PyQt5-based desktop application for viewing, editing, and manipulating GPX (GPS Exchange Format) files with interactive map visualization. Designed for marine navigation and track management with support for Garmin GPS devices.
 
@@ -64,8 +64,8 @@ A PyQt5-based desktop application for viewing, editing, and manipulating GPX (GP
 
 1. **Clone the repository**
 ```bash
-git clone https://github.com/yourusername/mangpx.git
-cd mangpx
+git clone https://github.com/yourusername/CourseStudio.git
+cd CourseStudio
 ```
 
 2. **Create virtual environment**
@@ -165,7 +165,7 @@ Change format in Trackpoints window using the **Format** dropdown.
 ### Directory Structure
 
 ```
-mangpx/
+CourseStudio/
 ├── src/
 │   ├── main.py                    # Application entry point
 │   ├── core/
@@ -234,7 +234,7 @@ mangpx/
 
 ### Tile Support
 
-mangpx uses MBTiles format for map data. Included:
+CourseStudio uses MBTiles format for map data. Included:
 - **Sweden-Raster-Z10-Z16.mbtiles**: Raster tiles for Swedish archipelago
 
 To use different map data:
@@ -256,7 +256,7 @@ To use different map data:
 ### settings.ini Sections
 
 **[Application]**
-- `app_name`: Application name (default: mangpx)
+- `app_name`: Application name (default: CourseStudio)
 - `version`: Version string
 - `debug`: Enable debug logging
 
@@ -471,7 +471,7 @@ python src/main.py --debug
 - Verify mbtiles file exists in `mbtiles/` directory
 - Check `config/settings.ini` for correct filename
 - Ensure coordinate format is valid (DMS or Decimal)
-- Check logs in `mangpx.log`
+- Check logs in `CourseStudio.log`
 
 ### Performance Issues
 - Reduce number of visible points ("Show points: No")
@@ -488,4 +488,4 @@ python src/main.py --debug
 
 ---
 
-**mangpx** - Making GPS data management simple and visual.
+**CourseStudio** - Making GPS data management simple and visual.

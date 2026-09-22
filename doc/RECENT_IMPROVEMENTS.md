@@ -306,7 +306,7 @@ def wheelEvent(self, event):
 
 ## Conclusion
 
-Three major improvements that make mangpx significantly more professional and user-friendly:
+Three major improvements that make CourseStudio significantly more professional and user-friendly:
 
 1. **Fixed Layout** - No more clipped widgets
 2. **Resizable Layout** - Flexible workspace management
@@ -314,6 +314,6 @@ Three major improvements that make mangpx significantly more professional and us
 
 Plus comprehensive documentation so users know about and understand all these features!
 
-**Result**: mangpx now feels like a polished, professional mapping application.
+**Result**: CourseStudio now feels like a polished, professional mapping application.
 
 ---

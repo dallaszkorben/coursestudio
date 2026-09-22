@@ -1,5 +1,5 @@
 """
-GPX file handling for mangpx.
+GPX file handling for CourseStudio.
 
 Provides GPX file loading, parsing, validation, and saving with Garmin compatibility.
 
@@ -26,7 +26,7 @@ from src.core.calculator import calculate_track_distance, validate_coordinate
 
 class GPXHandler:
     """
-    Handles all GPX file operations for mangpx.
+    Handles all GPX file operations for CourseStudio.
     
     Provides methods for loading, parsing, validating, and saving GPX files
     with support for Garmin device compatibility.

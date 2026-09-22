@@ -11,7 +11,7 @@
 ## What Was Accomplished
 
 ### 1. Map Widget Implementation
-- **File**: `/home/akoel/Projects/boat/general/Code/mangpx/src/gui/widgets/map_widget.py`
+- **File**: `/home/akoel/Projects/boat/general/Code/CourseStudio/src/gui/widgets/map_widget.py`
 - **Approach**: Direct copy of openseemap's working MapWidget implementation
 - **Key Features**:
   - Tile-based map rendering using MBTiles provider (Sweden-Raster-Z10-Z16)
@@ -112,7 +112,7 @@ if self.selected_track_id is None:
 
 ### File Structure
 ```
-/home/akoel/Projects/boat/general/Code/mangpx/
+/home/akoel/Projects/boat/general/Code/CourseStudio/
 ├── src/gui/widgets/
 │   ├── map_widget.py              ← Main implementation (400 lines)
 │   ├── map_widget_pil.py          ← Old attempts (backup)
@@ -278,7 +278,7 @@ self.center_lat += lat_delta
 
 ## Integration Points
 
-**From other parts of mangpx**:
+**From other parts of CourseStudio**:
 - `TrackManager.get_all_tracks()` → List of TrackData objects
 - `TrackData.trackpoints` → List of Trackpoint objects
 - `Trackpoint.latitude`, `Trackpoint.longitude` → GPS coordinates
@@ -317,7 +317,7 @@ self.center_lat += lat_delta
 - `map/map_renderer.py` - Coordinate transforms
 - `map/map_engine.py` - Tile loading
 
-**Test Track**: `/home/akoel/Projects/boat/general/Code/mangpx/tests/gpx/Karlskrona-Hallarum.gpx`
+**Test Track**: `/home/akoel/Projects/boat/general/Code/CourseStudio/tests/gpx/Karlskrona-Hallarum.gpx`
 - 519 trackpoints
 - 19.12 km distance
 - Swedish archipelago (56.168°N, 15.586°E area)

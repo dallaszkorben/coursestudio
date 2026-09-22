@@ -1,5 +1,5 @@
 """
-Configuration management for mangpx.
+Configuration management for CourseStudio.
 
 Modules:
 - constants.py: Application constants

@@ -97,9 +97,9 @@ When user clicks zoom buttons:
 
 ### 2. Comparison with Working Reference
 
-openseemap zoom code (working) vs mangpx zoom code (also working):
+openseemap zoom code (working) vs CourseStudio zoom code (also working):
 
-| Feature | openseemap | mangpx | Status |
+| Feature | openseemap | CourseStudio | Status |
 |---------|-----------|--------|--------|
 | Zoom in/out buttons | ✅ | ✅ | Match |
 | get_max_zoom() check | ✅ | ✅ | Match |
@@ -184,7 +184,7 @@ To demonstrate working zoom:
 ## References
 
 - **openseemap MapWidget**: `/home/akoel/Projects/boat/general/Code/openseemap/ui/main_window.py` lines 156-172
-- **Our MapRenderer**: `/home/akoel/Projects/boat/general/Code/mangpx/src/map/map_renderer.py`
-- **MBTiles File**: `/home/akoel/Projects/boat/general/Code/mangpx/mbtiles/Sweden-Raster-Z10-Z16.mbtiles`
+- **Our MapRenderer**: `/home/akoel/Projects/boat/general/Code/CourseStudio/src/map/map_renderer.py`
+- **MBTiles File**: `/home/akoel/Projects/boat/general/Code/CourseStudio/mbtiles/Sweden-Raster-Z10-Z16.mbtiles`
 - **Web Mercator Math**: Standard implementation (2^zoom factor for tile scaling)
 

@@ -1,4 +1,4 @@
-# mangpx - Architecture & Design
+# CourseStudio - Architecture & Design
 
 **Document Purpose:** Visual overview of application architecture, data flow, and component relationships
 
@@ -10,7 +10,7 @@
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
-│                       mangpx Application                            │
+│                       CourseStudio Application                            │
 ├─────────────────────────────────────────────────────────────────────┤
 │                                                                     │
 │                        ┌───────────────────┐                        │
@@ -521,7 +521,7 @@ MainWindow.on_save_file()
 ### Export to Garmin
 
 ```
-mangpx saves GPX file
+CourseStudio saves GPX file
          │
          ▼
 User connects Garmin EchoMAP 50s

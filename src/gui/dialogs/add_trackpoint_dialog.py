@@ -1,4 +1,4 @@
-"""Add Trackpoint Dialog for mangpx.
+"""Add Trackpoint Dialog for CourseStudio.
 
 Provides a user interface for adding new trackpoints to a track.
 Supports both DMS and Decimal coordinate formats.

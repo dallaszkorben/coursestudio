@@ -1,4 +1,4 @@
-# mangpx Installation & Setup Guide
+# CourseStudio Installation & Setup Guide
 
 **Last Updated:** 2026-09-20  
 **Python Version Required:** 3.10+  
@@ -10,7 +10,7 @@
 
 ### 1. Navigate to project directory
 ```bash
-cd /home/akoel/Projects/boat/general/Code/mangpx
+cd /home/akoel/Projects/boat/general/Code/CourseStudio
 ```
 
 ### 2. Activate virtual environment
@@ -49,7 +49,7 @@ python src/main.py
 ### Step 1: Create Virtual Environment
 
 ```bash
-cd /home/akoel/Projects/boat/general/Code/mangpx
+cd /home/akoel/Projects/boat/general/Code/CourseStudio
 python3 -m venv venv
 ```
 
@@ -172,7 +172,7 @@ python3 -m venv venv
 source ./venv/bin/activate
 
 # Or absolute path:
-source /home/akoel/Projects/boat/general/Code/mangpx/venv/bin/activate
+source /home/akoel/Projects/boat/general/Code/CourseStudio/venv/bin/activate
 ```
 
 ### Issue: "ModuleNotFoundError: No module named 'PyQt5'"
@@ -212,7 +212,7 @@ chmod +x activate_venv.sh
 
 ```bash
 # 1. Open terminal and navigate to project
-cd /home/akoel/Projects/boat/general/Code/mangpx
+cd /home/akoel/Projects/boat/general/Code/CourseStudio
 
 # 2. Activate virtual environment
 source venv/bin/activate
@@ -269,7 +269,7 @@ python tests/test_app_config.py
 ## File Locations Reference
 
 ```
-/home/akoel/Projects/boat/general/Code/mangpx/
+/home/akoel/Projects/boat/general/Code/CourseStudio/
 ├── venv/                          ← Virtual environment
 ├── requirements.txt               ← Dependency list
 ├── activate_venv.sh              ← Activation helper (Linux/Mac)

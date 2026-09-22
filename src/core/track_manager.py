@@ -1,5 +1,5 @@
 """
-Track Manager Module for mangpx.
+Track Manager Module for CourseStudio.
 
 Manages in-memory track data structures, track selection, and operations.
 Provides the data model for all track manipulation features in the application.

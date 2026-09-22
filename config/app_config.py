@@ -1,5 +1,5 @@
 """
-Configuration management for mangpx application.
+Configuration management for CourseStudio application.
 
 Loads and provides thread-safe access to configuration values from settings.ini.
 Supports automatic type conversion with sensible defaults.
@@ -16,7 +16,7 @@ from typing import Any, Optional
 
 class AppConfig:
     """
-    Thread-safe configuration loader for mangpx.
+    Thread-safe configuration loader for CourseStudio.
     
     Loads configuration from settings.ini file and provides methods
     to access values with automatic type conversion and defaults.
@@ -200,7 +200,7 @@ class AppConfig:
             str: Configuration value as string
         
         Example:
-            app_name = config.get_str('Application', 'app_name', default='mangpx')
+            app_name = config.get_str('Application', 'app_name', default='CourseStudio')
         """
         try:
             return self.config.get(section, key)

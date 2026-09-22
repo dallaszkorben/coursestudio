@@ -1,1 +1,1 @@
-"""GUI dialogs module for mangpx."""
+"""GUI dialogs module for CourseStudio."""

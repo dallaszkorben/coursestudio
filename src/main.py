@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-mangpx - GPX File Manipulator
+CourseStudio - GPX File Manipulator
 
-Main entry point for the mangpx application.
+Main entry point for the CourseStudio application.
 Initializes the application and launches the PyQt5 GUI.
 
 Usage:
@@ -50,7 +50,7 @@ def setup_logging(debug: bool = False):
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
         handlers=[
             logging.StreamHandler(sys.stdout),
-            logging.FileHandler('/tmp/mangpx.log')
+            logging.FileHandler('/tmp/CourseStudio.log')
         ]
     )
     
@@ -65,7 +65,7 @@ def setup_logging(debug: bool = False):
 
 def main():
     """
-    Main entry point for mangpx application.
+    Main entry point for CourseStudio application.
     
     1. Parse command-line arguments
     2. Load configuration
@@ -80,7 +80,7 @@ def main():
     # ====================================================================
     
     parser = argparse.ArgumentParser(
-        description='mangpx - GPX File Manipulator',
+        description='CourseStudio - GPX File Manipulator',
         epilog='For help, visit: doc/USER_GUIDE.md'
     )
     parser.add_argument(
@@ -111,10 +111,10 @@ def main():
     
     # Print startup banner
     print("\n" + "="*70)
-    print("Starting mangpx - GPX File Manipulator")
+    print("Starting CourseStudio - GPX File Manipulator")
     print("="*70 + "\n")
     
-    logger.info("Starting mangpx application")
+    logger.info("Starting CourseStudio application")
     
     # ====================================================================
     # Load configuration
@@ -122,7 +122,7 @@ def main():
     
     try:
         config = AppConfig(args.config)
-        app_name = config.get_str('Application.name', 'mangpx')
+        app_name = config.get_str('Application.name', 'CourseStudio')
         version = config.get_str('Application.version', '1.0.0')
         logger.info(f"Configuration loaded: {app_name} v{version}")
         print(f"✅ Application: {app_name} v{version}")
