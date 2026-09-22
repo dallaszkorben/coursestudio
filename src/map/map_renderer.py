@@ -98,10 +98,10 @@ class MapRenderer:
         Render the current map view to a PIL Image.
         
         Returns:
-            PIL.Image: The rendered map image (RGB)
+            PIL.Image: The rendered map image (RGBA for transparency support)
         """
-        # Create a blank image for the render
-        render_image = Image.new('RGB', (self.width, self.height), color=(200, 200, 200))
+        # Create a blank image for the render with RGBA mode for transparency
+        render_image = Image.new('RGBA', (self.width, self.height), color=(200, 200, 200, 255))
         
         # Calculate which tiles we need to display
         # We need to show tiles that intersect with the viewport

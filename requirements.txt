@@ -1,4 +1,4 @@
-# mangpx - GPX File Manipulator
+# CourseStudio - GPX File Manipulator
 # Requirements file for Python dependencies
 #
 # Usage:
@@ -12,6 +12,7 @@
 
 PyQt5==5.15.7              # PyQt5 GUI framework
 PyQtWebEngine==5.15.7      # Web engine for map rendering
+Pillow==12.3.0             # Image processing for map rendering
 
 # ==============================================================================
 # Configuration Management

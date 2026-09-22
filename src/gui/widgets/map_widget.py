@@ -9,7 +9,7 @@ import os
 from PyQt5.QtWidgets import QWidget, QLabel, QPushButton, QVBoxLayout
 from PyQt5.QtGui import QPixmap, QFont
 from PyQt5.QtCore import Qt, QTimer, pyqtSignal
-from PIL import ImageDraw
+from PIL import Image, ImageDraw
 
 from src.map.mbtiles_provider import MBTilesProvider
 from src.map.map_renderer import MapRenderer
@@ -475,58 +475,55 @@ class MapWidget(QWidget):
         self.recenter_button.move(x_pos, y_pos)
     
     def draw_ui_controls(self, pil_image):
-        """Draw UI control buttons on PIL image."""
-        draw = ImageDraw.Draw(pil_image)
+        """Draw UI control buttons on PIL image with transparency."""
+        # Create a transparent overlay for buttons
+        overlay = Image.new('RGBA', pil_image.size, (0, 0, 0, 0))
+        overlay_draw = ImageDraw.Draw(overlay)
         
-        button_bg = (52, 144, 220)
-        button_border = (255, 255, 255)
-        button_text = (255, 255, 255)
-        border_width = 2
-        corner_radius = 6
+        # Button colors with alpha channel (transparency)
+        # RGBA: (R, G, B, Alpha) where 255 is opaque, 0 is fully transparent
+        button_bg = (52, 144, 220, 200)  # Blue with 200/255 opacity (~78% opaque)
+        button_text = (255, 255, 255, 255)  # White, fully opaque
         
         x_pos = self.CONTROLS_PADDING_LEFT
         y_pos = self.CONTROLS_PADDING_TOP
+        button_size = self.ZOOM_BUTTON_SIZE
+        corner_radius = 8
         
-        def draw_rounded_rect(x, y, size, fill_color, border_color, border_w):
-            """Draw a rounded rectangle."""
-            r = corner_radius
-            draw.rectangle([x+r, y, x+size-r, y+size], fill=fill_color)
-            draw.rectangle([x, y+r, x+size, y+size-r], fill=fill_color)
-            draw.ellipse([x, y, x+2*r, y+2*r], fill=fill_color)
-            draw.ellipse([x+size-2*r, y, x+size, y+2*r], fill=fill_color)
-            draw.ellipse([x, y+size-2*r, x+2*r, y+size], fill=fill_color)
-            draw.ellipse([x+size-2*r, y+size-2*r, x+size, y+size], fill=fill_color)
-            if border_w > 0:
-                draw.rectangle([x+r, y, x+size-r, y+border_w], fill=border_color)
-                draw.rectangle([x+r, y+size-border_w, x+size-r, y+size], fill=border_color)
-                draw.rectangle([x, y+r, x+border_w, y+size-r], fill=border_color)
-                draw.rectangle([x+size-border_w, y+r, x+size, y+size-r], fill=border_color)
-        
-        # Draw zoom in button
-        draw_rounded_rect(x_pos, y_pos, self.ZOOM_BUTTON_SIZE, button_bg, button_border, border_width)
-        center = self.ZOOM_BUTTON_SIZE // 2
-        draw.line([(x_pos + center - 6, y_pos + center), (x_pos + center + 6, y_pos + center)], fill=button_text, width=2)
-        draw.line([(x_pos + center, y_pos + center - 6), (x_pos + center, y_pos + center + 6)], fill=button_text, width=2)
+        # Draw zoom in button - simple rounded rectangle
+        bbox = [x_pos, y_pos, x_pos + button_size, y_pos + button_size]
+        overlay_draw.rounded_rectangle(bbox, radius=corner_radius, fill=button_bg)
+        center = button_size // 2
+        # Draw + icon
+        overlay_draw.line([(x_pos + center - 6, y_pos + center), (x_pos + center + 6, y_pos + center)], fill=button_text, width=2)
+        overlay_draw.line([(x_pos + center, y_pos + center - 6), (x_pos + center, y_pos + center + 6)], fill=button_text, width=2)
         
         # Draw zoom out button
-        y_pos += self.ZOOM_BUTTON_SIZE + self.ZOOM_BUTTON_SPACING
-        draw_rounded_rect(x_pos, y_pos, self.ZOOM_BUTTON_SIZE, button_bg, button_border, border_width)
-        center = self.ZOOM_BUTTON_SIZE // 2
-        draw.line([(x_pos + center - 6, y_pos + center), (x_pos + center + 6, y_pos + center)], fill=button_text, width=2)
+        y_pos += button_size + self.ZOOM_BUTTON_SPACING
+        bbox = [x_pos, y_pos, x_pos + button_size, y_pos + button_size]
+        overlay_draw.rounded_rectangle(bbox, radius=corner_radius, fill=button_bg)
+        center = button_size // 2
+        # Draw - icon
+        overlay_draw.line([(x_pos + center - 6, y_pos + center), (x_pos + center + 6, y_pos + center)], fill=button_text, width=2)
         
         # Draw zoom level label
-        y_pos += self.ZOOM_BUTTON_SIZE + self.ZOOM_BUTTON_SPACING
+        y_pos += button_size + self.ZOOM_BUTTON_SPACING
         zoom_text = f"Z:{self.zoom_level}"
-        draw_rounded_rect(x_pos, y_pos, self.ZOOM_BUTTON_SIZE, button_bg, button_border, border_width)
-        draw.text((x_pos + 8, y_pos + 12), zoom_text, fill=button_text)
+        bbox = [x_pos, y_pos, x_pos + button_size, y_pos + button_size]
+        overlay_draw.rounded_rectangle(bbox, radius=corner_radius, fill=button_bg)
+        overlay_draw.text((x_pos + 8, y_pos + 12), zoom_text, fill=button_text)
         
         # Draw recenter button
-        y_pos += self.ZOOM_BUTTON_SIZE + self.ZOOM_BUTTON_SPACING
-        draw_rounded_rect(x_pos, y_pos, self.ZOOM_BUTTON_SIZE, button_bg, button_border, border_width)
-        center_x = x_pos + self.ZOOM_BUTTON_SIZE // 2
-        center_y = y_pos + self.ZOOM_BUTTON_SIZE // 2
-        draw.ellipse((center_x - 12, center_y - 12, center_x + 12, center_y + 12), outline=button_text, width=2)
-        draw.ellipse((center_x - 7, center_y - 7, center_x + 7, center_y + 7), outline=button_text, width=1)
-        draw.ellipse((center_x - 3, center_y - 3, center_x + 3, center_y + 3), fill=button_text)
+        y_pos += button_size + self.ZOOM_BUTTON_SPACING
+        bbox = [x_pos, y_pos, x_pos + button_size, y_pos + button_size]
+        overlay_draw.rounded_rectangle(bbox, radius=corner_radius, fill=button_bg)
+        center_x = x_pos + button_size // 2
+        center_y = y_pos + button_size // 2
+        # Draw circle target icon
+        overlay_draw.ellipse((center_x - 12, center_y - 12, center_x + 12, center_y + 12), outline=button_text, width=2)
+        overlay_draw.ellipse((center_x - 7, center_y - 7, center_x + 7, center_y + 7), outline=button_text, width=1)
+        overlay_draw.ellipse((center_x - 3, center_y - 3, center_x + 3, center_y + 3), fill=button_text)
         
+        # Composite the overlay onto the image
+        pil_image = Image.alpha_composite(pil_image, overlay)
         return pil_image
