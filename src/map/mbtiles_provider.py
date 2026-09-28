@@ -129,11 +129,11 @@ class MBTilesProvider:
         Raises:
             sqlite3.Error: If database connection fails
         """
-        # Get default filename from config
-        default_file = self.config.get_str("Map.tiles.mbtiles_file", None)
+        # Get default filename from config (new structure: Appearance.Tiles)
+        default_file = self.config.get_str("Appearance.Tiles.mbtiles_file", None)
         
         if not default_file:
-            self.logger.error("No default_mbtiles configured in settings.ini")
+            self.logger.error("No default_mbtiles configured in settings.yaml")
             return False
         
         # Try loading default file
@@ -144,7 +144,7 @@ class MBTilesProvider:
         self.logger.warning(f"Failed to load default mbtiles: {default_file}")
         
         # Try fallback files
-        fallback_files = self.config.get_list("Map.tiles.fallback_files", [])
+        fallback_files = self.config.get_list("Appearance.Tiles.fallback_files", [])
         if fallback_files:
             for fallback_file in fallback_files:
                 if self._load_file(fallback_file):

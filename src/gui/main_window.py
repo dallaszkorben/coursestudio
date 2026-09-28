@@ -141,8 +141,8 @@ class MainWindow(QMainWindow):
         app_name = self.config.get_str('Application.name', 'CourseStudio')
         version = self.config.get_str('Application.version', '1.0.0')
         window_title = self.config.get_str('Application.window_title', '{app_name} - GPX File Manipulator v{version}')
-        window_width = self.config.get_int('UI.window.width', 1400)
-        window_height = self.config.get_int('UI.window.height', 900)
+        window_width = self.config.get_int('Application.window_width', 1400)
+        window_height = self.config.get_int('Application.window_height', 900)
         
         # Format window title with substitutions
         window_title = window_title.format(name=app_name, version=version)
@@ -161,9 +161,9 @@ class MainWindow(QMainWindow):
         if icon_path.exists():
             self.setWindowIcon(QIcon(str(icon_path)))
         
-        # Enable window state saving (use legacy attribute for compatibility)
+        # Enable window state saving
         window_state = Qt.WindowState.WindowMaximized if self.config.get_bool(
-            'UI.start_maximized', False
+            'Application.start_maximized', False
         ) else Qt.WindowState.WindowNoState
         self.setWindowState(window_state)
     
@@ -394,6 +394,11 @@ class MainWindow(QMainWindow):
         self.trackpoint_list_widget.coordinate_format_changed.connect(self._on_coordinate_format_changed)
         self.trackpoint_list_widget.history_changed.connect(self._update_undo_redo_menu_states)
         
+        # NEW: Connect show points combo to update settings toggle
+        self.trackpoint_list_widget.show_points_combo.currentIndexChanged.connect(
+            self._on_show_points_dropdown_changed
+        )
+        
         right_splitter.addWidget(self.trackpoint_list_widget)
         
         # Map Widget (bottom)
@@ -430,6 +435,32 @@ class MainWindow(QMainWindow):
         # ====================================================================
         
         self.settings_widget = SettingsWidget()
+        
+        # Connect settings changes to map widget for live preview
+        self.settings_widget.track_path_widget.color_picker.color_changed.connect(
+            self._on_track_path_color_changed
+        )
+        self.settings_widget.track_path_widget.width_slider.value_changed.connect(
+            self._on_track_path_width_changed
+        )
+        
+        # Connect turning points changes
+        self.settings_widget.turning_points_widget.show_toggled.connect(
+            self._on_turning_points_show_toggled
+        )
+        self.settings_widget.turning_points_widget.color_picker.color_changed.connect(
+            self._on_turning_points_color_changed
+        )
+        self.settings_widget.turning_points_widget.size_slider.value_changed.connect(
+            self._on_turning_points_size_changed
+        )
+        self.settings_widget.turning_points_widget.selected_color_picker.color_changed.connect(
+            self._on_turning_points_selected_color_changed
+        )
+        self.settings_widget.turning_points_widget.selected_size_slider.value_changed.connect(
+            self._on_turning_points_selected_size_changed
+        )
+        
         self.main_tab_widget.addTab(self.settings_widget, "Settings")
         
         logger.info("Central widget created with Editor (Tracks/Trackpoints/Map) and Settings tabs")
@@ -959,6 +990,132 @@ A PyQt5 application for reading, editing, and exporting GPX navigation tracks.
         # Update trackpoint list selection
         if hasattr(self, 'trackpoint_list_widget'):
             self.trackpoint_list_widget.select_point(point_id)
+    
+    def _on_track_path_color_changed(self, hex_color: str):
+        """Handle track path color change from settings."""
+        
+        if hasattr(self, 'map_widget'):
+            # Convert hex to RGB
+            r = int(hex_color[0:2], 16)
+            g = int(hex_color[2:4], 16)
+            b = int(hex_color[4:6], 16)
+            rgb_color = (r, g, b)
+            
+            self.map_widget.track_color = rgb_color
+            self.map_widget.selected_track_color = rgb_color
+            
+            # Trigger redraw
+            self.map_widget.render_map()
+            self.map_widget.update()
+            
+            logger.debug(f"Track path color changed to: {hex_color}")
+    
+    def _on_track_path_width_changed(self, width: int):
+        """Handle track path width change from settings."""
+        
+        if hasattr(self, 'map_widget'):
+            self.map_widget.track_path_width = width
+            
+            # Trigger redraw
+            self.map_widget.render_map()
+            self.map_widget.update()
+            
+            logger.debug(f"Track path width changed to: {width}px")
+    
+    def _on_turning_points_show_toggled(self, state: bool):
+        """Handle turning points show/hide toggle from settings."""
+        
+        # Update map widget
+        if hasattr(self, 'map_widget'):
+            self.map_widget.show_turning_points = state
+            
+            # Trigger redraw
+            self.map_widget.render_map()
+            self.map_widget.update()
+        
+        # Update dropdown in trackpoint list widget to sync with toggle
+        if hasattr(self, 'trackpoint_list_widget'):
+            # Set dropdown to match toggle state without triggering the signal
+            index = 0 if state else 1  # Yes=0, No=1
+            self.trackpoint_list_widget.show_points_combo.blockSignals(True)
+            self.trackpoint_list_widget.show_points_combo.setCurrentIndex(index)
+            self.trackpoint_list_widget.show_points_combo.blockSignals(False)
+        
+        logger.debug(f"Turning points show toggled to: {state}")
+    
+    def _on_turning_points_color_changed(self, hex_color: str):
+        """Handle turning points color change from settings."""
+        
+        if hasattr(self, 'map_widget'):
+            # Convert hex to RGB
+            r = int(hex_color[0:2], 16)
+            g = int(hex_color[2:4], 16)
+            b = int(hex_color[4:6], 16)
+            rgb_color = (r, g, b)
+            
+            self.map_widget.turning_point_color = rgb_color
+            
+            # Trigger redraw
+            self.map_widget.render_map()
+            self.map_widget.update()
+            
+            logger.debug(f"Turning points color changed to: {hex_color}")
+    
+    def _on_turning_points_size_changed(self, size: int):
+        """Handle turning points size change from settings."""
+        
+        if hasattr(self, 'map_widget'):
+            self.map_widget.turning_point_size = size
+            
+            # Trigger redraw
+            self.map_widget.render_map()
+            self.map_widget.update()
+            
+            logger.debug(f"Turning points size changed to: {size}px")
+    
+    def _on_turning_points_selected_color_changed(self, hex_color: str):
+        """Handle selected turning point color change from settings."""
+        
+        if hasattr(self, 'map_widget'):
+            # Convert hex to RGB
+            r = int(hex_color[0:2], 16)
+            g = int(hex_color[2:4], 16)
+            b = int(hex_color[4:6], 16)
+            rgb_color = (r, g, b)
+            
+            self.map_widget.selected_turning_point_color = rgb_color
+            
+            # Trigger redraw
+            self.map_widget.render_map()
+            self.map_widget.update()
+            
+            logger.debug(f"Selected turning point color changed to: {hex_color}")
+    
+    def _on_turning_points_selected_size_changed(self, size: int):
+        """Handle selected turning point size change from settings."""
+        
+        if hasattr(self, 'map_widget'):
+            self.map_widget.selected_turning_point_size = size
+            
+            # Trigger redraw
+            self.map_widget.render_map()
+            self.map_widget.update()
+            
+            logger.debug(f"Selected turning point size changed to: {size}px")
+    
+    def _on_show_points_dropdown_changed(self, index: int):
+        """Handle show points dropdown change from Editor tab - sync to Settings toggle."""
+        
+        # Get the state from dropdown
+        state = self.trackpoint_list_widget.show_points_combo.currentData()
+        
+        # Update the toggle in settings without triggering its signal
+        if hasattr(self, 'settings_widget'):
+            self.settings_widget.turning_points_widget.show_toggle.blockSignals(True)
+            self.settings_widget.turning_points_widget.show_toggle.set_state(state)
+            self.settings_widget.turning_points_widget.show_toggle.blockSignals(False)
+        
+        logger.debug(f"Show points dropdown changed to: {state} - synced to settings toggle")
     
     # ========================================================================
     # Dialog Helpers

@@ -55,20 +55,21 @@ class MapWidget(QWidget):
         config = AppConfig()
         
         # Parse colors from config (hex format: RRGGBB)
-        self.track_color = self._hex_to_rgb(config.get_str('Map.track.path.color', 'FF0000'))
-        self.selected_track_color = self._hex_to_rgb(config.get_str('Map.track.selected.color', 'FF3232'))
-        self.selected_point_color = self._hex_to_rgb(config.get_str('Map.turning_points.selected.color', 'FFFF00'))
+        # New structure: Appearance.MapDisplay
+        self.track_color = self._hex_to_rgb(config.get_str('Appearance.MapDisplay.TrackPath.color', 'FF0000'))
+        self.selected_track_color = self._hex_to_rgb(config.get_str('Appearance.MapDisplay.TrackPath.color', 'FF0000'))
+        self.selected_point_color = self._hex_to_rgb(config.get_str('Appearance.MapDisplay.TurningPoints.selected.color', '0000FF'))
         
         # Turning points settings
-        # NOTE: Read from last_state to get user's preference, not the default
-        self.show_turning_points = config.get_bool('Map.last_state.show_turning_points', True)
-        self.turning_point_color = self._hex_to_rgb(config.get_str('Map.turning_points.color', 'FFFF00'))
-        self.selected_turning_point_color = self._hex_to_rgb(config.get_str('Map.turning_points.selected.color', '0000FF'))
-        self.turning_point_size = config.get_int('Map.turning_points.size', 4)
-        self.selected_turning_point_size = config.get_int('Map.turning_points.selected.size', 5)
+        # NOTE: Read from config to get user's preference
+        self.show_turning_points = config.get_bool('Appearance.MapDisplay.TurningPoints.show', True)
+        self.turning_point_color = self._hex_to_rgb(config.get_str('Appearance.MapDisplay.TurningPoints.color', 'FFFF00'))
+        self.selected_turning_point_color = self._hex_to_rgb(config.get_str('Appearance.MapDisplay.TurningPoints.selected.color', '0000FF'))
+        self.turning_point_size = config.get_int('Appearance.MapDisplay.TurningPoints.size', 4)
+        self.selected_turning_point_size = config.get_int('Appearance.MapDisplay.TurningPoints.selected.size', 7)
         
         # Track path width
-        self.track_path_width = config.get_int('Map.track.path.width', 3)
+        self.track_path_width = config.get_int('Appearance.MapDisplay.TrackPath.width', 3)
         
         # Map state
         self.center_lat = 56.168

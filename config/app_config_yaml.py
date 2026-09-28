@@ -129,6 +129,22 @@ class AppConfig:
         value = self.get(path, default)
         return value if isinstance(value, list) else default
     
+    def get_dict(self, path: str, default: dict = None) -> dict:
+        """
+        Get dictionary configuration value.
+        
+        Args:
+            path: Dot-separated path (e.g., 'Appearance.MapDisplay.TrackPath.colors')
+            default: Value to return if path not found
+        
+        Returns:
+            Dictionary or default
+        """
+        if default is None:
+            default = {}
+        value = self.get(path, default)
+        return value if isinstance(value, dict) else default
+    
     def set(self, path: str, value: Any) -> None:
         """
         Set configuration value using dot notation.
