@@ -59,7 +59,7 @@ class SettingsWidget(QWidget):
         scroll_widget = QWidget()
         scroll_layout = QVBoxLayout()
         scroll_widget.setLayout(scroll_layout)
-        scroll_layout.setSpacing(15)
+        scroll_layout.setSpacing(5)  # Reduced from 15 to 5 for tighter layout
         scroll_layout.setContentsMargins(0, 0, 0, 0)
         
         # ====================================================================

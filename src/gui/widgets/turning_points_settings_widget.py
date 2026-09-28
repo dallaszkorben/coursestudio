@@ -5,8 +5,8 @@ Combines color pickers, size sliders, and toggle switch for turning points appea
 """
 
 import logging
-from PyQt5.QtWidgets import QGroupBox, QVBoxLayout, QHBoxLayout, QLabel
-from PyQt5.QtCore import pyqtSignal
+from PyQt5.QtWidgets import QGroupBox, QVBoxLayout, QHBoxLayout, QLabel, QGridLayout, QWidget
+from PyQt5.QtCore import pyqtSignal, Qt
 
 from config.app_config_yaml import AppConfig
 from src.gui.widgets.color_picker_widget import ColorPickerWidget
@@ -76,7 +76,7 @@ class TurningPointsSettingsWidget(QGroupBox):
         
         layout = QVBoxLayout()
         self.setLayout(layout)
-        layout.setSpacing(12)
+        layout.setSpacing(8)  # Tight spacing between sections
         layout.setContentsMargins(10, 10, 10, 10)
         
         # ====================================================================
@@ -85,22 +85,23 @@ class TurningPointsSettingsWidget(QGroupBox):
         
         general_section = self._create_subsection("General Points")
         general_layout = QVBoxLayout()
-        general_layout.setSpacing(10)
+        general_layout.setSpacing(8)
         general_layout.setContentsMargins(8, 8, 8, 8)
         
-        # Show/Hide Toggle (Apple-style switch)
+        # Show/Hide Toggle
         toggle_layout = QHBoxLayout()
+        toggle_layout.setContentsMargins(0, 0, 0, 0)
+        toggle_layout.setSpacing(0)
         self.show_toggle = ToggleSwitchWidget(title="Show Points", initial_state=self.show)
         toggle_layout.addWidget(self.show_toggle)
-        toggle_layout.addStretch()
+        # NO addStretch() - let it stay compact on the left!
         general_layout.addLayout(toggle_layout)
         
-        # General Point Color Picker with white label
+        # Color Picker
         color_label = QLabel("Color:")
         color_label.setStyleSheet("font-weight: bold; font-size: 12px; color: white;")
         general_layout.addWidget(color_label)
         
-        # Load color palette from config for turning points
         self.color_picker = ColorPickerWidget(
             initial_color=self.color,
             config=self.config,
@@ -108,16 +109,26 @@ class TurningPointsSettingsWidget(QGroupBox):
         )
         general_layout.addWidget(self.color_picker)
         
-        # General Point Size Slider
+        # Size Slider - with fixed-width label for alignment
+        size_layout = QHBoxLayout()
+        size_layout.setContentsMargins(0, 0, 0, 0)
+        size_layout.setSpacing(8)
+        
+        size_label = QLabel("Size:")
+        size_label.setStyleSheet("font-weight: bold; color: white;")
+        size_label.setFixedWidth(70)  # Same width as "Width:" in TrackPath
+        size_layout.addWidget(size_label)
+        
         self.size_slider = SliderSettingWidget(
-            title="Size",
             min_val=2,
             max_val=10,
             current_val=self.size,
-            suffix="px"
+            suffix="px",
+            include_label=False
         )
-        general_layout.addWidget(self.size_slider)
+        size_layout.addWidget(self.size_slider, 1)
         
+        general_layout.addLayout(size_layout)
         general_section.setLayout(general_layout)
         layout.addWidget(general_section)
         
@@ -127,15 +138,14 @@ class TurningPointsSettingsWidget(QGroupBox):
         
         selected_section = self._create_subsection("Selected Points")
         selected_layout = QVBoxLayout()
-        selected_layout.setSpacing(10)
+        selected_layout.setSpacing(8)
         selected_layout.setContentsMargins(8, 8, 8, 8)
         
-        # Selected Point Color Picker with white label
+        # Color Picker
         selected_color_label = QLabel("Color:")
         selected_color_label.setStyleSheet("font-weight: bold; font-size: 12px; color: white;")
         selected_layout.addWidget(selected_color_label)
         
-        # Load color palette from config for selected turning points
         self.selected_color_picker = ColorPickerWidget(
             initial_color=self.selected_color,
             config=self.config,
@@ -143,16 +153,26 @@ class TurningPointsSettingsWidget(QGroupBox):
         )
         selected_layout.addWidget(self.selected_color_picker)
         
-        # Selected Point Size Slider
+        # Size Slider - with fixed-width label for alignment
+        selected_size_layout = QHBoxLayout()
+        selected_size_layout.setContentsMargins(0, 0, 0, 0)
+        selected_size_layout.setSpacing(8)
+        
+        selected_size_label = QLabel("Size:")
+        selected_size_label.setStyleSheet("font-weight: bold; color: white;")
+        selected_size_label.setFixedWidth(70)  # Same width as "Width:" and other "Size:"
+        selected_size_layout.addWidget(selected_size_label)
+        
         self.selected_size_slider = SliderSettingWidget(
-            title="Size",
             min_val=4,
             max_val=15,
             current_val=self.selected_size,
-            suffix="px"
+            suffix="px",
+            include_label=False
         )
-        selected_layout.addWidget(self.selected_size_slider)
+        selected_size_layout.addWidget(self.selected_size_slider, 1)
         
+        selected_layout.addLayout(selected_size_layout)
         selected_section.setLayout(selected_layout)
         layout.addWidget(selected_section)
         
@@ -187,13 +207,39 @@ class TurningPointsSettingsWidget(QGroupBox):
         self.size_slider.value_changed.connect(self._on_size_changed)
         self.selected_color_picker.color_changed.connect(self._on_selected_color_changed)
         self.selected_size_slider.value_changed.connect(self._on_selected_size_changed)
+        
+        # Initialize controls with the correct enabled state
+        self._set_controls_enabled(self.show)
     
     def _on_show_toggled(self, state: bool):
         """Handle show/hide toggle."""
         self.show = state
         logger.debug(f"Turning points show toggled to: {state}")
+        
+        # Enable/disable all appearance controls based on show state
+        self._set_controls_enabled(state)
+        
         self.show_toggled.emit(state)
         self.settings_changed.emit()
+    
+    def _set_controls_enabled(self, enabled: bool):
+        """Enable or disable all appearance controls based on show state."""
+        # ONLY disable/enable controls in GENERAL POINTS section
+        # Do NOT touch Selected Points section
+        
+        # Disable/enable ALL child widgets in color picker (preset buttons, sliders, inputs, etc.)
+        self._set_widget_tree_enabled(self.color_picker, enabled)
+        
+        # Disable/enable size slider and all its children
+        self._set_widget_tree_enabled(self.size_slider, enabled)
+    
+    def _set_widget_tree_enabled(self, widget, enabled: bool):
+        """Recursively enable/disable a widget and all its children."""
+        widget.setEnabled(enabled)
+        
+        # Recursively disable all child widgets
+        for child in widget.findChildren(QWidget):
+            child.setEnabled(enabled)
     
     def _on_color_changed(self, hex_color: str):
         """Handle color change."""

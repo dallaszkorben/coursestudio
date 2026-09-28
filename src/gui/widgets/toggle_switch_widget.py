@@ -64,10 +64,11 @@ class ToggleSwitchWidget(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(10)
         
-        # Optional title label
+        # Optional title label - FIXED WIDTH for alignment with other controls
         if self.title:
             title_label = QLabel(f"{self.title}:")
             title_label.setStyleSheet("font-weight: bold; min-width: 60px;")
+            title_label.setFixedWidth(70)  # Same width as "Size:" and "Width:" labels
             layout.addWidget(title_label)
         
         # Switch widget will be drawn in paintEvent
@@ -83,8 +84,8 @@ class ToggleSwitchWidget(QWidget):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
         
-        # Position for switch (right side of widget)
-        x = self.width() - self.SWITCH_WIDTH - 10
+        # Position for switch - starts after the label area (70px) + spacing (10px)
+        x = 70 + 10
         y = (self.height() - self.SWITCH_HEIGHT) // 2
         
         # Draw background (rounded rectangle)

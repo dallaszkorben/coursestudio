@@ -110,22 +110,35 @@ class ColorPickerWidget(QWidget):
         logger.info(f"ColorPickerWidget initialized with color: {self.current_color}, {len(self.preset_colors)} presets loaded from {config_path}")
     
     def _init_ui(self):
-        """Initialize the user interface."""
+        """Initialize the user interface with proper two-column alignment."""
         
         main_layout = QVBoxLayout()
         self.setLayout(main_layout)
         main_layout.setContentsMargins(0, 0, 0, 0)
-        main_layout.setSpacing(8)
+        main_layout.setSpacing(0)  # ZERO spacing
         
         # ====================================================================
-        # Row 1: Title + Preview Square
+        # Grid Layout for proper alignment
         # ====================================================================
         
-        title_layout = QHBoxLayout()
+        from PyQt5.QtWidgets import QGridLayout
+        grid = QGridLayout()
+        grid.setSpacing(0)  # ZERO spacing
+        grid.setContentsMargins(0, 0, 0, 0)  # ZERO margins
+        grid.setHorizontalSpacing(4)  # Only horizontal spacing between columns
+        grid.setVerticalSpacing(0)  # ZERO vertical spacing
+        grid.setColumnStretch(0, 0)  # Label column - fixed width
+        grid.setColumnStretch(1, 1)  # Control column - flexible
+        
+        row = 0
+        
+        # ====================================================================
+        # Row 0: Color Title + Preview Square
+        # ====================================================================
         
         title_label = QLabel("Color:")
-        title_label.setStyleSheet("font-weight: bold; min-width: 50px; color: white;")
-        title_layout.addWidget(title_label)
+        title_label.setStyleSheet("font-weight: bold; color: white;")
+        grid.addWidget(title_label, row, 0)
         
         # Color preview square
         self.preview_square = QLabel()
@@ -133,20 +146,27 @@ class ColorPickerWidget(QWidget):
             "border: 2px solid #ccc; border-radius: 4px; min-width: 30px; "
             "min-height: 30px; max-width: 30px; max-height: 30px;"
         )
-        title_layout.addWidget(self.preview_square)
-        
-        title_layout.addStretch()
-        main_layout.addLayout(title_layout)
+        preview_layout = QHBoxLayout()
+        preview_layout.setContentsMargins(0, 0, 0, 0)
+        preview_layout.setSpacing(0)
+        preview_layout.addWidget(self.preview_square)
+        preview_layout.addStretch()
+        preview_widget = QWidget()
+        preview_widget.setLayout(preview_layout)
+        grid.addWidget(preview_widget, row, 1)
+        row += 1
         
         # ====================================================================
-        # Row 2: Preset Color Buttons (Quick Select)
+        # Row 1: Quick Select Label + Preset Buttons
         # ====================================================================
         
-        presets_layout = QHBoxLayout()
         presets_label = QLabel("Quick Select:")
         presets_label.setStyleSheet("font-weight: bold; font-size: 12px; color: white;")
-        presets_layout.addWidget(presets_label)
+        grid.addWidget(presets_label, row, 0)
         
+        presets_layout = QHBoxLayout()
+        presets_layout.setContentsMargins(0, 0, 0, 0)
+        presets_layout.setSpacing(0)
         self.preset_buttons = {}
         for color_name, hex_code in self.preset_colors.items():
             btn = QPushButton()
@@ -174,27 +194,32 @@ class ColorPickerWidget(QWidget):
             self.preset_buttons[hex_code] = btn
         
         presets_layout.addStretch()
-        main_layout.addLayout(presets_layout)
+        presets_widget = QWidget()
+        presets_widget.setLayout(presets_layout)
+        grid.addWidget(presets_widget, row, 1)
+        row += 1
         
         # ====================================================================
-        # Row 3: RGB Sliders
+        # Rows 2-4: RGB Sliders
         # ====================================================================
         
         # Red slider
-        r_layout = QHBoxLayout()
         r_label = QLabel("R:")
-        r_label.setMaximumWidth(20)
-        r_layout.addWidget(r_label)
+        r_label.setStyleSheet("font-weight: bold; color: white;")
+        grid.addWidget(r_label, row, 0)
         
+        r_control_layout = QHBoxLayout()
+        r_control_layout.setContentsMargins(0, 0, 0, 0)
+        r_control_layout.setSpacing(0)
         self.r_slider = QSlider(Qt.Horizontal)
         self.r_slider.setMinimum(0)
         self.r_slider.setMaximum(255)
         self.r_slider.setTickPosition(QSlider.NoTicks)
         self.r_slider.setValue(255)
-        self.r_slider.setStyleSheet(SLIDER_STYLESHEET)  # Apply Apple-style
-        self.r_slider.setMinimumHeight(30)  # Ensure handle doesn't clip
+        self.r_slider.setStyleSheet(SLIDER_STYLESHEET)
+        self.r_slider.setMinimumHeight(30)
         self.r_slider.valueChanged.connect(self._on_rgb_slider_changed)
-        r_layout.addWidget(self.r_slider)
+        r_control_layout.addWidget(self.r_slider)
         
         self.r_spinbox = QSpinBox()
         self.r_spinbox.setMinimum(0)
@@ -202,25 +227,30 @@ class ColorPickerWidget(QWidget):
         self.r_spinbox.setValue(255)
         self.r_spinbox.setMaximumWidth(50)
         self.r_spinbox.valueChanged.connect(self._on_r_spinbox_changed)
-        r_layout.addWidget(self.r_spinbox)
+        r_control_layout.addWidget(self.r_spinbox)
         
-        main_layout.addLayout(r_layout)
+        r_control_widget = QWidget()
+        r_control_widget.setLayout(r_control_layout)
+        grid.addWidget(r_control_widget, row, 1)
+        row += 1
         
         # Green slider
-        g_layout = QHBoxLayout()
         g_label = QLabel("G:")
-        g_label.setMaximumWidth(20)
-        g_layout.addWidget(g_label)
+        g_label.setStyleSheet("font-weight: bold; color: white;")
+        grid.addWidget(g_label, row, 0)
         
+        g_control_layout = QHBoxLayout()
+        g_control_layout.setContentsMargins(0, 0, 0, 0)
+        g_control_layout.setSpacing(0)
         self.g_slider = QSlider(Qt.Horizontal)
         self.g_slider.setMinimum(0)
         self.g_slider.setMaximum(255)
         self.g_slider.setTickPosition(QSlider.NoTicks)
         self.g_slider.setValue(0)
-        self.g_slider.setStyleSheet(SLIDER_STYLESHEET)  # Apply Apple-style
-        self.g_slider.setMinimumHeight(30)  # Ensure handle doesn't clip
+        self.g_slider.setStyleSheet(SLIDER_STYLESHEET)
+        self.g_slider.setMinimumHeight(30)
         self.g_slider.valueChanged.connect(self._on_rgb_slider_changed)
-        g_layout.addWidget(self.g_slider)
+        g_control_layout.addWidget(self.g_slider)
         
         self.g_spinbox = QSpinBox()
         self.g_spinbox.setMinimum(0)
@@ -228,25 +258,30 @@ class ColorPickerWidget(QWidget):
         self.g_spinbox.setValue(0)
         self.g_spinbox.setMaximumWidth(50)
         self.g_spinbox.valueChanged.connect(self._on_g_spinbox_changed)
-        g_layout.addWidget(self.g_spinbox)
+        g_control_layout.addWidget(self.g_spinbox)
         
-        main_layout.addLayout(g_layout)
+        g_control_widget = QWidget()
+        g_control_widget.setLayout(g_control_layout)
+        grid.addWidget(g_control_widget, row, 1)
+        row += 1
         
         # Blue slider
-        b_layout = QHBoxLayout()
         b_label = QLabel("B:")
-        b_label.setMaximumWidth(20)
-        b_layout.addWidget(b_label)
+        b_label.setStyleSheet("font-weight: bold; color: white;")
+        grid.addWidget(b_label, row, 0)
         
+        b_control_layout = QHBoxLayout()
+        b_control_layout.setContentsMargins(0, 0, 0, 0)
+        b_control_layout.setSpacing(0)
         self.b_slider = QSlider(Qt.Horizontal)
         self.b_slider.setMinimum(0)
         self.b_slider.setMaximum(255)
         self.b_slider.setTickPosition(QSlider.NoTicks)
         self.b_slider.setValue(0)
-        self.b_slider.setStyleSheet(SLIDER_STYLESHEET)  # Apply Apple-style
-        self.b_slider.setMinimumHeight(30)  # Ensure handle doesn't clip
+        self.b_slider.setStyleSheet(SLIDER_STYLESHEET)
+        self.b_slider.setMinimumHeight(30)
         self.b_slider.valueChanged.connect(self._on_rgb_slider_changed)
-        b_layout.addWidget(self.b_slider)
+        b_control_layout.addWidget(self.b_slider)
         
         self.b_spinbox = QSpinBox()
         self.b_spinbox.setMinimum(0)
@@ -254,27 +289,36 @@ class ColorPickerWidget(QWidget):
         self.b_spinbox.setValue(0)
         self.b_spinbox.setMaximumWidth(50)
         self.b_spinbox.valueChanged.connect(self._on_b_spinbox_changed)
-        b_layout.addWidget(self.b_spinbox)
+        b_control_layout.addWidget(self.b_spinbox)
         
-        main_layout.addLayout(b_layout)
+        b_control_widget = QWidget()
+        b_control_widget.setLayout(b_control_layout)
+        grid.addWidget(b_control_widget, row, 1)
+        row += 1
         
         # ====================================================================
-        # Row 4: Hex Input
+        # Row 5: Hex Input
         # ====================================================================
         
-        hex_layout = QHBoxLayout()
         hex_label = QLabel("Hex:")
-        hex_label.setMaximumWidth(50)
-        hex_layout.addWidget(hex_label)
+        hex_label.setStyleSheet("font-weight: bold; color: white;")
+        grid.addWidget(hex_label, row, 0)
         
+        hex_control_layout = QHBoxLayout()
+        hex_control_layout.setContentsMargins(0, 0, 0, 0)
+        hex_control_layout.setSpacing(0)
         self.hex_input = QLineEdit()
         self.hex_input.setMaximumWidth(120)
         self.hex_input.setPlaceholderText("FF0000")
         self.hex_input.editingFinished.connect(self._on_hex_input_changed)
-        hex_layout.addWidget(self.hex_input)
+        hex_control_layout.addWidget(self.hex_input)
+        hex_control_layout.addStretch()
         
-        hex_layout.addStretch()
-        main_layout.addLayout(hex_layout)
+        hex_control_widget = QWidget()
+        hex_control_widget.setLayout(hex_control_layout)
+        grid.addWidget(hex_control_widget, row, 1)
+        
+        main_layout.addLayout(grid)
         
         # Add stretch at bottom
         main_layout.addStretch()

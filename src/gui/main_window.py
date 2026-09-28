@@ -440,7 +440,7 @@ class MainWindow(QMainWindow):
         self.settings_widget.track_path_widget.color_picker.color_changed.connect(
             self._on_track_path_color_changed
         )
-        self.settings_widget.track_path_widget.width_slider.value_changed.connect(
+        self.settings_widget.track_path_widget.width_slider_obj.valueChanged.connect(
             self._on_track_path_width_changed
         )
         

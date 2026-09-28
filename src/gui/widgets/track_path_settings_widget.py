@@ -5,12 +5,11 @@ Combines color picker and width slider for track path appearance settings.
 """
 
 import logging
-from PyQt5.QtWidgets import QGroupBox, QVBoxLayout
-from PyQt5.QtCore import pyqtSignal
+from PyQt5.QtWidgets import QGroupBox, QVBoxLayout, QHBoxLayout, QLabel, QSlider, QSpinBox, QWidget
+from PyQt5.QtCore import Qt, pyqtSignal
 
 from config.app_config_yaml import AppConfig
 from src.gui.widgets.color_picker_widget import ColorPickerWidget
-from src.gui.widgets.slider_setting_widget import SliderSettingWidget
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +39,7 @@ class TrackPathSettingsWidget(QGroupBox):
         # Load current values from config
         self.color = self.config.get_str('Appearance.MapDisplay.TrackPath.color', 'FF0000')
         self.width = self.config.get_int('Appearance.MapDisplay.TrackPath.width', 3)
+        self._updating = False  # Flag to prevent recursive updates
         
         # Apply white frame styling (main section)
         self.setStyleSheet("""
@@ -64,32 +64,62 @@ class TrackPathSettingsWidget(QGroupBox):
         logger.info(f"TrackPathSettingsWidget initialized (color={self.color}, width={self.width})")
     
     def _init_ui(self):
-        """Initialize the user interface."""
+        """Initialize the user interface with grid layout for alignment."""
+        
+        from PyQt5.QtWidgets import QGridLayout
         
         layout = QVBoxLayout()
         self.setLayout(layout)
-        layout.setSpacing(15)
         layout.setContentsMargins(10, 10, 10, 10)
+        layout.setSpacing(10)
         
-        # ====================================================================
-        # Color Picker Widget
-        # ====================================================================
-        
+        # Color picker at top
         self.color_picker = ColorPickerWidget(initial_color=self.color, config=self.config)
         layout.addWidget(self.color_picker)
         
-        # ====================================================================
-        # Width Slider Widget
-        # ====================================================================
+        # Grid layout for Width control - aligned with other sliders
+        grid = QGridLayout()
+        grid.setSpacing(8)
+        grid.setContentsMargins(0, 0, 0, 0)
+        grid.setColumnStretch(0, 0)  # Label column - fixed width
+        grid.setColumnStretch(1, 1)  # Control column - flexible
         
-        self.width_slider = SliderSettingWidget(
-            title="Width",
-            min_val=1,
-            max_val=9,
-            current_val=self.width,
-            suffix="px"
-        )
-        layout.addWidget(self.width_slider)
+        # Width label - FIXED WIDTH to align with other "Size" labels
+        width_label = QLabel("Width:")
+        width_label.setStyleSheet("font-weight: bold; color: white;")
+        width_label.setFixedWidth(70)  # Fixed width for cross-widget alignment
+        grid.addWidget(width_label, 0, 0, Qt.AlignLeft)
+        
+        # Width slider + spinbox
+        width_control_layout = QHBoxLayout()
+        width_control_layout.setContentsMargins(0, 0, 0, 0)
+        width_control_layout.setSpacing(8)
+        
+        self.width_slider_obj = QSlider(Qt.Horizontal)
+        self.width_slider_obj.setMinimum(1)
+        self.width_slider_obj.setMaximum(9)
+        self.width_slider_obj.setValue(self.width)
+        self.width_slider_obj.setTickPosition(QSlider.NoTicks)
+        from src.gui.widgets.slider_setting_widget import SLIDER_STYLESHEET
+        self.width_slider_obj.setStyleSheet(SLIDER_STYLESHEET)
+        self.width_slider_obj.setMinimumHeight(30)
+        self.width_slider_obj.valueChanged.connect(self._on_width_slider_changed)
+        width_control_layout.addWidget(self.width_slider_obj)
+        
+        self.width_spinbox = QSpinBox()
+        self.width_spinbox.setMinimum(1)
+        self.width_spinbox.setMaximum(9)
+        self.width_spinbox.setValue(self.width)
+        self.width_spinbox.setSuffix(" px")
+        self.width_spinbox.setMaximumWidth(50)
+        self.width_spinbox.valueChanged.connect(self._on_width_spinbox_changed)
+        width_control_layout.addWidget(self.width_spinbox)
+        
+        width_control_widget = QWidget()
+        width_control_widget.setLayout(width_control_layout)
+        grid.addWidget(width_control_widget, 0, 1)
+        
+        layout.addLayout(grid)
         
         # Add stretch to push controls to top
         layout.addStretch()
@@ -98,7 +128,8 @@ class TrackPathSettingsWidget(QGroupBox):
         """Connect widget signals."""
         
         self.color_picker.color_changed.connect(self._on_color_changed)
-        self.width_slider.value_changed.connect(self._on_width_changed)
+        self.width_slider_obj.valueChanged.connect(self._on_width_slider_changed)
+        self.width_spinbox.valueChanged.connect(self._on_width_spinbox_changed)
     
     def _on_color_changed(self, hex_color: str):
         """Handle color change."""
@@ -106,10 +137,24 @@ class TrackPathSettingsWidget(QGroupBox):
         logger.debug(f"Track path color changed to: {hex_color}")
         self.settings_changed.emit()
     
-    def _on_width_changed(self, width: int):
-        """Handle width change."""
-        self.width = width
-        logger.debug(f"Track path width changed to: {width}px")
+    def _on_width_slider_changed(self, value: int):
+        """Handle width slider change."""
+        self._updating = True
+        self.width = value
+        self.width_spinbox.setValue(value)
+        self._updating = False
+        logger.debug(f"Track path width changed to: {value}px")
+        self.settings_changed.emit()
+    
+    def _on_width_spinbox_changed(self, value: int):
+        """Handle width spinbox change."""
+        if hasattr(self, '_updating') and self._updating:
+            return
+        self._updating = True
+        self.width = value
+        self.width_slider_obj.setValue(value)
+        self._updating = False
+        logger.debug(f"Track path width changed to: {value}px")
         self.settings_changed.emit()
     
     def get_color(self) -> str:
@@ -122,11 +167,14 @@ class TrackPathSettingsWidget(QGroupBox):
     
     def get_width(self) -> int:
         """Get current track path width."""
-        return self.width_slider.get_value()
+        return self.width_slider_obj.value()
     
     def set_width(self, width: int):
         """Set track path width."""
-        self.width_slider.set_value(width)
+        self._updating = True
+        self.width_slider_obj.setValue(width)
+        self.width_spinbox.setValue(width)
+        self._updating = False
     
     def apply_to_config(self):
         """Apply current settings to configuration."""
