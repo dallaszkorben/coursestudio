@@ -3,7 +3,7 @@ Color Picker Widget for CourseStudio Settings.
 
 Provides an inline color picker with:
 - Preset color buttons (loaded from settings.yaml - not hardcoded!)
-- RGB sliders (fine-tuning)
+- RGB sliders (Apple-style fine-tuning)
 - Hex input field (direct entry)
 - Live color preview
 """
@@ -19,6 +19,46 @@ from PyQt5.QtGui import QColor, QIcon, QPixmap
 from config.app_config_yaml import AppConfig
 
 logger = logging.getLogger(__name__)
+
+# Apple-style slider stylesheet (matching seeboard pattern)
+SLIDER_STYLESHEET = """
+QSlider {
+    border: none;
+    outline: none;
+}
+
+QSlider::groove:horizontal {
+    height: 6px;
+    background: #e0e0e0;
+    border-radius: 3px;
+}
+
+QSlider::sub-page:horizontal {
+    background: #007AFF;
+    border-radius: 3px;
+}
+
+QSlider::add-page:horizontal {
+    background: #e0e0e0;
+    border-radius: 3px;
+}
+
+QSlider::handle:horizontal {
+    width: 18px;
+    height: 18px;
+    margin: -6px 0;
+    background: #007AFF;
+    border-radius: 9px;
+}
+
+QSlider::handle:horizontal:hover {
+    background: #0051D5;
+}
+
+QSlider::handle:horizontal:pressed {
+    background: #003DA3;
+}
+"""
 
 
 class ColorPickerWidget(QWidget):
@@ -151,6 +191,8 @@ class ColorPickerWidget(QWidget):
         self.r_slider.setMaximum(255)
         self.r_slider.setTickPosition(QSlider.NoTicks)
         self.r_slider.setValue(255)
+        self.r_slider.setStyleSheet(SLIDER_STYLESHEET)  # Apply Apple-style
+        self.r_slider.setMinimumHeight(30)  # Ensure handle doesn't clip
         self.r_slider.valueChanged.connect(self._on_rgb_slider_changed)
         r_layout.addWidget(self.r_slider)
         
@@ -175,6 +217,8 @@ class ColorPickerWidget(QWidget):
         self.g_slider.setMaximum(255)
         self.g_slider.setTickPosition(QSlider.NoTicks)
         self.g_slider.setValue(0)
+        self.g_slider.setStyleSheet(SLIDER_STYLESHEET)  # Apply Apple-style
+        self.g_slider.setMinimumHeight(30)  # Ensure handle doesn't clip
         self.g_slider.valueChanged.connect(self._on_rgb_slider_changed)
         g_layout.addWidget(self.g_slider)
         
@@ -199,6 +243,8 @@ class ColorPickerWidget(QWidget):
         self.b_slider.setMaximum(255)
         self.b_slider.setTickPosition(QSlider.NoTicks)
         self.b_slider.setValue(0)
+        self.b_slider.setStyleSheet(SLIDER_STYLESHEET)  # Apply Apple-style
+        self.b_slider.setMinimumHeight(30)  # Ensure handle doesn't clip
         self.b_slider.valueChanged.connect(self._on_rgb_slider_changed)
         b_layout.addWidget(self.b_slider)
         

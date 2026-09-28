@@ -3,7 +3,7 @@ Slider Setting Widget for CourseStudio Settings.
 
 Reusable horizontal slider with:
 - Title/label
-- Dynamic width slider
+- Dynamic width slider (Apple-style)
 - Numeric value display
 - Optional value suffix (e.g., "px", "ms")
 """
@@ -14,6 +14,46 @@ from PyQt5.QtCore import Qt, pyqtSignal
 
 logger = logging.getLogger(__name__)
 
+# Apple-style slider stylesheet (matching seeboard pattern)
+SLIDER_STYLESHEET = """
+QSlider {
+    border: none;
+    outline: none;
+}
+
+QSlider::groove:horizontal {
+    height: 6px;
+    background: #e0e0e0;
+    border-radius: 3px;
+}
+
+QSlider::sub-page:horizontal {
+    background: #007AFF;
+    border-radius: 3px;
+}
+
+QSlider::add-page:horizontal {
+    background: #e0e0e0;
+    border-radius: 3px;
+}
+
+QSlider::handle:horizontal {
+    width: 18px;
+    height: 18px;
+    margin: -6px 0;
+    background: #007AFF;
+    border-radius: 9px;
+}
+
+QSlider::handle:horizontal:hover {
+    background: #0051D5;
+}
+
+QSlider::handle:horizontal:pressed {
+    background: #003DA3;
+}
+"""
+
 
 class SliderSettingWidget(QWidget):
     """
@@ -21,10 +61,11 @@ class SliderSettingWidget(QWidget):
     
     Features:
     - Title label (left)
-    - Dynamic width slider (center)
+    - Dynamic width slider (center) - Apple-style
     - Spinbox for direct input (right)
     - Value suffix display (e.g., "px", "ms")
     - Responsive layout (no hardcoded sizes)
+    - Smooth, professional appearance
     """
     
     value_changed = pyqtSignal(int)  # Emits new value
@@ -77,7 +118,7 @@ class SliderSettingWidget(QWidget):
         layout.addWidget(title_label)
         
         # ====================================================================
-        # Horizontal Slider (Center - Dynamic Width)
+        # Horizontal Slider (Center - Dynamic Width, Apple-style)
         # ====================================================================
         
         self.slider = QSlider(Qt.Horizontal)
@@ -85,6 +126,8 @@ class SliderSettingWidget(QWidget):
         self.slider.setMaximum(self.max_val)
         self.slider.setValue(self.current_val)
         self.slider.setTickPosition(QSlider.NoTicks)
+        self.slider.setStyleSheet(SLIDER_STYLESHEET)  # Apply Apple-style
+        self.slider.setMinimumHeight(30)  # Ensure handle doesn't clip (18px + 6px margins)
         self.slider.valueChanged.connect(self._on_slider_changed)
         
         # Slider should take up available space
