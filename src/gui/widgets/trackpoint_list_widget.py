@@ -43,6 +43,57 @@ logger = logging.getLogger(__name__)
 
 
 # ============================================================================
+# Custom Table Widget for Range Selection
+# ============================================================================
+
+class RangeSelectableTableWidget(QTableWidget):
+    """QTableWidget that supports Shift+click range selection (max 2 consecutive points)."""
+    
+    range_selected = pyqtSignal(int, int)  # Emitted with (start_index, end_index)
+    range_right_clicked = pyqtSignal()  # Emitted when right-click on range selection
+    last_clicked_row = None
+    current_range = None
+    
+    def mousePressEvent(self, event):
+        """Handle mouse press for range selection."""
+        if event.button() == Qt.RightButton:
+            # Right-click: show context menu (don't change selection)
+            item = self.itemAt(event.pos())
+            if item and self.current_range:
+                # Only show menu if clicking within the range
+                row = item.row()
+                start, end = self.current_range
+                if start <= row <= end:
+                    self.range_right_clicked.emit()
+                    return
+        
+        if event.button() == Qt.LeftButton:
+            item = self.itemAt(event.pos())
+            if item:
+                row = item.row()
+                
+                # Shift+click: select range (only 2 consecutive)
+                if event.modifiers() & Qt.ShiftModifier and self.last_clicked_row is not None:
+                    start = min(self.last_clicked_row, row)
+                    end = max(self.last_clicked_row, row)
+                    
+                    # Only allow 2 consecutive points
+                    if end - start == 1:
+                        self.clearSelection()  # Clear any existing selection first
+                        self.current_range = (start, end)
+                        self.range_selected.emit(start, end)
+                        return
+                else:
+                    # Normal click: clear multi-selection and select only this row
+                    self.clearSelection()
+                    self.current_range = None
+                    self.last_clicked_row = row
+        
+        # Call parent implementation
+        super().mousePressEvent(event)
+
+
+# ============================================================================
 # Trackpoint List Widget
 # ============================================================================
 
@@ -104,6 +155,8 @@ class TrackpointListWidget(QWidget):
         self.map_widget = map_widget
         self.current_track_index = -1
         self.current_selection = -1
+        self._updating_from_map = False  # Flag to prevent feedback loops
+        self._suppress_context_menu = False  # Flag to suppress context menu after insert
         
         # Load saved settings or use defaults (new structure)
         from config.app_config_yaml import AppConfig
@@ -172,8 +225,8 @@ class TrackpointListWidget(QWidget):
         
         main_layout.addLayout(header_layout)
         
-        # Table widget
-        self.table_widget = QTableWidget()
+        # Table widget - use custom range-selectable table
+        self.table_widget = RangeSelectableTableWidget()
         self.table_widget.setColumnCount(5)
         self.table_widget.setHorizontalHeaderLabels([
             "#", "Latitude", "Longitude", "Elevation (m)", "Timestamp"
@@ -216,6 +269,8 @@ class TrackpointListWidget(QWidget):
         self.table_widget.itemSelectionChanged.connect(self._on_selection_changed)
         self.table_widget.cellDoubleClicked.connect(self._on_cell_double_clicked)
         self.table_widget.customContextMenuRequested.connect(self._on_context_menu)
+        self.table_widget.range_selected.connect(self._on_range_selected_in_list)  # NEW: Handle Shift+click range
+        self.table_widget.range_right_clicked.connect(self._show_range_context_menu)  # NEW: Handle right-click on range
         
         # Format combo signal
         self.format_combo.currentIndexChanged.connect(self._on_format_changed)
@@ -399,8 +454,45 @@ class TrackpointListWidget(QWidget):
             logger.warning(f"Invalid point index: {point_index}")
             return False
         
+        self._updating_from_map = True
         self.table_widget.selectRow(point_index)
+        self._updating_from_map = False
         self.current_selection = point_index
+        return True
+    
+    def select_range(self, start_index: int, end_index: int) -> bool:
+        """
+        Select a range of trackpoints.
+        
+        Args:
+            start_index (int): Start index (0-based)
+            end_index (int): End index (0-based, inclusive)
+        
+        Returns:
+            bool: True if selected successfully, False otherwise
+        """
+        
+        if not (0 <= start_index < self.table_widget.rowCount() and 
+                0 <= end_index < self.table_widget.rowCount()):
+            logger.warning(f"Invalid range: {start_index}-{end_index}")
+            return False
+        
+        self._updating_from_map = True
+        
+        # Use selection model to select range
+        from PyQt5.QtCore import QItemSelection
+        selection = QItemSelection()
+        
+        # Create range of cells to select
+        start_item = self.table_widget.model().index(start_index, 0)
+        end_item = self.table_widget.model().index(end_index, self.table_widget.columnCount() - 1)
+        selection.select(start_item, end_item)
+        
+        # Apply selection
+        self.table_widget.selectionModel().select(selection, self.table_widget.selectionModel().Select)
+        
+        self._updating_from_map = False
+        self.current_selection = (start_index, end_index)
         return True
     
     def get_selected_point_index(self) -> int:
@@ -424,6 +516,10 @@ class TrackpointListWidget(QWidget):
     def _on_selection_changed(self):
         """Handle selection change in table widget."""
         
+        # Don't emit signal if we're updating from map (prevents feedback loop)
+        if self._updating_from_map:
+            return
+        
         selected_items = self.table_widget.selectedItems()
         
         if selected_items:
@@ -440,6 +536,38 @@ class TrackpointListWidget(QWidget):
             logger.debug(f"Point selected: index={point_index}, row={row}")
         else:
             self.current_selection = -1
+    
+    def _on_range_selected_in_list(self, start_row: int, end_row: int):
+        """Handle range selection from Shift+click in list."""
+        # Update map to show range selection
+        if self.map_widget and hasattr(self.map_widget, 'selected_trackpoint_range'):
+            self.map_widget.selected_trackpoint_range = (start_row, end_row)
+            self.map_widget.selected_trackpoint_index = None
+            self.map_widget.render_map()
+            # Update menu state
+            from PyQt5.QtWidgets import QApplication
+            main_window = QApplication.instance().activeWindow()
+            if main_window and hasattr(main_window, '_update_insert_menu_state'):
+                main_window._update_insert_menu_state()
+            logger.debug(f"Range selected in list: {start_row}-{end_row}")
+    
+    def _show_range_context_menu(self):
+        """Show context menu for range selection."""
+        from PyQt5.QtWidgets import QMenu
+        from PyQt5.QtGui import QCursor
+        
+        menu = QMenu()
+        insert_action = menu.addAction("Insert Trackpoint Between Selected")
+        insert_action.triggered.connect(self._on_insert_from_list)
+        
+        menu.exec_(QCursor.pos())
+    
+    def _on_insert_from_list(self):
+        """Handle insert action from list context menu."""
+        from PyQt5.QtWidgets import QApplication
+        main_window = QApplication.instance().activeWindow()
+        if main_window and hasattr(main_window, 'action_insert_trackpoint'):
+            main_window.action_insert_trackpoint()
     
     def _on_cell_double_clicked(self, row: int, column: int):
         """Handle double-click on table cell."""
@@ -527,6 +655,11 @@ class TrackpointListWidget(QWidget):
     def _on_context_menu(self, position):
         """Handle context menu on trackpoint table."""
         
+        # Don't show menu if suppressed (e.g., after insert action)
+        if self._suppress_context_menu:
+            self._suppress_context_menu = False
+            return
+        
         selected_row = self.table_widget.rowAt(position.y())
         if selected_row < 0:
             return
@@ -568,6 +701,7 @@ class TrackpointListWidget(QWidget):
     def _delete_trackpoint(self, row_index: int):
         """Delete a single trackpoint with confirmation."""
         from PyQt5.QtWidgets import QMessageBox
+        from config.app_config_yaml import AppConfig
         
         if self.current_track_index < 0 or row_index < 0:
             return
@@ -579,34 +713,42 @@ class TrackpointListWidget(QWidget):
         # Get trackpoint info
         point = track.trackpoints[row_index]
         
-        # Show confirmation dialog
-        reply = QMessageBox.question(
-            self,
-            "Delete Trackpoint",
-            f"Delete trackpoint {row_index + 1}?\n\n({point.latitude:.4f}°, {point.longitude:.4f}°)",
-            QMessageBox.Yes | QMessageBox.No,
-            QMessageBox.No
-        )
+        # Check if confirmation is required
+        config = AppConfig()
+        require_confirmation = config.get_bool('FileHandling.DeleteConfirmation.require_delete_confirmation', True)
         
-        if reply == QMessageBox.Yes:
-            # Remove trackpoint using command history (undoable)
-            removed = self.track_manager.remove_trackpoint_with_history(self.current_track_index, row_index)
-            if removed:
-                logger.info(f"Deleted trackpoint {row_index} from track '{track.name}'")
-                # Refresh display
-                self.refresh_trackpoints()
-                # Update map - re-select the current track to force redraw
-                if self.map_widget:
-                    self.map_widget.on_track_list_selection_changed(self.current_track_index)
-                # Emit signals
-                self.point_selected.emit(-1)
-                self.history_changed.emit()  # Notify that history state changed
-            else:
-                QMessageBox.warning(self, "Error", "Could not delete trackpoint")
+        if require_confirmation:
+            # Show confirmation dialog
+            reply = QMessageBox.question(
+                self,
+                "Delete Trackpoint",
+                f"Delete trackpoint {row_index + 1}?\n\n({point.latitude:.4f}°, {point.longitude:.4f}°)",
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.Yes
+            )
+            
+            if reply != QMessageBox.Yes:
+                return
+        
+        # Remove trackpoint using command history (undoable)
+        removed = self.track_manager.remove_trackpoint_with_history(self.current_track_index, row_index)
+        if removed:
+            logger.info(f"Deleted trackpoint {row_index} from track '{track.name}'")
+            # Refresh display
+            self.refresh_trackpoints()
+            # Update map - re-select the current track to force redraw
+            if self.map_widget:
+                self.map_widget.on_track_list_selection_changed(self.current_track_index)
+            # Emit signals
+            self.point_selected.emit(-1)
+            self.history_changed.emit()  # Notify that history state changed
+        else:
+            QMessageBox.warning(self, "Error", "Could not delete trackpoint")
     
     def _delete_from_start(self, to_row_index: int):
         """Delete trackpoints from start to specified row (inclusive)."""
         from PyQt5.QtWidgets import QMessageBox
+        from config.app_config_yaml import AppConfig
         
         if self.current_track_index < 0 or to_row_index < 0:
             return
@@ -627,34 +769,42 @@ class TrackpointListWidget(QWidget):
             )
             return
         
-        # Show confirmation
-        reply = QMessageBox.question(
-            self,
-            "Delete from Start",
-            f"Delete {count_to_delete} trackpoint(s) from start to row {to_row_index + 1}?\n\n"
-            f"{count_remaining} point(s) will remain.",
-            QMessageBox.Yes | QMessageBox.No,
-            QMessageBox.No
-        )
+        # Check if confirmation is required
+        config = AppConfig()
+        require_confirmation = config.get_bool('FileHandling.DeleteConfirmation.require_delete_confirmation', True)
         
-        if reply == QMessageBox.Yes:
-            # Use command-based range removal (undoable)
-            success = self.track_manager.remove_trackpoints_range_with_history(
-                self.current_track_index, 0, to_row_index
+        if require_confirmation:
+            # Show confirmation
+            reply = QMessageBox.question(
+                self,
+                "Delete from Start",
+                f"Delete {count_to_delete} trackpoint(s) from start to row {to_row_index + 1}?\n\n"
+                f"{count_remaining} point(s) will remain.",
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.Yes
             )
-            if success:
-                logger.info(f"Deleted {count_to_delete} trackpoints from start of track '{track.name}'")
-                self.refresh_trackpoints()
-                if self.map_widget:
-                    self.map_widget.on_track_list_selection_changed(self.current_track_index)
-                self.point_selected.emit(-1)
-                self.history_changed.emit()  # Notify that history state changed
-            else:
-                QMessageBox.warning(self, "Error", "Could not delete trackpoints")
+            
+            if reply != QMessageBox.Yes:
+                return
+        
+        # Use command-based range removal (undoable)
+        success = self.track_manager.remove_trackpoints_range_with_history(
+            self.current_track_index, 0, to_row_index
+        )
+        if success:
+            logger.info(f"Deleted {count_to_delete} trackpoints from start of track '{track.name}'")
+            self.refresh_trackpoints()
+            if self.map_widget:
+                self.map_widget.on_track_list_selection_changed(self.current_track_index)
+            self.point_selected.emit(-1)
+            self.history_changed.emit()  # Notify that history state changed
+        else:
+            QMessageBox.warning(self, "Error", "Could not delete trackpoints")
     
     def _delete_from_end(self, from_row_index: int):
         """Delete trackpoints from specified row to end."""
         from PyQt5.QtWidgets import QMessageBox
+        from config.app_config_yaml import AppConfig
         
         if self.current_track_index < 0 or from_row_index < 0:
             return
@@ -675,31 +825,38 @@ class TrackpointListWidget(QWidget):
             )
             return
         
-        # Show confirmation
-        reply = QMessageBox.question(
-            self,
-            "Delete from End",
-            f"Delete {count_to_delete} trackpoint(s) from row {from_row_index + 1} to end?\n\n"
-            f"{count_remaining} point(s) will remain.",
-            QMessageBox.Yes | QMessageBox.No,
-            QMessageBox.No
-        )
+        # Check if confirmation is required
+        config = AppConfig()
+        require_confirmation = config.get_bool('FileHandling.DeleteConfirmation.require_delete_confirmation', True)
         
-        if reply == QMessageBox.Yes:
-            # Use command-based range removal (undoable)
-            end_index = len(track.trackpoints) - 1
-            success = self.track_manager.remove_trackpoints_range_with_history(
-                self.current_track_index, from_row_index, end_index
+        if require_confirmation:
+            # Show confirmation
+            reply = QMessageBox.question(
+                self,
+                "Delete from End",
+                f"Delete {count_to_delete} trackpoint(s) from row {from_row_index + 1} to end?\n\n"
+                f"{count_remaining} point(s) will remain.",
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.Yes
             )
-            if success:
-                logger.info(f"Deleted {count_to_delete} trackpoints from end of track '{track.name}'")
-                self.refresh_trackpoints()
-                if self.map_widget:
-                    self.map_widget.on_track_list_selection_changed(self.current_track_index)
-                self.point_selected.emit(-1)
-                self.history_changed.emit()  # Notify that history state changed
-            else:
-                QMessageBox.warning(self, "Error", "Could not delete trackpoints")
+            
+            if reply != QMessageBox.Yes:
+                return
+        
+        # Use command-based range removal (undoable)
+        end_index = len(track.trackpoints) - 1
+        success = self.track_manager.remove_trackpoints_range_with_history(
+            self.current_track_index, from_row_index, end_index
+        )
+        if success:
+            logger.info(f"Deleted {count_to_delete} trackpoints from end of track '{track.name}'")
+            self.refresh_trackpoints()
+            if self.map_widget:
+                self.map_widget.on_track_list_selection_changed(self.current_track_index)
+            self.point_selected.emit(-1)
+            self.history_changed.emit()  # Notify that history state changed
+        else:
+            QMessageBox.warning(self, "Error", "Could not delete trackpoints")
 
 
 # ============================================================================

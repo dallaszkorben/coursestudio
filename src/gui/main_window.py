@@ -257,6 +257,15 @@ class MainWindow(QMainWindow):
         edit_menu.addAction(add_trackpoint_action)
         self.add_trackpoint_action = add_trackpoint_action
         
+        # Edit > Insert Trackpoint (between 2 selected points)
+        insert_trackpoint_action = QAction('&Insert Trackpoint', self)
+        insert_trackpoint_action.setShortcut(Qt.CTRL + Qt.Key_I)
+        insert_trackpoint_action.setStatusTip('Insert trackpoint between two selected points')
+        insert_trackpoint_action.triggered.connect(self.action_insert_trackpoint)
+        insert_trackpoint_action.setEnabled(False)
+        edit_menu.addAction(insert_trackpoint_action)
+        self.insert_trackpoint_action = insert_trackpoint_action
+        
         edit_menu.addSeparator()
         
         # Edit > Preferences
@@ -410,6 +419,7 @@ class MainWindow(QMainWindow):
         self.map_widget.map_ready.connect(self._on_map_ready)
         self.map_widget.track_clicked.connect(self._on_map_track_clicked)
         self.map_widget.point_clicked.connect(self._on_map_point_clicked)
+        self.map_widget.range_selection_changed.connect(self._update_insert_menu_state)  # NEW: Connect range signal
         
         # Connect track list to map widget to update highlighted track
         self.track_list_widget.track_selected.connect(self.map_widget.on_track_list_selection_changed)
@@ -495,6 +505,10 @@ class MainWindow(QMainWindow):
         
         # Connect track selected signal
         self.track_selected.connect(self._on_track_selected)
+        
+        # Connect map range selection signal to update insert menu
+        if hasattr(self, 'map_widget') and hasattr(self.map_widget, 'range_selection_changed'):
+            self.map_widget.range_selection_changed.connect(self._update_insert_menu_state)
     
     # ========================================================================
     # File Operations
@@ -836,6 +850,83 @@ A PyQt5 application for reading, editing, and exporting GPX navigation tracks.
                 QMessageBox.critical(self, "Invalid Input", str(e))
                 logger.error(f"Add trackpoint error: {e}")
     
+    def action_insert_trackpoint(self):
+        """Insert a new trackpoint between two selected neighboring points."""
+        
+        if not self.track_manager.is_track_selected():
+            QMessageBox.information(self, "No Track Selected", "Please select a track first")
+            return
+        
+        # Check if we have 2 points selected in range mode
+        if not (hasattr(self, 'map_widget') and self.map_widget.selected_trackpoint_range):
+            QMessageBox.information(self, "No Range Selected", 
+                                   "Please select two neighboring points on the map (Shift+click)\nto insert a point between them")
+            return
+        
+        try:
+            start_idx, end_idx = self.map_widget.selected_trackpoint_range
+            trackpoints = self.track_manager.get_selected_trackpoints()
+            
+            if start_idx >= len(trackpoints) or end_idx >= len(trackpoints):
+                QMessageBox.critical(self, "Error", "Invalid trackpoint indices")
+                return
+            
+            # Get the two points
+            point1 = trackpoints[start_idx]
+            point2 = trackpoints[end_idx]
+            
+            # Calculate midpoint
+            mid_lat = (point1.latitude + point2.latitude) / 2.0
+            mid_lon = (point1.longitude + point2.longitude) / 2.0
+            
+            # Calculate midpoint elevation if available
+            mid_alt = None
+            if point1.elevation is not None and point2.elevation is not None:
+                mid_alt = (point1.elevation + point2.elevation) / 2.0
+            elif point1.elevation is not None:
+                mid_alt = point1.elevation
+            elif point2.elevation is not None:
+                mid_alt = point2.elevation
+            
+            # Insert at position between start and end (after start, before end)
+            insert_position = start_idx + 1
+            
+            # Add the new point
+            success = self.track_manager.add_trackpoint_selected_with_history(
+                mid_lat, mid_lon, mid_alt, insert_position
+            )
+            
+            if success:
+                # Refresh display
+                if hasattr(self, 'trackpoint_list_widget'):
+                    self.trackpoint_list_widget.refresh_trackpoints()
+                    # Suppress context menu during selection (avoid showing delete menu)
+                    self.trackpoint_list_widget._suppress_context_menu = True
+                    # Select the newly inserted point (at insert_position)
+                    self.trackpoint_list_widget.select_point(insert_position)
+                
+                if hasattr(self, 'map_widget'):
+                    current_index = self.track_manager.get_selected_track_index()
+                    self.map_widget.on_track_list_selection_changed(current_index)
+                    # Select the newly inserted point on map
+                    self.map_widget.selected_trackpoint_index = insert_position
+                    self.map_widget.selected_trackpoint_range = None
+                    self.map_widget.render_map()
+                
+                # Update undo/redo menu states
+                self._update_undo_redo_menu_states()
+                
+                self.statusBar().showMessage(
+                    f"Inserted trackpoint at ({mid_lat:.4f}, {mid_lon:.4f})",
+                    3000
+                )
+                logger.info(f"Trackpoint inserted: lat={mid_lat}, lon={mid_lon}")
+            else:
+                QMessageBox.critical(self, "Error", "Failed to insert trackpoint")
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to insert trackpoint: {e}")
+            logger.error(f"Insert trackpoint error: {e}")
+    
     # ========================================================================
     # Signal Handlers
     # ========================================================================
@@ -934,6 +1025,11 @@ A PyQt5 application for reading, editing, and exporting GPX navigation tracks.
         # Highlight point on map
         if hasattr(self, 'map_widget'):
             self.map_widget.on_point_selected(self._current_track_index, point_index)
+            # Clear range selection when user clicks list
+            self.map_widget.selected_trackpoint_range = None
+            self.map_widget.render_map()
+            # Update menu state
+            self._update_insert_menu_state()
     
     def _on_trackpoint_double_clicked(self, point_index: int):
         """Handle double-click on trackpoint."""
@@ -990,6 +1086,24 @@ A PyQt5 application for reading, editing, and exporting GPX navigation tracks.
         # Update trackpoint list selection
         if hasattr(self, 'trackpoint_list_widget'):
             self.trackpoint_list_widget.select_point(point_id)
+        
+        # Update insert menu state based on range selection
+        self._update_insert_menu_state()
+    
+    def _update_insert_menu_state(self):
+        """Enable/disable insert menu and update list based on map range selection."""
+        if hasattr(self, 'insert_trackpoint_action') and hasattr(self, 'map_widget'):
+            # Enable insert only if range selection is active (2 neighboring points selected)
+            has_range = (self.map_widget.selected_trackpoint_range is not None)
+            self.insert_trackpoint_action.setEnabled(has_range)
+            
+            # Update list selection to show range
+            if has_range and hasattr(self, 'trackpoint_list_widget'):
+                start_idx, end_idx = self.map_widget.selected_trackpoint_range
+                self.trackpoint_list_widget.select_range(start_idx, end_idx)
+            elif hasattr(self, 'trackpoint_list_widget') and self.map_widget.selected_trackpoint_index is not None:
+                # Show single selection in list
+                self.trackpoint_list_widget.select_point(self.map_widget.selected_trackpoint_index)
     
     def _on_track_path_color_changed(self, hex_color: str):
         """Handle track path color change from settings."""

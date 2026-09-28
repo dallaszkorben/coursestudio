@@ -6,6 +6,7 @@ Direct adaptation of openseemap's proven working MapWidget.
 
 import tempfile
 import os
+import logging
 from PyQt5.QtWidgets import QWidget, QLabel, QPushButton, QVBoxLayout
 from PyQt5.QtGui import QPixmap, QFont
 from PyQt5.QtCore import Qt, QTimer, pyqtSignal
@@ -13,6 +14,8 @@ from PIL import Image, ImageDraw
 
 from src.map.mbtiles_provider import MBTilesProvider
 from src.map.map_renderer import MapRenderer
+
+logger = logging.getLogger(__name__)
 
 
 class MapWidget(QWidget):
@@ -26,6 +29,7 @@ class MapWidget(QWidget):
     map_ready = pyqtSignal()
     track_clicked = pyqtSignal(str)
     point_clicked = pyqtSignal(str, int)
+    range_selection_changed = pyqtSignal(bool)  # Emitted when range selection changes (True = has range, False = no range)
     
     # UI Constants
     ZOOM_BUTTON_SIZE = 40
@@ -48,6 +52,7 @@ class MapWidget(QWidget):
         self.track_manager = None
         self.selected_track_id = None
         self.selected_trackpoint_index = None
+        self.selected_trackpoint_range = None  # NEW: For selecting 2 neighboring points (start_idx, end_idx)
         self.show_turning_points = True  # Show/hide turning points
         
         # Load track display settings from config
@@ -254,8 +259,10 @@ class MapWidget(QWidget):
                 if self.show_turning_points:
                     # FIRST: Draw all unselected turning points (yellow)
                     for i, tp in enumerate(trackpoints):
-                        # Skip selected point - draw it last
+                        # Skip selected point and range points - draw them last
                         if i == self.selected_trackpoint_index:
+                            continue
+                        if self.selected_trackpoint_range and (i == self.selected_trackpoint_range[0] or i == self.selected_trackpoint_range[1]):
                             continue
                         
                         screen = map_renderer.gps_to_screen(tp.latitude, tp.longitude)
@@ -268,8 +275,21 @@ class MapWidget(QWidget):
                             # Draw circle for turning point
                             draw.ellipse([(x-r, y-r), (x+r, y+r)], fill=point_color, outline=(255,255,255), width=1)
                     
-                    # SECOND: Draw selected point LAST so it appears on top
-                    if self.selected_trackpoint_index is not None and self.selected_trackpoint_index < len(trackpoints):
+                    # SECOND: Draw selected range points (orange - indicates range selection)
+                    if self.selected_trackpoint_range is not None:
+                        start_idx, end_idx = self.selected_trackpoint_range
+                        for idx in [start_idx, end_idx]:
+                            if idx < len(trackpoints):
+                                tp = trackpoints[idx]
+                                screen = map_renderer.gps_to_screen(tp.latitude, tp.longitude)
+                                if screen:
+                                    x, y = screen
+                                    # Use orange color for range selection
+                                    r = self.selected_turning_point_size
+                                    draw.ellipse([(x-r, y-r), (x+r, y+r)], fill=(255, 165, 0), outline=(255,255,255), width=2)
+                    
+                    # THIRD: Draw single selected point LAST so it appears on top
+                    elif self.selected_trackpoint_index is not None and self.selected_trackpoint_index < len(trackpoints):
                         tp = trackpoints[self.selected_trackpoint_index]
                         screen = map_renderer.gps_to_screen(tp.latitude, tp.longitude)
                         
@@ -328,6 +348,11 @@ class MapWidget(QWidget):
     
     def mousePressEvent(self, event):
         """Handle mouse button press."""
+        if event.button() == Qt.RightButton:
+            # Right-click: show context menu
+            self._show_context_menu(event.pos())
+            return
+        
         if event.button() == Qt.LeftButton:
             x, y = event.x(), event.y()
             
@@ -352,6 +377,48 @@ class MapWidget(QWidget):
                 button_y <= y <= button_y + self.ZOOM_BUTTON_SIZE):
                 self.recenter_on_default()
                 return
+            
+            # Check if clicking on a turning point (only if show_turning_points or a point is selected)
+            if self.show_turning_points or self.selected_trackpoint_index is not None or self.selected_trackpoint_range is not None:
+                clicked_point_index = self._find_turning_point_at_click(x, y)
+                if clicked_point_index is not None:
+                    # Check if Shift is pressed (for range selection)
+                    if event.modifiers() & Qt.ShiftModifier:
+                        # Shift+click: try to select range
+                        if self.selected_trackpoint_index is not None:
+                            # We have a single point selected - try to make it a range
+                            min_idx = min(self.selected_trackpoint_index, clicked_point_index)
+                            max_idx = max(self.selected_trackpoint_index, clicked_point_index)
+                            
+                            # Only allow selecting consecutive neighbors
+                            if max_idx - min_idx == 1:
+                                self.selected_trackpoint_range = (min_idx, max_idx)
+                                self.selected_trackpoint_index = None  # Clear single selection
+                                self.range_selection_changed.emit(True)  # Signal range change
+                                self.render_map()
+                                return
+                        elif self.selected_trackpoint_range is not None:
+                            # We have a range - try to extend or modify it
+                            start_idx, end_idx = self.selected_trackpoint_range
+                            min_idx = min(start_idx, end_idx, clicked_point_index)
+                            max_idx = max(start_idx, end_idx, clicked_point_index)
+                            
+                            # Only allow selecting consecutive neighbors
+                            if max_idx - min_idx == 1:
+                                self.selected_trackpoint_range = (min_idx, max_idx)
+                                self.render_map()
+                        # For Shift+click, don't fall through - return regardless
+                        return
+                    
+                    # Normal click (no Shift): select single point
+                    self.selected_trackpoint_index = clicked_point_index
+                    if self.selected_trackpoint_range is not None:
+                        self.range_selection_changed.emit(False)  # Signal range cleared
+                    self.selected_trackpoint_range = None  # Clear range selection
+                    self.point_clicked.emit(str(self.selected_track_id), clicked_point_index)
+                    self.render_map()
+                    return
+                    return
             
             # Otherwise, start pan
             self.pan_start_x = x
@@ -539,3 +606,110 @@ class MapWidget(QWidget):
         # Composite the overlay onto the image
         pil_image = Image.alpha_composite(pil_image, overlay)
         return pil_image
+    
+    def _show_context_menu(self, pos):
+        """Show context menu on right-click."""
+        from PyQt5.QtWidgets import QMenu
+        
+        menu = QMenu()
+        
+        # If range is selected: show insert option
+        if self.selected_trackpoint_range is not None:
+            insert_action = menu.addAction("Insert Trackpoint Between Selected")
+            insert_action.triggered.connect(self._on_insert_triggered)
+        # If single point is selected: show delete options
+        elif self.selected_trackpoint_index is not None:
+            delete_action = menu.addAction("Delete Trackpoint")
+            delete_from_start_action = menu.addAction("Delete from Start to Here")
+            delete_from_end_action = menu.addAction("Delete from Here to End")
+            
+            delete_action.triggered.connect(self._on_delete_single)
+            delete_from_start_action.triggered.connect(self._on_delete_from_start)
+            delete_from_end_action.triggered.connect(self._on_delete_from_end)
+        else:
+            menu.addAction("Select a point to delete or Shift+Click two neighbors to insert").setEnabled(False)
+        
+        menu.exec_(self.mapToGlobal(pos))
+    
+    def _on_insert_triggered(self):
+        """Handle insert action from context menu."""
+        # Find the main window and call its insert action
+        from PyQt5.QtWidgets import QApplication
+        main_window = QApplication.instance().activeWindow()
+        if main_window and hasattr(main_window, 'action_insert_trackpoint'):
+            main_window.action_insert_trackpoint()
+    
+    def _on_delete_single(self):
+        """Handle delete single trackpoint action."""
+        from PyQt5.QtWidgets import QApplication
+        main_window = QApplication.instance().activeWindow()
+        if main_window and hasattr(main_window, 'trackpoint_list_widget'):
+            if self.selected_trackpoint_index is not None:
+                main_window.trackpoint_list_widget._delete_trackpoint(self.selected_trackpoint_index)
+    
+    def _on_delete_from_start(self):
+        """Handle delete from start to here action."""
+        from PyQt5.QtWidgets import QApplication
+        main_window = QApplication.instance().activeWindow()
+        if main_window and hasattr(main_window, 'trackpoint_list_widget'):
+            if self.selected_trackpoint_index is not None:
+                main_window.trackpoint_list_widget._delete_from_start(self.selected_trackpoint_index)
+    
+    def _on_delete_from_end(self):
+        """Handle delete from here to end action."""
+        from PyQt5.QtWidgets import QApplication
+        main_window = QApplication.instance().activeWindow()
+        if main_window and hasattr(main_window, 'trackpoint_list_widget'):
+            if self.selected_trackpoint_index is not None:
+                main_window.trackpoint_list_widget._delete_from_end(self.selected_trackpoint_index)
+    
+    def _find_turning_point_at_click(self, click_x, click_y):
+        """
+        Find the closest turning point to a click location.
+        
+        Args:
+            click_x (int): X coordinate of click in widget space
+            click_y (int): Y coordinate of click in widget space
+            
+        Returns:
+            int or None: Index of the closest turning point within click radius, or None if none found
+        """
+        if not self.track_manager or self.selected_track_id is None:
+            return None
+        
+        tracks = self.track_manager.get_all_tracks()
+        if self.selected_track_id >= len(tracks):
+            return None
+        
+        track = tracks[self.selected_track_id]
+        trackpoints = track.trackpoints
+        
+        if not trackpoints:
+            return None
+        
+        # Create map renderer with current map position to convert GPS to screen coordinates
+        map_renderer = MapRenderer(self.width(), self.height(), self.mbtiles_provider,
+                                   self.center_lat, self.center_lon, self.zoom_level)
+        
+        # Click tolerance in pixels (allow clicking within this distance of a point)
+        CLICK_TOLERANCE = 10
+        
+        closest_distance = CLICK_TOLERANCE + 1  # Start beyond tolerance
+        closest_index = None
+        
+        # Find the closest turning point to the click
+        for i, tp in enumerate(trackpoints):
+            screen = map_renderer.gps_to_screen(tp.latitude, tp.longitude)
+            
+            if screen:
+                screen_x, screen_y = screen
+                
+                # Calculate distance from click to this point
+                distance = ((click_x - screen_x) ** 2 + (click_y - screen_y) ** 2) ** 0.5
+                
+                # If this is the closest point so far and within tolerance
+                if distance < closest_distance:
+                    closest_distance = distance
+                    closest_index = i
+        
+        return closest_index
