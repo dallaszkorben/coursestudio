@@ -123,10 +123,10 @@ class ColorPickerWidget(QWidget):
         
         from PyQt5.QtWidgets import QGridLayout
         grid = QGridLayout()
-        grid.setSpacing(0)  # ZERO spacing
+        grid.setSpacing(0)  # ZERO spacing by default
         grid.setContentsMargins(0, 0, 0, 0)  # ZERO margins
         grid.setHorizontalSpacing(4)  # Only horizontal spacing between columns
-        grid.setVerticalSpacing(0)  # ZERO vertical spacing
+        grid.setVerticalSpacing(0)  # ZERO vertical spacing by default
         grid.setColumnStretch(0, 0)  # Label column - fixed width
         grid.setColumnStretch(1, 1)  # Control column - flexible
         
@@ -157,7 +157,16 @@ class ColorPickerWidget(QWidget):
         row += 1
         
         # ====================================================================
-        # Row 1: Quick Select Label + Preset Buttons
+        # Spacer Row: 4 pixels vertical space before Quick Select
+        # ====================================================================
+        spacer = QWidget()
+        spacer.setMinimumHeight(4)
+        spacer.setMaximumHeight(4)
+        grid.addWidget(spacer, row, 0, 1, 2)  # Span both columns
+        row += 1
+        
+        # ====================================================================
+        # Row 2: Quick Select Label + Preset Buttons
         # ====================================================================
         
         presets_label = QLabel("Quick Select:")
@@ -166,7 +175,7 @@ class ColorPickerWidget(QWidget):
         
         presets_layout = QHBoxLayout()
         presets_layout.setContentsMargins(0, 0, 0, 0)
-        presets_layout.setSpacing(0)
+        presets_layout.setSpacing(4)  # 4 pixels spacing between preset buttons
         self.preset_buttons = {}
         for color_name, hex_code in self.preset_colors.items():
             btn = QPushButton()
@@ -200,7 +209,16 @@ class ColorPickerWidget(QWidget):
         row += 1
         
         # ====================================================================
-        # Rows 2-4: RGB Sliders
+        # Spacer Row: 4 pixels vertical space before RGB Sliders
+        # ====================================================================
+        spacer2 = QWidget()
+        spacer2.setMinimumHeight(4)
+        spacer2.setMaximumHeight(4)
+        grid.addWidget(spacer2, row, 0, 1, 2)  # Span both columns
+        row += 1
+        
+        # ====================================================================
+        # Rows for RGB Sliders
         # ====================================================================
         
         # Red slider

@@ -10,7 +10,7 @@ Application:
 Appearance:
   MapDisplay:
     TrackPath:
-      color: E81800
+      color: E81B00
       width: 9
       colors:
         Red: FF0000

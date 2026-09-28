@@ -97,11 +97,7 @@ class TurningPointsSettingsWidget(QGroupBox):
         # NO addStretch() - let it stay compact on the left!
         general_layout.addLayout(toggle_layout)
         
-        # Color Picker
-        color_label = QLabel("Color:")
-        color_label.setStyleSheet("font-weight: bold; font-size: 12px; color: white;")
-        general_layout.addWidget(color_label)
-        
+        # Color Picker (no need for "Color:" label - the color picker has its own)
         self.color_picker = ColorPickerWidget(
             initial_color=self.color,
             config=self.config,
@@ -141,11 +137,7 @@ class TurningPointsSettingsWidget(QGroupBox):
         selected_layout.setSpacing(8)
         selected_layout.setContentsMargins(8, 8, 8, 8)
         
-        # Color Picker
-        selected_color_label = QLabel("Color:")
-        selected_color_label.setStyleSheet("font-weight: bold; font-size: 12px; color: white;")
-        selected_layout.addWidget(selected_color_label)
-        
+        # Color Picker (no need for "Color:" label - the color picker has its own)
         self.selected_color_picker = ColorPickerWidget(
             initial_color=self.selected_color,
             config=self.config,

@@ -131,7 +131,12 @@ class ToggleSwitchWidget(QWidget):
         step_size = (end_position - self.circle_position) / steps
         
         for i in range(steps + 1):
-            self.circle_position = self.circle_position + step_size
+            if i == steps:
+                # On final step, set exact position to avoid floating point errors
+                self.circle_position = end_position
+            else:
+                self.circle_position = self.circle_position + step_size
+            
             self.update()
             
             # Process events to show animation
