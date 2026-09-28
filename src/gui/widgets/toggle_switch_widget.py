@@ -6,8 +6,8 @@ Provides a smooth toggle switch with animation, similar to macOS/iOS style.
 
 import logging
 from PyQt5.QtWidgets import QWidget, QHBoxLayout, QLabel
-from PyQt5.QtCore import Qt, pyqtSignal, QRect, QPropertyAnimation, QEasingCurve
-from PyQt5.QtGui import QPainter, QColor, QBrush, QPen
+from PyQt5.QtCore import Qt, pyqtSignal
+from PyQt5.QtGui import QPainter, QColor, QBrush
 
 logger = logging.getLogger(__name__)
 
@@ -51,6 +51,10 @@ class ToggleSwitchWidget(QWidget):
         self.CIRCLE_RADIUS = 12
         self.MARGIN = 2
         
+        # Layout positioning constants
+        self.LABEL_WIDTH = 100  # Width for "Show Points:" label
+        self.LABEL_SPACING = 10  # Spacing after label
+        
         # Circle position (0 = off, 1 = on)
         self.circle_position = 1.0 if initial_state else 0.0
         
@@ -68,7 +72,7 @@ class ToggleSwitchWidget(QWidget):
         if self.title:
             title_label = QLabel(f"{self.title}:")
             title_label.setStyleSheet("font-weight: bold; min-width: 60px;")
-            title_label.setFixedWidth(70)  # Same width as "Size:" and "Width:" labels
+            title_label.setFixedWidth(self.LABEL_WIDTH)  # Wide enough for "Show Points:"
             layout.addWidget(title_label)
         
         # Switch widget will be drawn in paintEvent
@@ -84,8 +88,8 @@ class ToggleSwitchWidget(QWidget):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
         
-        # Position for switch - starts after the label area (70px) + spacing (10px)
-        x = 70 + 10
+        # Position for switch - starts after the label area + spacing (using constants)
+        x = self.LABEL_WIDTH + self.LABEL_SPACING
         y = (self.height() - self.SWITCH_HEIGHT) // 2
         
         # Draw background (rounded rectangle)
@@ -127,6 +131,9 @@ class ToggleSwitchWidget(QWidget):
     def _animate_to(self, end_position: float):
         """Animate circle to target position."""
         
+        import time
+        from PyQt5.QtWidgets import QApplication
+        
         steps = 10
         step_size = (end_position - self.circle_position) / steps
         
@@ -138,10 +145,8 @@ class ToggleSwitchWidget(QWidget):
                 self.circle_position = self.circle_position + step_size
             
             self.update()
-            
-            # Process events to show animation
-            from PyQt5.QtWidgets import QApplication
             QApplication.processEvents()
+            time.sleep(0.00125)  # ~1.25ms delay (16x faster than 20ms)
     
     def set_state(self, state: bool):
         """Set toggle state without animation."""

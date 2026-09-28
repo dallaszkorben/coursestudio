@@ -108,7 +108,7 @@ class TurningPointsSettingsWidget(QGroupBox):
         # Size Slider - with fixed-width label for alignment
         size_layout = QHBoxLayout()
         size_layout.setContentsMargins(0, 0, 0, 0)
-        size_layout.setSpacing(8)
+        size_layout.setSpacing(18)  # 18 pixels horizontal spacing between label and control
         
         size_label = QLabel("Size:")
         size_label.setStyleSheet("font-weight: bold; color: white;")
@@ -148,7 +148,7 @@ class TurningPointsSettingsWidget(QGroupBox):
         # Size Slider - with fixed-width label for alignment
         selected_size_layout = QHBoxLayout()
         selected_size_layout.setContentsMargins(0, 0, 0, 0)
-        selected_size_layout.setSpacing(8)
+        selected_size_layout.setSpacing(18)  # 18 pixels horizontal spacing between label and control
         
         selected_size_label = QLabel("Size:")
         selected_size_label.setStyleSheet("font-weight: bold; color: white;")
@@ -222,8 +222,116 @@ class TurningPointsSettingsWidget(QGroupBox):
         # Disable/enable ALL child widgets in color picker (preset buttons, sliders, inputs, etc.)
         self._set_widget_tree_enabled(self.color_picker, enabled)
         
+        # Make the color preview square gray when disabled
+        if not enabled:
+            # Convert current color to grayscale
+            current_color = self.color_picker.get_color()
+            gray = self._hex_to_grayscale(current_color)
+            self.color_picker.preview_square.setStyleSheet(
+                f"background-color: #{gray}; border: 2px solid #999999; border-radius: 4px; "
+                "min-width: 30px; min-height: 30px; max-width: 30px; max-height: 30px;"
+            )
+            # Convert all preset buttons to grayscale
+            for hex_code, btn in self.color_picker.preset_buttons.items():
+                gray = self._hex_to_grayscale(hex_code)
+                btn.setStyleSheet(
+                    f"QPushButton {{ background-color: #{gray}; border: 2px solid #ddd; "
+                    "border-radius: 4px; padding: 0px; }}"
+                )
+            
+            # Gray out R/G/B sliders
+            grayscale_slider_stylesheet = """
+                QSlider::groove:horizontal {
+                    background: #555555;
+                    height: 6px;
+                    border-radius: 3px;
+                }
+                QSlider::sub-page:horizontal {
+                    background: #666666;
+                    border-radius: 3px;
+                }
+                QSlider::add-page:horizontal {
+                    background: #555555;
+                    border-radius: 3px;
+                }
+                QSlider::handle:horizontal {
+                    width: 18px;
+                    height: 18px;
+                    margin: -6px 0;
+                    background: #666666;
+                    border-radius: 9px;
+                }
+            """
+            self.color_picker.r_slider.setStyleSheet(grayscale_slider_stylesheet)
+            self.color_picker.g_slider.setStyleSheet(grayscale_slider_stylesheet)
+            self.color_picker.b_slider.setStyleSheet(grayscale_slider_stylesheet)
+            
+            # Gray out spinboxes
+            grayscale_spinbox_stylesheet = """
+                QSpinBox {
+                    background-color: #444444;
+                    color: #666666;
+                    border: 1px solid #555555;
+                }
+            """
+            self.color_picker.r_spinbox.setStyleSheet(grayscale_spinbox_stylesheet)
+            self.color_picker.g_spinbox.setStyleSheet(grayscale_spinbox_stylesheet)
+            self.color_picker.b_spinbox.setStyleSheet(grayscale_spinbox_stylesheet)
+            self.color_picker.hex_input.setStyleSheet(grayscale_spinbox_stylesheet)
+            
+            # Gray out the size slider - apply to slider and spinbox directly
+            self.size_slider.slider.setStyleSheet(grayscale_slider_stylesheet)
+            self.size_slider.spinbox.setStyleSheet(grayscale_spinbox_stylesheet)
+        else:
+            # Restore normal color preview
+            current_color = self.color_picker.get_color()
+            self.color_picker.preview_square.setStyleSheet(
+                f"background-color: #{current_color}; border: 2px solid #ccc; border-radius: 4px; "
+                "min-width: 30px; min-height: 30px; max-width: 30px; max-height: 30px;"
+            )
+            # Restore normal preset button colors
+            for hex_code, btn in self.color_picker.preset_buttons.items():
+                btn.setStyleSheet(
+                    f"QPushButton {{ background-color: #{hex_code}; border: 2px solid #ddd; "
+                    "border-radius: 4px; padding: 0px; }} "
+                    "QPushButton:hover { border: 2px solid #333; }"
+                )
+            
+            # Restore normal R/G/B sliders
+            from src.gui.widgets.color_picker_widget import SLIDER_STYLESHEET
+            self.color_picker.r_slider.setStyleSheet(SLIDER_STYLESHEET)
+            self.color_picker.g_slider.setStyleSheet(SLIDER_STYLESHEET)
+            self.color_picker.b_slider.setStyleSheet(SLIDER_STYLESHEET)
+            
+            # Restore normal spinboxes
+            self.color_picker.r_spinbox.setStyleSheet("")
+            self.color_picker.g_spinbox.setStyleSheet("")
+            self.color_picker.b_spinbox.setStyleSheet("")
+            self.color_picker.hex_input.setStyleSheet("")
+            
+            # Restore normal slider appearance
+            from src.gui.widgets.slider_setting_widget import SLIDER_STYLESHEET as SIZE_SLIDER_STYLESHEET
+            self.size_slider.slider.setStyleSheet(SIZE_SLIDER_STYLESHEET)
+            self.size_slider.spinbox.setStyleSheet("")
+        
         # Disable/enable size slider and all its children
         self._set_widget_tree_enabled(self.size_slider, enabled)
+    
+    def _hex_to_grayscale(self, hex_color: str) -> str:
+        """Convert hex color to grayscale using luminosity formula."""
+        # Remove '#' if present
+        hex_color = hex_color.lstrip('#')
+        
+        # Convert hex to RGB
+        r = int(hex_color[0:2], 16)
+        g = int(hex_color[2:4], 16)
+        b = int(hex_color[4:6], 16)
+        
+        # Use luminosity formula: 0.299*R + 0.587*G + 0.114*B
+        gray = int(0.299 * r + 0.587 * g + 0.114 * b)
+        
+        # Return as hex string
+        return f"{gray:02X}{gray:02X}{gray:02X}"
     
     def _set_widget_tree_enabled(self, widget, enabled: bool):
         """Recursively enable/disable a widget and all its children."""

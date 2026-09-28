@@ -11,7 +11,7 @@ Appearance:
   MapDisplay:
     TrackPath:
       color: E81B00
-      width: 9
+      width: 5
       colors:
         Red: FF0000
         Deep Pink: FF1493
@@ -30,9 +30,9 @@ Appearance:
         Dark Blue: 00008B
         Navy: 000080
     TurningPoints:
-      show: false
-      color: 501D00
-      size: 2
+      show: true
+      color: 4A1D00
+      size: 5
       colors:
         Red: FF0000
         Deep Pink: FF1493
@@ -51,7 +51,7 @@ Appearance:
         Dark Blue: 00008B
         Navy: 000080
       selected:
-        color: F90000
+        color: FF7F50
         size: 7
         colors:
           Red: FF0000

@@ -79,7 +79,7 @@ class TrackPathSettingsWidget(QGroupBox):
         
         # Grid layout for Width control - aligned with other sliders
         grid = QGridLayout()
-        grid.setSpacing(8)
+        grid.setSpacing(18)  # 18 pixels horizontal spacing between label and control
         grid.setContentsMargins(0, 0, 0, 0)
         grid.setColumnStretch(0, 0)  # Label column - fixed width
         grid.setColumnStretch(1, 1)  # Control column - flexible

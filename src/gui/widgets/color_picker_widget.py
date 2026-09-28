@@ -125,7 +125,7 @@ class ColorPickerWidget(QWidget):
         grid = QGridLayout()
         grid.setSpacing(0)  # ZERO spacing by default
         grid.setContentsMargins(0, 0, 0, 0)  # ZERO margins
-        grid.setHorizontalSpacing(4)  # Only horizontal spacing between columns
+        grid.setHorizontalSpacing(18)  # 18 pixels horizontal spacing between label and control
         grid.setVerticalSpacing(0)  # ZERO vertical spacing by default
         grid.setColumnStretch(0, 0)  # Label column - fixed width
         grid.setColumnStretch(1, 1)  # Control column - flexible
