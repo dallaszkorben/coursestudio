@@ -49,6 +49,23 @@ class TurningPointsSettingsWidget(QGroupBox):
         self.selected_color = self.config.get_str('Appearance.MapDisplay.TurningPoints.selected.color', '0000FF')
         self.selected_size = self.config.get_int('Appearance.MapDisplay.TurningPoints.selected.size', 7)
         
+        # Apply white frame styling (main section)
+        self.setStyleSheet("""
+            QGroupBox {
+                border: 1px solid white;
+                border-radius: 4px;
+                margin-top: 8px;
+                padding-top: 8px;
+                font-weight: bold;
+                color: white;
+            }
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                subcontrol-position: top left;
+                padding: 0px 4px;
+            }
+        """)
+        
         self._init_ui()
         self._connect_signals()
         
@@ -59,26 +76,29 @@ class TurningPointsSettingsWidget(QGroupBox):
         
         layout = QVBoxLayout()
         self.setLayout(layout)
-        layout.setSpacing(15)
+        layout.setSpacing(12)
         layout.setContentsMargins(10, 10, 10, 10)
         
         # ====================================================================
-        # Show/Hide Toggle (Apple-style switch)
+        # Subsection 1: General Points Settings
         # ====================================================================
         
+        general_section = self._create_subsection("General Points")
+        general_layout = QVBoxLayout()
+        general_layout.setSpacing(10)
+        general_layout.setContentsMargins(8, 8, 8, 8)
+        
+        # Show/Hide Toggle (Apple-style switch)
         toggle_layout = QHBoxLayout()
         self.show_toggle = ToggleSwitchWidget(title="Show Points", initial_state=self.show)
         toggle_layout.addWidget(self.show_toggle)
         toggle_layout.addStretch()
-        layout.addLayout(toggle_layout)
+        general_layout.addLayout(toggle_layout)
         
-        # ====================================================================
-        # Turning Point Color Picker
-        # ====================================================================
-        
-        color_label = QLabel("Turning Point Color:")
-        color_label.setStyleSheet("font-weight: bold; font-size: 11px; color: #666;")
-        layout.addWidget(color_label)
+        # General Point Color Picker with white label
+        color_label = QLabel("Color:")
+        color_label.setStyleSheet("font-weight: bold; font-size: 12px; color: white;")
+        general_layout.addWidget(color_label)
         
         # Load color palette from config for turning points
         self.color_picker = ColorPickerWidget(
@@ -86,12 +106,9 @@ class TurningPointsSettingsWidget(QGroupBox):
             config=self.config,
             config_path='Appearance.MapDisplay.TurningPoints.colors'
         )
-        layout.addWidget(self.color_picker)
+        general_layout.addWidget(self.color_picker)
         
-        # ====================================================================
-        # Turning Point Size Slider
-        # ====================================================================
-        
+        # General Point Size Slider
         self.size_slider = SliderSettingWidget(
             title="Size",
             min_val=2,
@@ -99,15 +116,24 @@ class TurningPointsSettingsWidget(QGroupBox):
             current_val=self.size,
             suffix="px"
         )
-        layout.addWidget(self.size_slider)
+        general_layout.addWidget(self.size_slider)
+        
+        general_section.setLayout(general_layout)
+        layout.addWidget(general_section)
         
         # ====================================================================
-        # Selected Point Color Picker
+        # Subsection 2: Selected Point Settings
         # ====================================================================
         
-        selected_color_label = QLabel("Selected Point Color:")
-        selected_color_label.setStyleSheet("font-weight: bold; font-size: 11px; color: #666;")
-        layout.addWidget(selected_color_label)
+        selected_section = self._create_subsection("Selected Points")
+        selected_layout = QVBoxLayout()
+        selected_layout.setSpacing(10)
+        selected_layout.setContentsMargins(8, 8, 8, 8)
+        
+        # Selected Point Color Picker with white label
+        selected_color_label = QLabel("Color:")
+        selected_color_label.setStyleSheet("font-weight: bold; font-size: 12px; color: white;")
+        selected_layout.addWidget(selected_color_label)
         
         # Load color palette from config for selected turning points
         self.selected_color_picker = ColorPickerWidget(
@@ -115,23 +141,43 @@ class TurningPointsSettingsWidget(QGroupBox):
             config=self.config,
             config_path='Appearance.MapDisplay.TurningPoints.selected.colors'
         )
-        layout.addWidget(self.selected_color_picker)
+        selected_layout.addWidget(self.selected_color_picker)
         
-        # ====================================================================
         # Selected Point Size Slider
-        # ====================================================================
-        
         self.selected_size_slider = SliderSettingWidget(
-            title="Selected Size",
+            title="Size",
             min_val=4,
             max_val=15,
             current_val=self.selected_size,
             suffix="px"
         )
-        layout.addWidget(self.selected_size_slider)
+        selected_layout.addWidget(self.selected_size_slider)
+        
+        selected_section.setLayout(selected_layout)
+        layout.addWidget(selected_section)
         
         # Add stretch to push controls to top
         layout.addStretch()
+    
+    def _create_subsection(self, title: str) -> QGroupBox:
+        """Create a styled subsection container with gray frame."""
+        section = QGroupBox(title)
+        section.setStyleSheet("""
+            QGroupBox {
+                border: 1px solid #999999;
+                border-radius: 4px;
+                margin-top: 8px;
+                padding-top: 8px;
+                font-weight: bold;
+                color: white;
+            }
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                subcontrol-position: top left;
+                padding: 0px 4px;
+            }
+        """)
+        return section
     
     def _connect_signals(self):
         """Connect widget signals."""

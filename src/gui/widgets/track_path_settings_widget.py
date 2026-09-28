@@ -41,6 +41,23 @@ class TrackPathSettingsWidget(QGroupBox):
         self.color = self.config.get_str('Appearance.MapDisplay.TrackPath.color', 'FF0000')
         self.width = self.config.get_int('Appearance.MapDisplay.TrackPath.width', 3)
         
+        # Apply white frame styling (main section)
+        self.setStyleSheet("""
+            QGroupBox {
+                border: 1px solid white;
+                border-radius: 4px;
+                margin-top: 8px;
+                padding-top: 8px;
+                font-weight: bold;
+                color: white;
+            }
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                subcontrol-position: top left;
+                padding: 0px 4px;
+            }
+        """)
+        
         self._init_ui()
         self._connect_signals()
         

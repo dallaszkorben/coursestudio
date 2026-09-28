@@ -124,7 +124,7 @@ class ColorPickerWidget(QWidget):
         title_layout = QHBoxLayout()
         
         title_label = QLabel("Color:")
-        title_label.setStyleSheet("font-weight: bold; min-width: 50px;")
+        title_label.setStyleSheet("font-weight: bold; min-width: 50px; color: white;")
         title_layout.addWidget(title_label)
         
         # Color preview square
@@ -144,7 +144,7 @@ class ColorPickerWidget(QWidget):
         
         presets_layout = QHBoxLayout()
         presets_label = QLabel("Quick Select:")
-        presets_label.setStyleSheet("font-size: 11px; color: #666;")
+        presets_label.setStyleSheet("font-weight: bold; font-size: 12px; color: white;")
         presets_layout.addWidget(presets_label)
         
         self.preset_buttons = {}
