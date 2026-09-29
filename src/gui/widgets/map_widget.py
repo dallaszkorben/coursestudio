@@ -7,7 +7,7 @@ Direct adaptation of openseemap's proven working MapWidget.
 import tempfile
 import os
 import logging
-from PyQt5.QtWidgets import QWidget, QLabel, QPushButton, QVBoxLayout
+from PyQt5.QtWidgets import QWidget, QLabel, QPushButton, QVBoxLayout, QApplication
 from PyQt5.QtGui import QPixmap, QFont
 from PyQt5.QtCore import Qt, QTimer, pyqtSignal
 from PIL import Image, ImageDraw
@@ -491,15 +491,15 @@ class MapWidget(QWidget):
                 self.recenter_on_default()
                 return
             
-            # Check if clicking on a turning point (only if show_turning_points or a point is selected)
+            # Check if clicking on a turning point (PRIORITY: check this first for Shift+click range selection)
             if self.show_turning_points or self.selected_trackpoint_index is not None or self.selected_trackpoint_range is not None:
                 clicked_point_index = self._find_turning_point_at_click(x, y)
                 if clicked_point_index is not None:
-                    # Check if Shift is pressed (for range selection)
+                    # Check if Shift is pressed (for range selection on an existing point)
                     if event.modifiers() & Qt.ShiftModifier:
-                        # Shift+click: try to select range
+                        # Shift+click on a point: try to select range
                         if self.selected_trackpoint_index is not None:
-                            # We have a single point selected - try to make it a range
+                            # We have a single point selected - try to make it a range with this point
                             min_idx = min(self.selected_trackpoint_index, clicked_point_index)
                             max_idx = max(self.selected_trackpoint_index, clicked_point_index)
                             
@@ -521,7 +521,7 @@ class MapWidget(QWidget):
                             if max_idx - min_idx == 1:
                                 self.selected_trackpoint_range = (min_idx, max_idx)
                                 self.render_map()
-                        # For Shift+click, don't fall through - return regardless
+                        # For Shift+click on point, don't fall through
                         return
                     
                     # Normal click (no Shift): select single point
@@ -548,14 +548,17 @@ class MapWidget(QWidget):
                     self.render_map()
                     return
                 
-                # NEW: If range selected but no point clicked, insert new point at cursor and start dragging
-                if self.selected_trackpoint_range is not None and not (event.modifiers() & Qt.ShiftModifier):
+                # If range selected but no point clicked, insert new point at cursor and start dragging
+                if self.selected_trackpoint_range is not None:
                     start_idx, end_idx = self.selected_trackpoint_range
                     
                     # Convert click position to GPS
                     gps_coords = self.screen_to_gps(x, y)
-                    if gps_coords and self.track_manager:
+                    if gps_coords and self.track_manager and self.selected_track_id is not None:
                         lat, lon = gps_coords
+                        
+                        # Ensure track is selected in track_manager
+                        self.track_manager.select_track(self.selected_track_id)
                         
                         # Insert new trackpoint at position between the two selected points
                         insert_position = end_idx
@@ -582,7 +585,6 @@ class MapWidget(QWidget):
                             self.selected_trackpoint_index = insert_position
                             
                             # Refresh list and render
-                            from PyQt5.QtWidgets import QApplication
                             main_window = QApplication.instance().activeWindow()
                             if main_window and hasattr(main_window, 'trackpoint_list_widget'):
                                 main_window.trackpoint_list_widget.refresh_trackpoints()
@@ -591,9 +593,62 @@ class MapWidget(QWidget):
                             logger.info(f"[INSERT+DRAG] Inserted point at {insert_position}, starting drag")
                             return
             
-            # Otherwise, start pan
-            self.pan_start_x = x
-            self.pan_start_y = y
+            # NEW: Shift+click on empty space (only if no point was found above) - insert point at end (or as first point)
+            if event.modifiers() & Qt.ShiftModifier:
+                logger.info(f"[DEBUG] Shift+click on empty space at ({x}, {y})")
+                gps_coords = self.screen_to_gps(x, y)
+                logger.info(f"[DEBUG] gps_coords={gps_coords}, track_manager={self.track_manager}, selected_track_id={self.selected_track_id}")
+                if gps_coords and self.track_manager:
+                    lat, lon = gps_coords
+                    
+                    # If no track selected, create a new one
+                    if self.selected_track_id is None:
+                        from src.core.track_manager import TrackData
+                        new_track = TrackData(name=f"Track {len(self.track_manager.get_all_tracks()) + 1}", trackpoints=[])
+                        self.track_manager.tracks.append(new_track)
+                        self.selected_track_id = len(self.track_manager.get_all_tracks()) - 1
+                        self.track_manager.select_track(self.selected_track_id)
+                        logger.info(f"[DEBUG] Created new track: {new_track.name} at index {self.selected_track_id}")
+                        
+                        # Emit signal to update track list in UI
+                        main_window = QApplication.instance().activeWindow()
+                        if main_window and hasattr(main_window, 'track_list_widget'):
+                            main_window.track_list_widget.refresh_tracks()
+                            main_window.track_list_widget.select_track(self.selected_track_id)
+                    
+                    # Now ensure track is selected in track_manager
+                    self.track_manager.select_track(self.selected_track_id)
+                    
+                    # Get current trackpoint count
+                    trackpoints = self.track_manager.get_selected_trackpoints()
+                    if trackpoints:
+                        # Insert at end
+                        insert_position = len(trackpoints)
+                    else:
+                        # Insert as first point
+                        insert_position = 0
+                    
+                    # Insert new trackpoint
+                    success = self.track_manager.add_trackpoint_selected_with_history(
+                        lat, lon, None, insert_position
+                    )
+                    logger.info(f"[DEBUG] Insert result: success={success}")
+                    
+                    if success:
+                        # Select the new point
+                        self.selected_trackpoint_index = insert_position
+                        self.selected_trackpoint_range = None
+                        
+                        # Refresh list and render
+                        main_window = QApplication.instance().activeWindow()
+                        if main_window and hasattr(main_window, 'trackpoint_list_widget'):
+                            main_window.trackpoint_list_widget.refresh_trackpoints()
+                        
+                        self.render_map()
+                        logger.info(f"[SHIFT+INSERT] Inserted point at position {insert_position}")
+                        return
+                return  # Don't pan if Shift+click, even if insert failed
+            
     
     def mouseMoveEvent(self, event):
         """Handle mouse movement for panning or dragging trackpoint."""
@@ -677,7 +732,6 @@ class MapWidget(QWidget):
                         self.point_clicked.emit(str(self.selected_track_id), self.dragged_trackpoint_index)
                         
                         # Update ONLY the one row that changed (not the entire table!)
-                        from PyQt5.QtWidgets import QApplication
                         main_window = QApplication.instance().activeWindow()
                         if main_window and hasattr(main_window, 'trackpoint_list_widget'):
                             # Update just the row that was moved with new coordinates
@@ -874,14 +928,12 @@ class MapWidget(QWidget):
     def _on_insert_triggered(self):
         """Handle insert action from context menu."""
         # Find the main window and call its insert action
-        from PyQt5.QtWidgets import QApplication
         main_window = QApplication.instance().activeWindow()
         if main_window and hasattr(main_window, 'action_insert_trackpoint'):
             main_window.action_insert_trackpoint()
     
     def _on_delete_single(self):
         """Handle delete single trackpoint action."""
-        from PyQt5.QtWidgets import QApplication
         main_window = QApplication.instance().activeWindow()
         if main_window and hasattr(main_window, 'trackpoint_list_widget'):
             if self.selected_trackpoint_index is not None:
@@ -889,7 +941,6 @@ class MapWidget(QWidget):
     
     def _on_delete_from_start(self):
         """Handle delete from start to here action."""
-        from PyQt5.QtWidgets import QApplication
         main_window = QApplication.instance().activeWindow()
         if main_window and hasattr(main_window, 'trackpoint_list_widget'):
             if self.selected_trackpoint_index is not None:
@@ -897,7 +948,6 @@ class MapWidget(QWidget):
     
     def _on_delete_from_end(self):
         """Handle delete from here to end action."""
-        from PyQt5.QtWidgets import QApplication
         main_window = QApplication.instance().activeWindow()
         if main_window and hasattr(main_window, 'trackpoint_list_widget'):
             if self.selected_trackpoint_index is not None:
