@@ -621,7 +621,6 @@ class MainWindow(QMainWindow):
         try:
             # If no GPX data exists (created tracks from scratch), create a new one
             if not self.gpx_data:
-                import gpxpy
                 self.gpx_data = gpxpy.gpx.GPX()
                 logger.info("Created new GPX object for saving tracks from scratch")
             

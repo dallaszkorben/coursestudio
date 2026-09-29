@@ -496,7 +496,8 @@ class MapWidget(QWidget):
                 return
             
             # Check if clicking on a turning point (PRIORITY: check this first for Shift+click range selection)
-            if self.show_turning_points or self.selected_trackpoint_index is not None or self.selected_trackpoint_range is not None:
+            # Only do this if a track is actually selected
+            if self.selected_track_id is not None and (self.show_turning_points or self.selected_trackpoint_index is not None or self.selected_trackpoint_range is not None):
                 clicked_point_index = self._find_turning_point_at_click(x, y)
                 if clicked_point_index is not None:
                     # Check if Shift is pressed (for range selection on an existing point)
@@ -590,8 +591,11 @@ class MapWidget(QWidget):
                             
                             # Refresh list and render
                             main_window = QApplication.instance().activeWindow()
-                            if main_window and hasattr(main_window, 'trackpoint_list_widget'):
-                                main_window.trackpoint_list_widget.refresh_trackpoints()
+                            if main_window:
+                                if hasattr(main_window, 'trackpoint_list_widget'):
+                                    main_window.trackpoint_list_widget.refresh_trackpoints()
+                                if hasattr(main_window, 'track_list_widget'):
+                                    main_window.track_list_widget.update_track_info(self.selected_track_id)
                             
                             self.render_map()
                             logger.info(f"[INSERT+DRAG] Inserted point at {insert_position}, starting drag")
@@ -645,14 +649,20 @@ class MapWidget(QWidget):
                         
                         # Refresh list and render
                         main_window = QApplication.instance().activeWindow()
-                        if main_window and hasattr(main_window, 'trackpoint_list_widget'):
-                            main_window.trackpoint_list_widget.refresh_trackpoints()
+                        if main_window:
+                            if hasattr(main_window, 'trackpoint_list_widget'):
+                                main_window.trackpoint_list_widget.refresh_trackpoints()
+                            if hasattr(main_window, 'track_list_widget'):
+                                main_window.track_list_widget.update_track_info(self.selected_track_id)
                         
                         self.render_map()
                         logger.info(f"[SHIFT+INSERT] Inserted point at position {insert_position}")
                         return
                 return  # Don't pan if Shift+click, even if insert failed
             
+            # Otherwise, start pan
+            self.pan_start_x = x
+            self.pan_start_y = y
     
     def mouseMoveEvent(self, event):
         """Handle mouse movement for panning or dragging trackpoint."""
