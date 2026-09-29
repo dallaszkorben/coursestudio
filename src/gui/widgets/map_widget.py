@@ -547,6 +547,49 @@ class MapWidget(QWidget):
                     
                     self.render_map()
                     return
+                
+                # NEW: If range selected but no point clicked, insert new point at cursor and start dragging
+                if self.selected_trackpoint_range is not None and not (event.modifiers() & Qt.ShiftModifier):
+                    start_idx, end_idx = self.selected_trackpoint_range
+                    
+                    # Convert click position to GPS
+                    gps_coords = self.screen_to_gps(x, y)
+                    if gps_coords and self.track_manager:
+                        lat, lon = gps_coords
+                        
+                        # Insert new trackpoint at position between the two selected points
+                        insert_position = end_idx
+                        success = self.track_manager.add_trackpoint_selected_with_history(
+                            lat, lon, None, insert_position
+                        )
+                        
+                        if success:
+                            # Immediately start drag mode for the newly inserted point
+                            self.dragging_trackpoint = True
+                            self.dragged_trackpoint_index = insert_position
+                            self.drag_start_x = x
+                            self.drag_start_y = y
+                            
+                            # Store original coordinates (the position we just inserted)
+                            trackpoints = self.track_manager.get_selected_trackpoints()
+                            if insert_position < len(trackpoints):
+                                tp = trackpoints[insert_position]
+                                self.drag_original_lat = tp.latitude
+                                self.drag_original_lon = tp.longitude
+                            
+                            # Clear range selection and select the new point
+                            self.selected_trackpoint_range = None
+                            self.selected_trackpoint_index = insert_position
+                            
+                            # Refresh list and render
+                            from PyQt5.QtWidgets import QApplication
+                            main_window = QApplication.instance().activeWindow()
+                            if main_window and hasattr(main_window, 'trackpoint_list_widget'):
+                                main_window.trackpoint_list_widget.refresh_trackpoints()
+                            
+                            self.render_map()
+                            logger.info(f"[INSERT+DRAG] Inserted point at {insert_position}, starting drag")
+                            return
             
             # Otherwise, start pan
             self.pan_start_x = x
