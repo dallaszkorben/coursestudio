@@ -299,7 +299,7 @@ class TrackpointListWidget(QWidget):
         Set the track to display trackpoints for.
         
         Args:
-            track_index (int): Index of track (0-based)
+            track_index (int): Index of track (0-based), or -1 to clear
         
         Returns:
             bool: True if track set successfully, False otherwise
@@ -309,6 +309,13 @@ class TrackpointListWidget(QWidget):
             True
             >>> widget.refresh_trackpoints()
         """
+        
+        # Handle unselection (-1)
+        if track_index < 0:
+            self.current_track_index = -1
+            self.table_widget.setRowCount(0)  # Clear the table
+            logger.debug("Trackpoint list cleared (no track selected)")
+            return True
         
         track = self.track_manager.get_track_by_index(track_index)
         if not track:

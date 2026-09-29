@@ -247,9 +247,11 @@ class MapWidget(QWidget):
     
     def on_track_list_selection_changed(self, track_id):
         """Handle track selection."""
+        logger.info(f"[MAP] on_track_list_selection_changed called with track_id={track_id} (type={type(track_id).__name__})")
         self.selected_track_id = track_id
         self.selected_trackpoint_index = None
         self.selected_trackpoint_range = None  # Clear range selection when track changes
+        logger.info(f"[MAP] After assignment: self.selected_track_id={self.selected_track_id}")
         self.render_map()
     
     def on_trackpoint_selected(self, track_id, trackpoint_index):
@@ -318,8 +320,10 @@ class MapWidget(QWidget):
         if not self.track_manager:
             return pil_image
         
-        # Only draw the selected track
-        if self.selected_track_id is None:
+        # Only draw the selected track (handle both None and -1)
+        logger.debug(f"[RENDER] Checking: selected_track_id={self.selected_track_id} (is None: {self.selected_track_id is None}, is < 0: {self.selected_track_id is not None and self.selected_track_id < 0})")
+        if self.selected_track_id is None or (isinstance(self.selected_track_id, int) and self.selected_track_id < 0):
+            logger.debug(f"[RENDER] selected_track_id is None or negative, skipping track rendering")
             return pil_image
         
         draw = ImageDraw.Draw(pil_image)

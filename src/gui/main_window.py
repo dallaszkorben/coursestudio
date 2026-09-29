@@ -989,7 +989,27 @@ A PyQt5 application for reading, editing, and exporting GPX navigation tracks.
     def _on_track_list_selection_changed(self, track_index: int):
         """Handle track selection change from track list widget."""
         
-        # SELECT THE TRACK IN TRACK_MANAGER (this was missing!)
+        # Handle unselection (track_index == -1)
+        if track_index < 0:
+            # Clear selection in all widgets
+            self.track_manager.selected_track_index = -1
+            self.statusBar().showMessage("No track selected", 2000)
+            
+            # Clear trackpoint list
+            if hasattr(self, 'trackpoint_list_widget'):
+                self.trackpoint_list_widget.set_track(-1)
+            
+            # Clear map display
+            if hasattr(self, 'map_widget'):
+                self.map_widget.on_track_list_selection_changed(None)
+            
+            self._current_track_index = -1
+            self._current_point_index = None
+            
+            logger.debug("Track unselected")
+            return
+        
+        # SELECT THE TRACK IN TRACK_MANAGER
         self.track_manager.select_track(track_index)
         
         track = self.track_manager.get_track_by_index(track_index)

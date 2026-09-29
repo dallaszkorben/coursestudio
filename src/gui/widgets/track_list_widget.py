@@ -28,7 +28,7 @@ from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QListWidget, QListWidgetItem,
     QLabel, QPushButton, QHeaderView, QAbstractItemView, QMenu
 )
-from PyQt5.QtGui import QFont, QIcon, QColor
+from PyQt5.QtGui import QFont, QIcon, QColor, QBrush
 from PyQt5.QtCore import Qt, pyqtSignal, QSize
 
 from src.core.track_manager import TrackManager, TrackData
@@ -143,6 +143,18 @@ class TrackListWidget(QWidget):
         self.add_track_button.setMaximumWidth(40)
         button_layout.addWidget(self.add_track_button)
         
+        self.delete_track_button = QPushButton("-")
+        self.delete_track_button.setToolTip("Delete selected track")
+        self.delete_track_button.setMaximumWidth(40)
+        self.delete_track_button.setEnabled(False)  # Inactive by default
+        button_layout.addWidget(self.delete_track_button)
+        
+        self.unselect_track_button = QPushButton("X")
+        self.unselect_track_button.setToolTip("Unselect track")
+        self.unselect_track_button.setMaximumWidth(40)
+        self.unselect_track_button.setEnabled(False)  # Inactive by default
+        button_layout.addWidget(self.unselect_track_button)
+        
         button_layout.addStretch()
         
         main_layout.addLayout(button_layout)
@@ -157,6 +169,8 @@ class TrackListWidget(QWidget):
         
         # Button signals
         self.add_track_button.clicked.connect(self._on_add_track_clicked)
+        self.delete_track_button.clicked.connect(self._on_delete_track_clicked)
+        self.unselect_track_button.clicked.connect(self._on_unselect_track_clicked)
     
     # ========================================================================
     # Track Display
@@ -271,8 +285,17 @@ class TrackListWidget(QWidget):
     def clear_selection(self):
         """Clear current track selection."""
         
+        # Clear both selection and current item to completely deselect
+        self.list_widget.setCurrentItem(None)
         self.list_widget.clearSelection()
         self.current_selection = -1
+        
+        # Disable delete and unselect buttons
+        self.delete_track_button.setEnabled(False)
+        self.unselect_track_button.setEnabled(False)
+        
+        # Emit signal to notify that no track is selected
+        self.track_selected.emit(-1)
         
         logger.debug("Track selection cleared")
     
@@ -286,18 +309,13 @@ class TrackListWidget(QWidget):
         current_item = self.list_widget.currentItem()
         
         if current_item:
-            # Clear background color of all items first
-            for i in range(self.list_widget.count()):
-                item = self.list_widget.item(i)
-                if item:
-                    item.setBackground(QColor())  # Reset to default (white/transparent)
-            
             # Get track index from item data
             track_index = current_item.data(Qt.UserRole)
             self.current_selection = track_index
             
-            # Highlight selected item with blue background
-            current_item.setBackground(QColor(200, 220, 255))
+            # Enable delete and unselect buttons
+            self.delete_track_button.setEnabled(True)
+            self.unselect_track_button.setEnabled(True)
             
             # Emit signal
             self.track_selected.emit(track_index)
@@ -305,6 +323,10 @@ class TrackListWidget(QWidget):
             logger.debug(f"Track selected: index={track_index}")
         else:
             self.current_selection = -1
+            
+            # Disable delete and unselect buttons
+            self.delete_track_button.setEnabled(False)
+            self.unselect_track_button.setEnabled(False)
     
     def _on_item_double_clicked(self, item: QListWidgetItem):
         """Handle double-click on track item."""
@@ -355,6 +377,38 @@ class TrackListWidget(QWidget):
         self.select_track(new_track_index)
         
         logger.info(f"New track created: {new_track.name} at index {new_track_index}")
+    
+    def _on_delete_track_clicked(self):
+        """Handle '-' button click to delete selected track."""
+        
+        if self.current_selection < 0:
+            logger.warning("No track selected for deletion")
+            return
+        
+        track_index = self.current_selection
+        track = self.track_manager.get_track_by_index(track_index)
+        
+        if not track:
+            logger.warning(f"Track not found: index={track_index}")
+            return
+        
+        # Delete the track from manager
+        del self.track_manager.tracks[track_index]
+        
+        # Deselect in manager
+        self.track_manager.selected_track_index = -1
+        
+        # Refresh the list
+        self.refresh_tracks()
+        
+        logger.info(f"Track deleted: {track.name} at index {track_index}")
+    
+    def _on_unselect_track_clicked(self):
+        """Handle 'X' button click to unselect current track."""
+        
+        self.clear_selection()
+        
+        logger.info("Track unselected")
     
     # ========================================================================
     # Context Menu Actions
