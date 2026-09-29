@@ -360,6 +360,9 @@ class MainWindow(QMainWindow):
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
         
+        # Import size policy for widget resizing
+        from PyQt5.QtWidgets import QSizePolicy
+        
         # Main tab widget (top level - Editor vs Settings)
         self.main_tab_widget = QTabWidget()
         
@@ -382,7 +385,10 @@ class MainWindow(QMainWindow):
         # Left Panel: Track List Widget
         self.track_list_widget = TrackListWidget(self.track_manager)
         self.track_list_widget.setMaximumWidth(400)
-        self.track_list_widget.setMinimumWidth(250)
+        self.track_list_widget.setMinimumWidth(80)  # Reduced from 250
+        
+        # Allow to shrink
+        self.track_list_widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         
         # Connect track list signals to main window
         self.track_list_widget.track_selected.connect(self._on_track_list_selection_changed)
@@ -395,7 +401,11 @@ class MainWindow(QMainWindow):
         
         # Trackpoint List Widget (top)
         self.trackpoint_list_widget = TrackpointListWidget(self.track_manager, None)
-        self.trackpoint_list_widget.setMinimumHeight(100)
+        self.trackpoint_list_widget.setMinimumHeight(50)  # Reduced from 100
+        self.trackpoint_list_widget.setMinimumWidth(1)  # Allow horizontal shrinking
+        
+        # Allow to shrink horizontally
+        self.trackpoint_list_widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         
         # Connect trackpoint list signals
         self.trackpoint_list_widget.point_selected.connect(self._on_trackpoint_selected)
@@ -412,7 +422,12 @@ class MainWindow(QMainWindow):
         
         # Map Widget (bottom)
         self.map_widget = MapWidget(mbtiles_provider=self.mbtiles_provider)
-        self.map_widget.setMinimumHeight(300)
+        self.map_widget.setMinimumHeight(150)  # Reduced from 300
+        self.map_widget.setMinimumWidth(1)  # Allow horizontal shrinking
+        
+        # Allow map to shrink horizontally too
+        self.map_widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        
         self.map_widget.set_track_manager(self.track_manager)
         
         # Connect map signals
@@ -871,7 +886,10 @@ A PyQt5 application for reading, editing, and exporting GPX navigation tracks.
             start_idx, end_idx = self.map_widget.selected_trackpoint_range
             trackpoints = self.track_manager.get_selected_trackpoints()
             
+            logger.info(f"[INSERT] Range selected: ({start_idx}, {end_idx}), trackpoint count: {len(trackpoints)}")
+            
             if start_idx >= len(trackpoints) or end_idx >= len(trackpoints):
+                logger.error(f"[INSERT] Invalid indices: start_idx={start_idx}, end_idx={end_idx}, len={len(trackpoints)}")
                 QMessageBox.critical(self, "Error", "Invalid trackpoint indices")
                 return
             
@@ -968,6 +986,9 @@ A PyQt5 application for reading, editing, and exporting GPX navigation tracks.
     
     def _on_track_list_selection_changed(self, track_index: int):
         """Handle track selection change from track list widget."""
+        
+        # SELECT THE TRACK IN TRACK_MANAGER (this was missing!)
+        self.track_manager.select_track(track_index)
         
         track = self.track_manager.get_track_by_index(track_index)
         if track:

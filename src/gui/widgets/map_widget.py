@@ -99,6 +99,14 @@ class MapWidget(QWidget):
         self.map_label.setStyleSheet("background-color: #c0c0c0;")
         self.map_label.setAlignment(Qt.AlignCenter)
         
+        # Allow map label to shrink (important for window resizing)
+        from PyQt5.QtWidgets import QSizePolicy
+        self.map_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.map_label.setScaledContents(True)  # Scale pixmap to fit label size
+        
+        # Override minimum size to allow actual shrinking
+        self.map_label.setMinimumSize(1, 1)  # Allow to shrink to 1x1 pixel if needed
+        
         # Zoom controls (invisible clickable overlays - visuals drawn on map)
         self.zoom_in_button = QPushButton("+", self)
         self.zoom_in_button.setFixedSize(self.ZOOM_BUTTON_SIZE, self.ZOOM_BUTTON_SIZE)
@@ -241,6 +249,7 @@ class MapWidget(QWidget):
         """Handle track selection."""
         self.selected_track_id = track_id
         self.selected_trackpoint_index = None
+        self.selected_trackpoint_range = None  # Clear range selection when track changes
         self.render_map()
     
     def on_trackpoint_selected(self, track_id, trackpoint_index):
@@ -499,6 +508,7 @@ class MapWidget(QWidget):
                                 self.selected_trackpoint_range = (min_idx, max_idx)
                                 self.selected_trackpoint_index = None  # Clear single selection
                                 self.range_selection_changed.emit(True)  # Signal range change
+                                logger.info(f"[RANGE] Selected range: ({min_idx}, {max_idx})")
                                 self.render_map()
                                 return
                         elif self.selected_trackpoint_range is not None:
@@ -620,14 +630,17 @@ class MapWidget(QWidget):
                             tp.elevation
                         )
                         
-                        # Emit signal to update UI and refresh list
+                        # Emit signal to update UI
                         self.point_clicked.emit(str(self.selected_track_id), self.dragged_trackpoint_index)
                         
-                        # Also trigger a refresh of the trackpoint list to update coordinates
+                        # Update ONLY the one row that changed (not the entire table!)
                         from PyQt5.QtWidgets import QApplication
                         main_window = QApplication.instance().activeWindow()
                         if main_window and hasattr(main_window, 'trackpoint_list_widget'):
-                            main_window.trackpoint_list_widget.refresh_trackpoints()
+                            # Update just the row that was moved with new coordinates
+                            main_window.trackpoint_list_widget.update_trackpoint_row(
+                                self.dragged_trackpoint_index, new_lat, new_lon
+                            )
                 
                 # Exit drag mode
                 self.dragging_trackpoint = False
@@ -637,7 +650,8 @@ class MapWidget(QWidget):
                 self.drag_original_lat = None
                 self.drag_original_lon = None
                 
-                self.render_map()
+                # NO render_map() here - the map already shows the point in correct position
+                # from the last mouseMoveEvent during dragging
             else:
                 # Normal pan end
                 self.pan_start_x = None
@@ -849,6 +863,7 @@ class MapWidget(QWidget):
     def _find_turning_point_at_click(self, click_x, click_y):
         """
         Find the closest turning point to a click location.
+        Only checks points that are on-screen for performance.
         
         Args:
             click_x (int): X coordinate of click in widget space
@@ -880,12 +895,24 @@ class MapWidget(QWidget):
         closest_distance = CLICK_TOLERANCE + 1  # Start beyond tolerance
         closest_index = None
         
-        # Find the closest turning point to the click
+        # Create search area around click to limit points to check
+        SEARCH_RADIUS = CLICK_TOLERANCE + 20  # Extra margin for safety
+        search_left = click_x - SEARCH_RADIUS
+        search_right = click_x + SEARCH_RADIUS
+        search_top = click_y - SEARCH_RADIUS
+        search_bottom = click_y + SEARCH_RADIUS
+        
+        # Find the closest turning point to the click (only check on-screen points in search area)
         for i, tp in enumerate(trackpoints):
             screen = map_renderer.gps_to_screen(tp.latitude, tp.longitude)
             
             if screen:
                 screen_x, screen_y = screen
+                
+                # Quick bounding box check first (much faster than distance calculation)
+                if not (search_left <= screen_x <= search_right and 
+                        search_top <= screen_y <= search_bottom):
+                    continue  # Skip points outside search area
                 
                 # Calculate distance from click to this point
                 distance = ((click_x - screen_x) ** 2 + (click_y - screen_y) ** 2) ** 0.5
