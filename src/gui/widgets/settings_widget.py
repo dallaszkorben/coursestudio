@@ -9,7 +9,7 @@ Provides a tabbed interface for configuring application settings:
 
 import logging
 from PyQt5.QtWidgets import QWidget, QVBoxLayout, QScrollArea
-from PyQt5.QtCore import Qt
+from PyQt5.QtCore import Qt, pyqtSignal
 
 from config.app_config_yaml import AppConfig
 from src.gui.widgets.track_path_settings_widget import TrackPathSettingsWidget
@@ -31,6 +31,8 @@ class SettingsWidget(QWidget):
     
     Expandable/collapsible sections implemented step by step.
     """
+    
+    turning_points_settings_applied = pyqtSignal()  # Emitted when turning points settings are applied
     
     def __init__(self):
         """Initialize the settings widget."""
@@ -79,6 +81,7 @@ class SettingsWidget(QWidget):
         self.turning_points_widget = TurningPointsSettingsWidget(self.config)
         self.turning_points_widget.settings_changed.connect(self._on_settings_changed)
         self.turning_points_widget.show_toggled.connect(self._on_turning_points_show_toggled)
+        self.turning_points_widget.settings_applied.connect(self._on_turning_points_settings_applied)
         appearance_layout.addWidget(self.turning_points_widget)
         
         scroll_layout.addWidget(appearance_label)
@@ -110,11 +113,19 @@ class SettingsWidget(QWidget):
         
         # Save config to file
         self.config.save_to_file()
+        
+        # Emit signal to notify main window
+        self.turning_points_settings_applied.emit()
     
     def _on_turning_points_show_toggled(self, state: bool):
         """Handle turning points show/hide toggle."""
         logger.debug(f"Turning points show toggled to: {state}")
         self._on_settings_changed()
+    
+    def _on_turning_points_settings_applied(self):
+        """Relay turning points settings_applied signal."""
+        logger.debug("Turning points settings applied signal received")
+        # This will be connected to main_window handler
     
     def apply_settings(self):
         """Apply all settings changes."""

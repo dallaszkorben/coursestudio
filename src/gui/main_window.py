@@ -470,6 +470,9 @@ class MainWindow(QMainWindow):
         self.settings_widget.turning_points_widget.selected_size_slider.value_changed.connect(
             self._on_turning_points_selected_size_changed
         )
+        self.settings_widget.turning_points_settings_applied.connect(
+            self._on_turning_points_settings_applied
+        )
         
         self.main_tab_widget.addTab(self.settings_widget, "Settings")
         
@@ -1214,8 +1217,13 @@ A PyQt5 application for reading, editing, and exporting GPX navigation tracks.
             # Trigger redraw
             self.map_widget.render_map()
             self.map_widget.update()
-            
-            logger.debug(f"Selected turning point size changed to: {size}px")
+    
+    def _on_turning_points_settings_applied(self):
+        """Handle turning points settings applied from settings widget."""
+        
+        if hasattr(self, 'map_widget'):
+            # Reload all settings from config file
+            self.map_widget.reload_settings()
     
     def _on_show_points_dropdown_changed(self, index: int):
         """Handle show points dropdown change from Editor tab - sync to Settings toggle."""

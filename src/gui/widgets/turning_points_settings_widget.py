@@ -30,6 +30,7 @@ class TurningPointsSettingsWidget(QGroupBox):
     
     settings_changed = pyqtSignal()  # Emitted when settings change
     show_toggled = pyqtSignal(bool)  # Emitted when show/hide toggled
+    settings_applied = pyqtSignal()  # Emitted when settings are applied to config
     
     def __init__(self, config: AppConfig = None):
         """
@@ -48,6 +49,8 @@ class TurningPointsSettingsWidget(QGroupBox):
         self.size = self.config.get_int('Appearance.MapDisplay.TurningPoints.size', 4)
         self.selected_color = self.config.get_str('Appearance.MapDisplay.TurningPoints.selected.color', '0000FF')
         self.selected_size = self.config.get_int('Appearance.MapDisplay.TurningPoints.selected.size', 7)
+        self.double_selected_color = self.config.get_str('Appearance.MapDisplay.TurningPoints.doubleSelected.color', 'FFA500')
+        self.double_selected_size = self.config.get_int('Appearance.MapDisplay.TurningPoints.doubleSelected.size', 8)
         
         # Apply white frame styling (main section)
         self.setStyleSheet("""
@@ -116,7 +119,7 @@ class TurningPointsSettingsWidget(QGroupBox):
         size_layout.addWidget(size_label)
         
         self.size_slider = SliderSettingWidget(
-            min_val=2,
+            min_val=1,
             max_val=10,
             current_val=self.size,
             suffix="px",
@@ -156,7 +159,7 @@ class TurningPointsSettingsWidget(QGroupBox):
         selected_size_layout.addWidget(selected_size_label)
         
         self.selected_size_slider = SliderSettingWidget(
-            min_val=4,
+            min_val=1,
             max_val=15,
             current_val=self.selected_size,
             suffix="px",
@@ -167,6 +170,46 @@ class TurningPointsSettingsWidget(QGroupBox):
         selected_layout.addLayout(selected_size_layout)
         selected_section.setLayout(selected_layout)
         layout.addWidget(selected_section)
+        
+        # ====================================================================
+        # Subsection 3: Double Selected Points Settings (Range Selection)
+        # ====================================================================
+        
+        double_selected_section = self._create_subsection("Double Selected Points")
+        double_selected_layout = QVBoxLayout()
+        double_selected_layout.setSpacing(8)
+        double_selected_layout.setContentsMargins(8, 8, 8, 8)
+        
+        # Color Picker
+        self.double_selected_color_picker = ColorPickerWidget(
+            initial_color=self.double_selected_color,
+            config=self.config,
+            config_path='Appearance.MapDisplay.TurningPoints.doubleSelected.colors'
+        )
+        double_selected_layout.addWidget(self.double_selected_color_picker)
+        
+        # Size Slider - with fixed-width label for alignment
+        double_selected_size_layout = QHBoxLayout()
+        double_selected_size_layout.setContentsMargins(0, 0, 0, 0)
+        double_selected_size_layout.setSpacing(18)
+        
+        double_selected_size_label = QLabel("Size:")
+        double_selected_size_label.setStyleSheet("font-weight: bold; color: white;")
+        double_selected_size_label.setFixedWidth(70)
+        double_selected_size_layout.addWidget(double_selected_size_label)
+        
+        self.double_selected_size_slider = SliderSettingWidget(
+            min_val=1,
+            max_val=15,
+            current_val=self.double_selected_size,
+            suffix="px",
+            include_label=False
+        )
+        double_selected_size_layout.addWidget(self.double_selected_size_slider, 1)
+        
+        double_selected_layout.addLayout(double_selected_size_layout)
+        double_selected_section.setLayout(double_selected_layout)
+        layout.addWidget(double_selected_section)
         
         # Add stretch to push controls to top
         layout.addStretch()
@@ -199,6 +242,8 @@ class TurningPointsSettingsWidget(QGroupBox):
         self.size_slider.value_changed.connect(self._on_size_changed)
         self.selected_color_picker.color_changed.connect(self._on_selected_color_changed)
         self.selected_size_slider.value_changed.connect(self._on_selected_size_changed)
+        self.double_selected_color_picker.color_changed.connect(self._on_double_selected_color_changed)
+        self.double_selected_size_slider.value_changed.connect(self._on_double_selected_size_changed)
         
         # Initialize controls with the correct enabled state
         self._set_controls_enabled(self.show)
@@ -365,6 +410,18 @@ class TurningPointsSettingsWidget(QGroupBox):
         logger.debug(f"Selected point size changed to: {size}px")
         self.settings_changed.emit()
     
+    def _on_double_selected_color_changed(self, hex_color: str):
+        """Handle double selected color change."""
+        self.double_selected_color = hex_color
+        logger.debug(f"Double selected point color changed to: {hex_color}")
+        self.settings_changed.emit()
+    
+    def _on_double_selected_size_changed(self, size: int):
+        """Handle double selected size change."""
+        self.double_selected_size = size
+        logger.debug(f"Double selected point size changed to: {size}px")
+        self.settings_changed.emit()
+    
     def apply_to_config(self):
         """Apply current settings to configuration."""
         
@@ -373,8 +430,13 @@ class TurningPointsSettingsWidget(QGroupBox):
         self.config.config_data['Appearance']['MapDisplay']['TurningPoints']['size'] = self.get_size()
         self.config.config_data['Appearance']['MapDisplay']['TurningPoints']['selected']['color'] = self.get_selected_color()
         self.config.config_data['Appearance']['MapDisplay']['TurningPoints']['selected']['size'] = self.get_selected_size()
+        self.config.config_data['Appearance']['MapDisplay']['TurningPoints']['doubleSelected']['color'] = self.get_double_selected_color()
+        self.config.config_data['Appearance']['MapDisplay']['TurningPoints']['doubleSelected']['size'] = self.get_double_selected_size()
         
         logger.info(f"Turning points settings applied: show={self.get_show()}, color={self.get_color()}, size={self.get_size()}")
+        
+        # Emit signal to notify map widget to reload settings
+        self.settings_applied.emit()
     
     def save_to_file(self) -> bool:
         """Save settings to file."""
@@ -402,3 +464,11 @@ class TurningPointsSettingsWidget(QGroupBox):
     def get_selected_size(self) -> int:
         """Get selected point size."""
         return self.selected_size_slider.get_value()
+    
+    def get_double_selected_color(self) -> str:
+        """Get double selected point color."""
+        return self.double_selected_color_picker.get_color()
+    
+    def get_double_selected_size(self) -> int:
+        """Get double selected point size."""
+        return self.double_selected_size_slider.get_value()

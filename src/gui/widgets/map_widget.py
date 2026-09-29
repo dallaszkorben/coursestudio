@@ -73,6 +73,10 @@ class MapWidget(QWidget):
         self.turning_point_size = config.get_int('Appearance.MapDisplay.TurningPoints.size', 4)
         self.selected_turning_point_size = config.get_int('Appearance.MapDisplay.TurningPoints.selected.size', 7)
         
+        # Double selected (range) turning points settings
+        self.double_selected_turning_point_color = self._hex_to_rgb(config.get_str('Appearance.MapDisplay.TurningPoints.doubleSelected.color', 'FFA500'))
+        self.double_selected_turning_point_size = config.get_int('Appearance.MapDisplay.TurningPoints.doubleSelected.size', 8)
+        
         # Track path width
         self.track_path_width = config.get_int('Appearance.MapDisplay.TrackPath.width', 3)
         
@@ -275,7 +279,7 @@ class MapWidget(QWidget):
                             # Draw circle for turning point
                             draw.ellipse([(x-r, y-r), (x+r, y+r)], fill=point_color, outline=(255,255,255), width=1)
                     
-                    # SECOND: Draw selected range points (orange - indicates range selection)
+                    # SECOND: Draw selected range points (from doubleSelected settings)
                     if self.selected_trackpoint_range is not None:
                         start_idx, end_idx = self.selected_trackpoint_range
                         for idx in [start_idx, end_idx]:
@@ -284,9 +288,9 @@ class MapWidget(QWidget):
                                 screen = map_renderer.gps_to_screen(tp.latitude, tp.longitude)
                                 if screen:
                                     x, y = screen
-                                    # Use orange color for range selection
-                                    r = self.selected_turning_point_size
-                                    draw.ellipse([(x-r, y-r), (x+r, y+r)], fill=(255, 165, 0), outline=(255,255,255), width=2)
+                                    # Use doubleSelected color and size for range selection
+                                    r = self.double_selected_turning_point_size
+                                    draw.ellipse([(x-r, y-r), (x+r, y+r)], fill=self.double_selected_turning_point_color, outline=(255,255,255), width=2)
                     
                     # THIRD: Draw single selected point LAST so it appears on top
                     elif self.selected_trackpoint_index is not None and self.selected_trackpoint_index < len(trackpoints):
@@ -345,6 +349,26 @@ class MapWidget(QWidget):
         self.center_lat = 56.168
         self.center_lon = 15.586
         self.render_map()
+    
+    def reload_settings(self):
+        """Reload turning points settings from config and re-render map."""
+        from config.app_config_yaml import AppConfig
+        config = AppConfig()
+        
+        # Reload all turning points settings
+        self.show_turning_points = config.get_bool('Appearance.MapDisplay.TurningPoints.show', True)
+        self.turning_point_color = self._hex_to_rgb(config.get_str('Appearance.MapDisplay.TurningPoints.color', 'FFFF00'))
+        self.selected_turning_point_color = self._hex_to_rgb(config.get_str('Appearance.MapDisplay.TurningPoints.selected.color', '0000FF'))
+        self.turning_point_size = config.get_int('Appearance.MapDisplay.TurningPoints.size', 4)
+        self.selected_turning_point_size = config.get_int('Appearance.MapDisplay.TurningPoints.selected.size', 7)
+        
+        # Reload double selected (range) turning points settings
+        self.double_selected_turning_point_color = self._hex_to_rgb(config.get_str('Appearance.MapDisplay.TurningPoints.doubleSelected.color', 'FFA500'))
+        self.double_selected_turning_point_size = config.get_int('Appearance.MapDisplay.TurningPoints.doubleSelected.size', 8)
+        
+        # Re-render the map with new settings
+        self.render_map()
+        logger.debug("Map settings reloaded from config")
     
     def mousePressEvent(self, event):
         """Handle mouse button press."""
