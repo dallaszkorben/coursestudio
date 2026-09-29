@@ -230,6 +230,85 @@ class AddTrackpointCommand(Command):
         return f"Add Point ({self.latitude:.4f}, {self.longitude:.4f})"
 
 
+class MoveTrackpointCommand(Command):
+    """Command to move (relocate) a trackpoint."""
+    
+    def __init__(self, track_manager: TrackManager, track_index: int, point_index: int,
+                 latitude: float, longitude: float, altitude: Optional[float] = None):
+        """
+        Initialize move trackpoint command.
+        
+        Args:
+            track_manager: TrackManager instance
+            track_index: Index of track
+            point_index: Index of trackpoint to move
+            latitude: New latitude in decimal degrees
+            longitude: New longitude in decimal degrees
+            altitude: New elevation in meters (optional)
+        """
+        self.track_manager = track_manager
+        self.track_index = track_index
+        self.point_index = point_index
+        self.new_latitude = latitude
+        self.new_longitude = longitude
+        self.new_altitude = altitude
+        
+        # Store original coordinates for undo
+        track = track_manager.get_track_by_index(track_index)
+        if track and point_index < len(track.trackpoints):
+            point = track.trackpoints[point_index]
+            self.original_latitude = point.latitude
+            self.original_longitude = point.longitude
+            self.original_altitude = point.elevation
+        else:
+            self.original_latitude = None
+            self.original_longitude = None
+            self.original_altitude = None
+        
+        self.executed = False
+    
+    def execute(self) -> bool:
+        """Execute the move trackpoint command."""
+        
+        success = self.track_manager.move_trackpoint(
+            self.track_index, self.point_index,
+            self.new_latitude, self.new_longitude, self.new_altitude
+        )
+        
+        if success:
+            self.executed = True
+            logger.info(f"Executed: Moved trackpoint to ({self.new_latitude}, {self.new_longitude})")
+        else:
+            logger.error(f"Failed to move trackpoint")
+        
+        return success
+    
+    def undo(self) -> bool:
+        """Undo the move trackpoint command."""
+        
+        if self.original_latitude is None or self.original_longitude is None:
+            logger.error("Original coordinates not available for undo")
+            return False
+        
+        success = self.track_manager.move_trackpoint(
+            self.track_index, self.point_index,
+            self.original_latitude, self.original_longitude, self.original_altitude
+        )
+        
+        if success:
+            self.executed = False
+            logger.info(f"Undone: Moved trackpoint back to ({self.original_latitude}, {self.original_longitude})")
+            return True
+        else:
+            logger.error(f"Failed to undo move trackpoint")
+            return False
+    
+    @property
+    def description(self) -> str:
+        """Get command description."""
+        return f"Move Point to ({self.new_latitude:.4f}, {self.new_longitude:.4f})"
+
+
 class RemoveTrackpointCommand(Command):
     """Command to remove a single trackpoint."""
     

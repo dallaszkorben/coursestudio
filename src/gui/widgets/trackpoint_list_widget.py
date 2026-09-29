@@ -359,6 +359,37 @@ class TrackpointListWidget(QWidget):
         
         logger.debug(f"Refreshed trackpoint list: {count} points")
     
+    def update_trackpoint_row(self, point_index: int, latitude: float, longitude: float):
+        """
+        Update a single trackpoint row with new coordinates (for real-time drag feedback).
+        
+        Args:
+            point_index: Index of trackpoint to update
+            latitude: New latitude
+            longitude: New longitude
+        """
+        if point_index < 0 or point_index >= self.table_widget.rowCount():
+            return
+        
+        # Format coordinates based on current format
+        if self.coordinate_format == 'dms':
+            # Convert latitude to DMS
+            lat_dms = coordinate_formatter.decimal_to_dms(latitude, is_longitude=False)
+            lat_str = coordinate_formatter.format_dms(lat_dms[0], lat_dms[1], lat_dms[2], lat_dms[3])
+            
+            # Convert longitude to DMS
+            lon_dms = coordinate_formatter.decimal_to_dms(longitude, is_longitude=True)
+            lon_str = coordinate_formatter.format_dms(lon_dms[0], lon_dms[1], lon_dms[2], lon_dms[3])
+        else:
+            lat_str = f"{latitude:.4f}°"
+            lon_str = f"{longitude:.4f}°"
+        
+        # Update latitude cell (column 1)
+        self.table_widget.item(point_index, self.COL_LATITUDE).setText(lat_str)
+        
+        # Update longitude cell (column 2)
+        self.table_widget.item(point_index, self.COL_LONGITUDE).setText(lon_str)
+    
     def _populate_row(self, row: int, point: Trackpoint):
         """
         Populate a table row with trackpoint data.

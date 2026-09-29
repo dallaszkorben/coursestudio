@@ -1073,6 +1073,80 @@ class TrackManager:
             return False
         
         return self.add_trackpoint_with_history(self.selected_track_index, latitude, longitude, altitude, position)
+    
+    def move_trackpoint(self, track_index: int, point_index: int, latitude: float, longitude: float,
+                       altitude: Optional[float] = None) -> bool:
+        """
+        Move (update coordinates) of an existing trackpoint.
+        
+        Args:
+            track_index (int): Index of track
+            point_index (int): Index of trackpoint to move
+            latitude (float): New latitude in decimal degrees
+            longitude (float): New longitude in decimal degrees
+            altitude (Optional[float]): New elevation in meters (optional)
+        
+        Returns:
+            bool: True if successful, False otherwise
+        """
+        
+        # Validate track index
+        if not isinstance(track_index, int) or track_index < 0 or track_index >= len(self.tracks):
+            logger.error(f"Invalid track index: {track_index}")
+            return False
+        
+        track = self.tracks[track_index]
+        
+        # Validate point index
+        if not isinstance(point_index, int) or point_index < 0 or point_index >= len(track.trackpoints):
+            logger.error(f"Invalid point index: {point_index}")
+            return False
+        
+        # Validate coordinates
+        if not (-90.0 <= latitude <= 90.0) or not (-180.0 <= longitude <= 180.0):
+            logger.error(f"Invalid coordinates: lat={latitude}, lon={longitude}")
+            return False
+        
+        # Update the trackpoint
+        point = track.trackpoints[point_index]
+        point.latitude = latitude
+        point.longitude = longitude
+        if altitude is not None:
+            point.elevation = altitude
+        
+        # Recalculate distance
+        self.recalculate_distance(track_index)
+        
+        # Mark as dirty
+        track.is_dirty = True
+        
+        logger.info(f"Moved trackpoint {point_index} in track '{track.name}' to ({latitude}, {longitude})")
+        return True
+    
+    def move_trackpoint_with_history(self, track_index: int, point_index: int, latitude: float, longitude: float,
+                                    altitude: Optional[float] = None) -> bool:
+        """
+        Move a trackpoint using command history (undoable).
+        
+        Args:
+            track_index (int): Index of track
+            point_index (int): Index of trackpoint to move
+            latitude (float): New latitude in decimal degrees
+            longitude (float): New longitude in decimal degrees
+            altitude (Optional[float]): New elevation in meters
+        
+        Returns:
+            bool: True if successful, False if history not enabled
+        """
+        
+        if not self.history:
+            logger.warning("Command history not enabled")
+            return False
+        
+        from src.core.command_history import MoveTrackpointCommand
+        
+        cmd = MoveTrackpointCommand(self, track_index, point_index, latitude, longitude, altitude)
+        return self.history.execute(cmd)
 
     def remove_trackpoint_with_history(self, track_index: int, point_index: int) -> bool:
         """

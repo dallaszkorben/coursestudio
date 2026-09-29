@@ -30,6 +30,7 @@ class MapWidget(QWidget):
     track_clicked = pyqtSignal(str)
     point_clicked = pyqtSignal(str, int)
     range_selection_changed = pyqtSignal(bool)  # Emitted when range selection changes (True = has range, False = no range)
+    trackpoint_dragging = pyqtSignal(int, float, float)  # Emitted during drag: (index, latitude, longitude)
     
     # UI Constants
     ZOOM_BUTTON_SIZE = 40
@@ -84,6 +85,14 @@ class MapWidget(QWidget):
         self.center_lat = 56.168
         self.center_lon = 15.586
         self.zoom_level = self.ZOOM_LEVEL_DEFAULT
+        
+        # Drag state for moving trackpoints
+        self.dragging_trackpoint = False
+        self.dragged_trackpoint_index = None
+        self.drag_start_x = None
+        self.drag_start_y = None
+        self.drag_original_lat = None
+        self.drag_original_lon = None
         
         # Map display label
         self.map_label = QLabel()
@@ -146,6 +155,77 @@ class MapWidget(QWidget):
         if len(hex_color) == 6:
             return tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
         return (255, 0, 0)  # Default to red if invalid
+    
+    def screen_to_gps(self, screen_x: int, screen_y: int):
+        """
+        Convert screen coordinates to GPS coordinates (inverse of rendering).
+        Uses Web Mercator projection - inverse of gps_to_screen.
+        
+        Args:
+            screen_x: X position on screen in pixels
+            screen_y: Y position on screen in pixels
+        
+        Returns:
+            Tuple of (latitude, longitude) or None if conversion fails
+        """
+        if not self.mbtiles_provider:
+            return None
+        
+        try:
+            import math
+            
+            # Do the conversion directly without creating a new MapRenderer
+            # We need to calculate tile coordinates from screen position
+            
+            # First, calculate center tile coordinates for the current map view
+            n = 2.0 ** self.zoom_level
+            center_tile_x, center_tile_y = self._latlon_to_tile(self.center_lat, self.center_lon, self.zoom_level)
+            
+            # Convert screen position to tile offset
+            # Screen center (width/2, height/2) corresponds to center_tile
+            TILE_SIZE = 256
+            tile_offset_x = (screen_x - self.width() / 2) / TILE_SIZE
+            tile_offset_y = (screen_y - self.height() / 2) / TILE_SIZE
+            
+            # Calculate actual tile coordinates
+            tile_x = center_tile_x + tile_offset_x
+            tile_y = center_tile_y + tile_offset_y
+            
+            # Tile X to longitude
+            longitude = (tile_x / n) * 360.0 - 180.0
+            
+            # Tile Y to latitude (Web Mercator inverse)
+            normalized_y = tile_y / n
+            sinh_arg = math.pi * (1.0 - 2.0 * normalized_y)
+            sinh_arg = max(-100, min(100, sinh_arg))
+            
+            latitude_rad = math.atan(math.sinh(sinh_arg))
+            latitude = math.degrees(latitude_rad)
+            
+            return (latitude, longitude)
+        except Exception as e:
+            logger.error(f"Error converting screen to GPS: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+            return None
+    
+    def _latlon_to_tile(self, latitude: float, longitude: float, zoom: int) -> tuple:
+        """
+        Convert latitude/longitude to tile coordinates (Web Mercator).
+        Same as MapRenderer._latlon_to_tile.
+        """
+        import math
+        
+        n = 2.0 ** zoom
+        
+        # Longitude to tile
+        tile_x = (longitude + 180.0) / 360.0 * n
+        
+        # Latitude to tile
+        lat_rad = math.radians(latitude)
+        tile_y = (1.0 - math.asinh(math.tan(lat_rad)) / math.pi) / 2.0 * n
+        
+        return tile_x, tile_y
     
     def set_show_turning_points(self, show: bool):
         """Set whether to show turning points on the map."""
@@ -440,8 +520,22 @@ class MapWidget(QWidget):
                         self.range_selection_changed.emit(False)  # Signal range cleared
                     self.selected_trackpoint_range = None  # Clear range selection
                     self.point_clicked.emit(str(self.selected_track_id), clicked_point_index)
+                    
+                    # Start drag mode for moving the point
+                    self.dragging_trackpoint = True
+                    self.dragged_trackpoint_index = clicked_point_index
+                    self.drag_start_x = x
+                    self.drag_start_y = y
+                    
+                    # Store original coordinates in case we need to revert
+                    if self.track_manager:
+                        trackpoints = self.track_manager.get_selected_trackpoints()
+                        if clicked_point_index < len(trackpoints):
+                            tp = trackpoints[clicked_point_index]
+                            self.drag_original_lat = tp.latitude
+                            self.drag_original_lon = tp.longitude
+                    
                     self.render_map()
-                    return
                     return
             
             # Otherwise, start pan
@@ -449,7 +543,33 @@ class MapWidget(QWidget):
             self.pan_start_y = y
     
     def mouseMoveEvent(self, event):
-        """Handle mouse movement for panning."""
+        """Handle mouse movement for panning or dragging trackpoint."""
+        
+        # Handle trackpoint dragging
+        if self.dragging_trackpoint and self.dragged_trackpoint_index is not None:
+            x, y = event.x(), event.y()
+            
+            # Convert screen coordinates to GPS
+            gps_coords = self.screen_to_gps(x, y)
+            if gps_coords and self.track_manager:
+                lat, lon = gps_coords
+                
+                # Update the trackpoint in memory (temporary, not saved yet)
+                trackpoints = self.track_manager.get_selected_trackpoints()
+                if self.dragged_trackpoint_index < len(trackpoints):
+                    # Update in-memory temporarily for visual feedback
+                    tp = trackpoints[self.dragged_trackpoint_index]
+                    tp.latitude = lat
+                    tp.longitude = lon
+                    
+                    # Emit signal to update trackpoint list in real-time
+                    self.trackpoint_dragging.emit(self.dragged_trackpoint_index, lat, lon)
+                    
+                    # Re-render to show the point at new position
+                    self.render_map()
+            return
+        
+        # Handle map panning
         if self.pan_start_x is not None and self.pan_start_y is not None:
             delta_x = self.pan_start_x - event.x()
             delta_y = self.pan_start_y - event.y()
@@ -481,8 +601,47 @@ class MapWidget(QWidget):
     def mouseReleaseEvent(self, event):
         """Handle mouse button release."""
         if event.button() == Qt.LeftButton:
-            self.pan_start_x = None
-            self.pan_start_y = None
+            # Handle end of trackpoint drag
+            if self.dragging_trackpoint and self.dragged_trackpoint_index is not None:
+                # Save the new position as an undoable command
+                if self.track_manager:
+                    trackpoints = self.track_manager.get_selected_trackpoints()
+                    if self.dragged_trackpoint_index < len(trackpoints):
+                        tp = trackpoints[self.dragged_trackpoint_index]
+                        new_lat = tp.latitude
+                        new_lon = tp.longitude
+                        
+                        # Create undo/redo command for moving the point
+                        self.track_manager.move_trackpoint_with_history(
+                            self.track_manager.get_selected_track_index(),
+                            self.dragged_trackpoint_index,
+                            new_lat,
+                            new_lon,
+                            tp.elevation
+                        )
+                        
+                        # Emit signal to update UI and refresh list
+                        self.point_clicked.emit(str(self.selected_track_id), self.dragged_trackpoint_index)
+                        
+                        # Also trigger a refresh of the trackpoint list to update coordinates
+                        from PyQt5.QtWidgets import QApplication
+                        main_window = QApplication.instance().activeWindow()
+                        if main_window and hasattr(main_window, 'trackpoint_list_widget'):
+                            main_window.trackpoint_list_widget.refresh_trackpoints()
+                
+                # Exit drag mode
+                self.dragging_trackpoint = False
+                self.dragged_trackpoint_index = None
+                self.drag_start_x = None
+                self.drag_start_y = None
+                self.drag_original_lat = None
+                self.drag_original_lon = None
+                
+                self.render_map()
+            else:
+                # Normal pan end
+                self.pan_start_x = None
+                self.pan_start_y = None
     
     def wheelEvent(self, event):
         """Handle mouse wheel for zooming centered on cursor position."""

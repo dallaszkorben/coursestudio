@@ -420,6 +420,7 @@ class MainWindow(QMainWindow):
         self.map_widget.track_clicked.connect(self._on_map_track_clicked)
         self.map_widget.point_clicked.connect(self._on_map_point_clicked)
         self.map_widget.range_selection_changed.connect(self._update_insert_menu_state)  # NEW: Connect range signal
+        self.map_widget.trackpoint_dragging.connect(self._on_trackpoint_dragging)  # NEW: Real-time drag updates
         
         # Connect track list to map widget to update highlighted track
         self.track_list_widget.track_selected.connect(self.map_widget.on_track_list_selection_changed)
@@ -1092,6 +1093,11 @@ A PyQt5 application for reading, editing, and exporting GPX navigation tracks.
         
         # Update insert menu state based on range selection
         self._update_insert_menu_state()
+    
+    def _on_trackpoint_dragging(self, point_index: int, latitude: float, longitude: float):
+        """Handle real-time coordinate updates while dragging a trackpoint."""
+        if hasattr(self, 'trackpoint_list_widget'):
+            self.trackpoint_list_widget.update_trackpoint_row(point_index, latitude, longitude)
     
     def _update_insert_menu_state(self):
         """Enable/disable insert menu and update list based on map range selection."""
