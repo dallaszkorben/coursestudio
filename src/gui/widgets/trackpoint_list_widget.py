@@ -33,6 +33,7 @@ from PyQt5.QtCore import Qt, pyqtSignal, QSize
 
 from src.core.track_manager import TrackManager, Trackpoint
 from src.utils import coordinate_formatter
+from src.gui.widgets.toggle_switch_widget import ToggleSwitchWidget
 
 
 # ============================================================================
@@ -210,8 +211,12 @@ class TrackpointListWidget(QWidget):
         self.format_combo.setMaximumWidth(120)
         header_layout.addWidget(self.format_combo)
         
-        # Show points selector
+        # Show points selector - use toggle switch instead of combo
         header_layout.addWidget(QLabel("Show points:"))
+        self.show_points_switch = ToggleSwitchWidget(initial_state=self.show_points)
+        header_layout.addWidget(self.show_points_switch)
+        
+        # Keep old combo for compatibility with existing code, but hide it
         self.show_points_combo = QComboBox()
         self.show_points_combo.addItem("Yes", True)
         self.show_points_combo.addItem("No", False)
@@ -221,7 +226,10 @@ class TrackpointListWidget(QWidget):
         else:
             self.show_points_combo.setCurrentIndex(1)  # No
         self.show_points_combo.setMaximumWidth(80)
-        header_layout.addWidget(self.show_points_combo)
+        self.show_points_combo.hide()  # Hide the combo, use switch instead
+        
+        # Connect switch to combo for compatibility
+        self.show_points_switch.toggled.connect(self._on_show_points_switch_toggled)
         
         main_layout.addLayout(header_layout)
         
@@ -646,6 +654,15 @@ class TrackpointListWidget(QWidget):
             self.map_widget.set_show_turning_points(show_points)
         
         logger.debug(f"Show points changed: {show_points}")
+    
+    def _on_show_points_switch_toggled(self, checked: bool):
+        """Handle show points switch toggle."""
+        # Update the hidden combo to trigger the normal change handler
+        self.show_points_combo.blockSignals(True)
+        self.show_points_combo.setCurrentIndex(0 if checked else 1)
+        self.show_points_combo.blockSignals(False)
+        # Manually call the handler
+        self._on_show_points_changed(0 if checked else 1)
     
     # ========================================================================
     # Updates

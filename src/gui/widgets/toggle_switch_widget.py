@@ -51,10 +51,6 @@ class ToggleSwitchWidget(QWidget):
         self.CIRCLE_RADIUS = 12
         self.MARGIN = 2
         
-        # Layout positioning constants
-        self.LABEL_WIDTH = 100  # Width for "Show Points:" label
-        self.LABEL_SPACING = 10  # Spacing after label
-        
         # Circle position (0 = off, 1 = on)
         self.circle_position = 1.0 if initial_state else 0.0
         
@@ -68,17 +64,22 @@ class ToggleSwitchWidget(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(10)
         
-        # Optional title label - FIXED WIDTH for alignment with other controls
+        # Optional title label - let layout manager handle sizing
         if self.title:
             title_label = QLabel(f"{self.title}:")
-            title_label.setStyleSheet("font-weight: bold; min-width: 60px;")
-            title_label.setFixedWidth(self.LABEL_WIDTH)  # Wide enough for "Show Points:"
+            title_label.setStyleSheet("font-weight: bold;")
             layout.addWidget(title_label)
         
-        # Switch widget will be drawn in paintEvent
-        layout.addStretch()
+        # Create a container widget for the switch (drawn via paintEvent)
+        # We need to reserve space for it in the layout
+        switch_container = QWidget()
+        switch_container.setMinimumWidth(self.SWITCH_WIDTH + 4)
+        switch_container.setMaximumWidth(self.SWITCH_WIDTH + 4)
+        switch_container.setMinimumHeight(self.SWITCH_HEIGHT + 4)
+        switch_container.setMaximumHeight(self.SWITCH_HEIGHT + 4)
+        layout.addWidget(switch_container)
         
-        # Set minimum size for the switch
+        # Set minimum size for the main widget
         self.setMinimumHeight(self.SWITCH_HEIGHT + 4)
         self.setMaximumHeight(self.SWITCH_HEIGHT + 4)
     
@@ -88,8 +89,8 @@ class ToggleSwitchWidget(QWidget):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
         
-        # Position for switch - starts after the label area + spacing (using constants)
-        x = self.LABEL_WIDTH + self.LABEL_SPACING
+        # Position for switch - centered in the available space
+        x = (self.width() - self.SWITCH_WIDTH) // 2
         y = (self.height() - self.SWITCH_HEIGHT) // 2
         
         # Draw background (rounded rectangle)
