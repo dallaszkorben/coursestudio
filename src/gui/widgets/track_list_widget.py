@@ -138,13 +138,10 @@ class TrackListWidget(QWidget):
         # Button section
         button_layout = QHBoxLayout()
         
-        self.refresh_button = QPushButton("Refresh")
-        self.refresh_button.setToolTip("Refresh track list")
-        button_layout.addWidget(self.refresh_button)
-        
-        self.clear_button = QPushButton("Clear Selection")
-        self.clear_button.setToolTip("Clear current selection")
-        button_layout.addWidget(self.clear_button)
+        self.add_track_button = QPushButton("+")
+        self.add_track_button.setToolTip("Create new empty track")
+        self.add_track_button.setMaximumWidth(40)
+        button_layout.addWidget(self.add_track_button)
         
         button_layout.addStretch()
         
@@ -159,8 +156,7 @@ class TrackListWidget(QWidget):
         self.list_widget.customContextMenuRequested.connect(self._on_context_menu)
         
         # Button signals
-        self.refresh_button.clicked.connect(self.refresh_tracks)
-        self.clear_button.clicked.connect(self.clear_selection)
+        self.add_track_button.clicked.connect(self._on_add_track_clicked)
     
     # ========================================================================
     # Track Display
@@ -338,6 +334,27 @@ class TrackListWidget(QWidget):
             
             # Show menu
             menu.exec_(self.list_widget.mapToGlobal(position))
+    
+    def _on_add_track_clicked(self):
+        """Handle '+' button click to create a new track."""
+        
+        # Create a new track with default name
+        from src.core.track_manager import TrackData
+        track_count = len(self.track_manager.get_all_tracks())
+        new_track = TrackData(name=f"Track {track_count + 1}", trackpoints=[])
+        
+        # Add to track manager
+        self.track_manager.tracks.append(new_track)
+        new_track_index = len(self.track_manager.get_all_tracks()) - 1
+        
+        # Select the new track in the manager
+        self.track_manager.select_track(new_track_index)
+        
+        # Refresh the list and select the new track
+        self.refresh_tracks()
+        self.select_track(new_track_index)
+        
+        logger.info(f"New track created: {new_track.name} at index {new_track_index}")
     
     # ========================================================================
     # Context Menu Actions
