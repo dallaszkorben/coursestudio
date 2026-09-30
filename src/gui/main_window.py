@@ -147,6 +147,9 @@ class MainWindow(QMainWindow):
         # Format window title with substitutions
         window_title = window_title.format(name=app_name, version=version)
         
+        # Store base title for later updates
+        self.base_window_title = window_title
+        
         # Set window title
         self.setWindowTitle(window_title)
         
@@ -200,14 +203,29 @@ class MainWindow(QMainWindow):
         save_action.setShortcut(QKeySequence.Save)
         save_action.setStatusTip('Save current file')
         save_action.triggered.connect(self.action_save_file)
+        save_action.setEnabled(False)  # Disabled until file is opened
         file_menu.addAction(save_action)
+        self.save_action = save_action
         
         # File > Save As
         save_as_action = QAction('Save &As...', self)
         save_as_action.setShortcut(QKeySequence.SaveAs)
         save_as_action.setStatusTip('Save current file with new name')
         save_as_action.triggered.connect(self.action_save_file_as)
+        save_as_action.setEnabled(False)  # Disabled until file is opened
         file_menu.addAction(save_as_action)
+        self.save_as_action = save_as_action
+        
+        file_menu.addSeparator()
+        
+        # File > Close File
+        close_file_action = QAction('&Close File', self)
+        close_file_action.setShortcut(QKeySequence.Close)
+        close_file_action.setStatusTip('Close the opened file')
+        close_file_action.triggered.connect(self.action_close_file)
+        close_file_action.setEnabled(False)  # Disabled until file is opened
+        file_menu.addAction(close_file_action)
+        self.close_file_action = close_file_action
         
         file_menu.addSeparator()
         
@@ -329,7 +347,9 @@ class MainWindow(QMainWindow):
         save_action = QAction('Save', self)
         save_action.setStatusTip('Save current file')
         save_action.triggered.connect(self.action_save_file)
+        save_action.setEnabled(False)  # Disabled until file is opened
         self.toolbar.addAction(save_action)
+        self.toolbar_save_action = save_action
         
         self.toolbar.addSeparator()
         
@@ -530,6 +550,26 @@ class MainWindow(QMainWindow):
             self.map_widget.range_selection_changed.connect(self._update_insert_menu_state)
     
     # ========================================================================
+    # Window Title Management
+    # ========================================================================
+    
+    def _update_window_title(self):
+        """Update window title based on current file and modified state."""
+        
+        if self.current_file_path:
+            # Extract filename from path
+            filename = Path(self.current_file_path).name
+            title = f"{self.base_window_title} - {filename}"
+        else:
+            title = self.base_window_title
+        
+        # Add modified indicator if needed
+        if self.is_modified:
+            title += " *"
+        
+        self.setWindowTitle(title)
+    
+    # ========================================================================
     # File Operations
     # ========================================================================
     
@@ -585,6 +625,13 @@ class MainWindow(QMainWindow):
             # Update application state
             self.current_file_path = file_path
             self.is_modified = False
+            self._update_window_title()  # Update title with filename
+            
+            # Enable file operation actions
+            self.save_action.setEnabled(True)
+            self.save_as_action.setEnabled(True)
+            self.close_file_action.setEnabled(True)
+            self.toolbar_save_action.setEnabled(True)
             
             # Emit signal
             self.file_opened.emit(file_path)
@@ -618,6 +665,35 @@ class MainWindow(QMainWindow):
         
         if file_path:
             self.save_file(file_path)
+    
+    def action_close_file(self):
+        """Close the opened file and clear the UI."""
+        
+        # Clear track manager
+        self.track_manager.clear_all_tracks()
+        
+        # Clear UI
+        self.track_list_widget.clear_selection()
+        self.track_list_widget.refresh_tracks()
+        self.trackpoint_list_widget.set_track(-1)
+        self.map_widget.on_track_list_selection_changed(None)
+        
+        # Reset state
+        self.current_file_path = None
+        self.is_modified = False
+        self.gpx_data = None
+        
+        # Disable file operation actions
+        self.save_action.setEnabled(False)
+        self.save_as_action.setEnabled(False)
+        self.close_file_action.setEnabled(False)
+        self.toolbar_save_action.setEnabled(False)
+        
+        # Update window title
+        self._update_window_title()
+        
+        logger.info("File closed")
+        self.statusBar().showMessage('File closed', 3000)
     
     def save_file(self, file_path: str) -> bool:
         """
@@ -677,6 +753,7 @@ class MainWindow(QMainWindow):
             if success:
                 self.current_file_path = file_path
                 self.is_modified = False
+                self._update_window_title()  # Update title with filename
                 self.file_saved.emit(file_path)
                 logger.info(f"Saved file: {file_path}")
                 self.show_info("Success", message)

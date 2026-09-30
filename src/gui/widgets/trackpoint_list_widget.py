@@ -258,10 +258,6 @@ class TrackpointListWidget(QWidget):
         # Button section
         button_layout = QHBoxLayout()
         
-        self.refresh_button = QPushButton("Refresh")
-        self.refresh_button.setToolTip("Refresh trackpoint list")
-        button_layout.addWidget(self.refresh_button)
-        
         self.clear_button = QPushButton("Clear Selection")
         self.clear_button.setToolTip("Clear current selection")
         button_layout.addWidget(self.clear_button)
@@ -287,7 +283,6 @@ class TrackpointListWidget(QWidget):
         self.show_points_combo.currentIndexChanged.connect(self._on_show_points_changed)
         
         # Button signals
-        self.refresh_button.clicked.connect(self.refresh_trackpoints)
         self.clear_button.clicked.connect(self.clear_selection)
     
     # ========================================================================
@@ -309,6 +304,10 @@ class TrackpointListWidget(QWidget):
             True
             >>> widget.refresh_trackpoints()
         """
+        
+        # Clear any existing selections when switching tracks
+        self.table_widget.clearSelection()
+        self.current_selection = -1
         
         # Handle unselection (-1)
         if track_index < 0:
@@ -553,6 +552,15 @@ class TrackpointListWidget(QWidget):
         """Clear current point selection."""
         self.table_widget.clearSelection()
         self.current_selection = -1
+        
+        # Notify map widget to clear selection
+        from PyQt5.QtWidgets import QApplication
+        main_window = QApplication.instance().activeWindow()
+        if main_window and hasattr(main_window, 'map_widget'):
+            main_window.map_widget.selected_trackpoint_index = None
+            main_window.map_widget.selected_trackpoint_range = None
+            main_window.map_widget.render_map()
+        
         logger.debug("Point selection cleared")
     
     # ========================================================================

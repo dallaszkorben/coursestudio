@@ -428,6 +428,17 @@ class TrackManager:
             return self.tracks[track_index]
         return None
     
+    def clear_all_tracks(self):
+        """
+        Clear all tracks and reset state.
+        
+        Used when closing a file to reset the track manager.
+        """
+        self.tracks.clear()
+        self.selected_track_index = -1
+        self.gpx_file_path = None
+        logger.debug("All tracks cleared")
+    
     def get_selected_track_info(self) -> Optional[Dict[str, Any]]:
         """
         Get information about the currently selected track.

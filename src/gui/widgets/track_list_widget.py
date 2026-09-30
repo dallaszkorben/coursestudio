@@ -26,7 +26,7 @@ from typing import Optional, List
 
 from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QListWidget, QListWidgetItem,
-    QLabel, QPushButton, QHeaderView, QAbstractItemView, QMenu
+    QLabel, QPushButton, QHeaderView, QAbstractItemView, QMenu, QLineEdit
 )
 from PyQt5.QtGui import QFont, QIcon, QColor, QBrush
 from PyQt5.QtCore import Qt, pyqtSignal, QSize
@@ -90,6 +90,11 @@ class TrackListWidget(QWidget):
         
         self.track_manager = track_manager
         self.current_selection = -1
+        
+        # Inline editing state
+        self.editing_track_index = -1
+        self.edit_line_edit = None
+        self.original_track_name = None
         
         # Setup UI
         self._setup_ui()
@@ -329,12 +334,16 @@ class TrackListWidget(QWidget):
             self.unselect_track_button.setEnabled(False)
     
     def _on_item_double_clicked(self, item: QListWidgetItem):
-        """Handle double-click on track item."""
+        """Handle double-click on track item to enter edit mode."""
         
         track_index = item.data(Qt.UserRole)
-        self.track_double_clicked.emit(track_index)
+        track = self.track_manager.get_track_by_index(track_index)
         
-        logger.debug(f"Track double-clicked: index={track_index}")
+        if not track:
+            return
+        
+        # Start inline editing
+        self._start_inline_edit(track_index, track.name, item)
     
     def _on_context_menu(self, position):
         """Handle right-click context menu."""
@@ -409,6 +418,115 @@ class TrackListWidget(QWidget):
         self.clear_selection()
         
         logger.info("Track unselected")
+    
+    # ========================================================================
+    # Inline Editing
+    # ========================================================================
+    
+    def _start_inline_edit(self, track_index: int, current_name: str, item: QListWidgetItem):
+        """Start inline editing mode for a track name."""
+        
+        # Cancel any ongoing edit first
+        if self.editing_track_index >= 0:
+            self._cancel_inline_edit()
+        
+        # Store state
+        self.editing_track_index = track_index
+        self.original_track_name = current_name
+        
+        # Create line edit widget
+        self.edit_line_edit = QLineEdit()
+        self.edit_line_edit.setText(current_name)
+        self.edit_line_edit.selectAll()  # Select all text so user can start typing
+        
+        # Connect signals for Enter, Escape, and focus loss
+        self.edit_line_edit.returnPressed.connect(self._finish_inline_edit)
+        self.edit_line_edit.editingFinished.connect(self._finish_inline_edit)
+        
+        # Set as item widget
+        self.list_widget.setItemWidget(item, self.edit_line_edit)
+        
+        # Focus on the edit field
+        self.edit_line_edit.setFocus()
+        
+        # Handle Escape key
+        self.edit_line_edit.keyPressEvent = lambda e: self._handle_edit_key_press(e)
+        
+        logger.debug(f"Started inline edit for track {track_index}: '{current_name}'")
+    
+    def _handle_edit_key_press(self, event):
+        """Handle key press events in edit mode."""
+        from PyQt5.QtGui import QKeySequence
+        
+        if event.key() == Qt.Key_Escape:
+            self._cancel_inline_edit()
+        else:
+            QLineEdit.keyPressEvent(self.edit_line_edit, event)
+    
+    def _finish_inline_edit(self):
+        """Finish editing and save the new track name."""
+        
+        if self.editing_track_index < 0 or not self.edit_line_edit:
+            return
+        
+        new_name = self.edit_line_edit.text().strip()
+        
+        # Validate: reject empty names
+        if not new_name:
+            logger.warning("Cannot set empty track name")
+            self._cancel_inline_edit()
+            return
+        
+        # If name hasn't changed, just cancel
+        if new_name == self.original_track_name:
+            self._cancel_inline_edit()
+            return
+        
+        # Rename the track
+        success = self.track_manager.rename_track(self.editing_track_index, new_name)
+        
+        if success:
+            logger.info(f"Renamed track {self.editing_track_index} to '{new_name}'")
+            # Refresh the list to show updated name
+            self.update_track_info(self.editing_track_index)
+        else:
+            logger.warning(f"Failed to rename track {self.editing_track_index}")
+        
+        # Exit edit mode
+        self._exit_inline_edit()
+    
+    def _cancel_inline_edit(self):
+        """Cancel inline editing and revert to original name."""
+        
+        if self.editing_track_index < 0:
+            return
+        
+        logger.debug(f"Cancelled inline edit for track {self.editing_track_index}")
+        self._exit_inline_edit()
+    
+    def _exit_inline_edit(self):
+        """Exit inline edit mode and restore normal display."""
+        
+        if self.editing_track_index < 0:
+            return
+        
+        track_index = self.editing_track_index
+        item = self.list_widget.item(track_index)
+        
+        if item:
+            # Restore normal display (remove the line edit widget)
+            self.list_widget.setItemWidget(item, None)
+            
+            # Refresh the item text to show updated content
+            track = self.track_manager.get_track_by_index(track_index)
+            if track:
+                item_text = self._format_track_item(track)
+                item.setText(item_text)
+        
+        # Clear edit state
+        self.editing_track_index = -1
+        self.edit_line_edit = None
+        self.original_track_name = None
     
     # ========================================================================
     # Context Menu Actions
