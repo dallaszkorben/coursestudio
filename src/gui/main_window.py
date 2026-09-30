@@ -570,6 +570,18 @@ class MainWindow(QMainWindow):
             # Load tracks into manager
             count = self.track_manager.load_from_gpx(gpx, file_path)
             
+            # Clear all UI selections explicitly
+            if hasattr(self, 'track_list_widget'):
+                self.track_list_widget.clear_selection()  # Explicit unselect
+                self.track_list_widget.refresh_tracks()
+            
+            if hasattr(self, 'map_widget'):
+                self.map_widget.on_track_list_selection_changed(None)
+                self.map_widget.render_map()  # Force re-render with cleared selection
+            
+            if hasattr(self, 'trackpoint_list_widget'):
+                self.trackpoint_list_widget.set_track(-1)
+            
             # Update application state
             self.current_file_path = file_path
             self.is_modified = False
