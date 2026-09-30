@@ -198,6 +198,16 @@ class MainWindow(QMainWindow):
         open_action.triggered.connect(self.action_open_file)
         file_menu.addAction(open_action)
         
+        # File > Merge GPX File
+        merge_action = QAction('&Merge GPX File...', self)
+        merge_action.setStatusTip('Merge tracks from another GPX file into current file')
+        merge_action.triggered.connect(self.action_merge_gpx_file)
+        merge_action.setEnabled(False)  # Disabled until file is opened
+        file_menu.addAction(merge_action)
+        self.merge_action = merge_action
+        
+        file_menu.addSeparator()
+        
         # File > Save
         save_action = QAction('&Save', self)
         save_action.setShortcut(QKeySequence.Save)
@@ -631,6 +641,7 @@ class MainWindow(QMainWindow):
             self.save_action.setEnabled(True)
             self.save_as_action.setEnabled(True)
             self.close_file_action.setEnabled(True)
+            self.merge_action.setEnabled(True)
             self.toolbar_save_action.setEnabled(True)
             
             # Emit signal
@@ -666,6 +677,54 @@ class MainWindow(QMainWindow):
         if file_path:
             self.save_file(file_path)
     
+    def action_merge_gpx_file(self):
+        """Merge tracks from another GPX file into current file."""
+        
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            'Merge GPX File',
+            '',
+            'GPX Files (*.gpx);;All Files (*.*)'
+        )
+        
+        if not file_path:
+            return
+        
+        try:
+            # Load the GPX file to merge
+            merge_gpx = self.gpx_handler.load_gpx(file_path)
+            if not merge_gpx:
+                self.show_error("Failed to merge", f"Could not parse GPX file: {file_path}")
+                return
+            
+            # Append tracks from the merge file
+            count = self.track_manager.append_tracks_from_gpx(merge_gpx)
+            
+            if count == 0:
+                self.show_error("No tracks", f"No tracks found in: {file_path}")
+                return
+            
+            # Mark file as modified
+            self.is_modified = True
+            self._update_window_title()
+            
+            # Clear all selections after merge (track indices have changed)
+            self.track_list_widget.clear_selection()
+            self.trackpoint_list_widget.set_track(-1)
+            self.map_widget.on_track_list_selection_changed(None)
+            self.map_widget.render_map()
+            
+            # Refresh UI with new tracks
+            self.track_list_widget.refresh_tracks()
+            
+            # Show success message
+            self.statusBar().showMessage(f'Merged {count} track{"s" if count != 1 else ""} from {Path(file_path).name}', 5000)
+            logger.info(f"Merged {count} tracks from {file_path}")
+            
+        except Exception as e:
+            self.show_error("Merge failed", f"Error merging file: {str(e)}")
+            logger.error(f"Error merging GPX file: {e}")
+    
     def action_close_file(self):
         """Close the opened file and clear the UI."""
         
@@ -687,6 +746,7 @@ class MainWindow(QMainWindow):
         self.save_action.setEnabled(False)
         self.save_as_action.setEnabled(False)
         self.close_file_action.setEnabled(False)
+        self.merge_action.setEnabled(False)
         self.toolbar_save_action.setEnabled(False)
         
         # Update window title

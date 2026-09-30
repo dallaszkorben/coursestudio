@@ -439,6 +439,127 @@ class TrackManager:
         self.gpx_file_path = None
         logger.debug("All tracks cleared")
     
+    def get_unique_track_name(self, base_name: str) -> str:
+        """
+        Get a unique track name by checking existing names.
+        If name exists, append suffix until unique.
+        
+        Args:
+            base_name (str): The desired track name
+        
+        Returns:
+            str: A unique name (either base_name or base_name_N)
+        
+        Algorithm:
+            1. Check if base_name exists in current tracks
+            2. If not, return base_name as-is (no collision)
+            3. If yes, try base_name_2, base_name_3, etc. until unique
+        
+        Example:
+            Existing: A, B, A1
+            Merging: A → returns "A_2" (collision)
+                     C → returns "C" (no collision)
+        """
+        
+        existing_names = {track.name for track in self.tracks}
+        
+        # If name doesn't exist, use it as-is
+        if base_name not in existing_names:
+            return base_name
+        
+        # Name exists, so find first available suffix
+        counter = 2
+        while True:
+            candidate = f"{base_name}_{counter}"
+            if candidate not in existing_names:
+                return candidate
+            counter += 1
+    
+    def append_tracks_from_gpx(self, gpx_data: gpxpy.gpx.GPX) -> int:
+        """
+        Append tracks from another GPX file to current tracks.
+        
+        For each track in the incoming GPX:
+            1. Get unique name (check for collisions)
+            2. If name exists, add suffix _2, _3, etc.
+            3. If name doesn't exist, use as-is
+            4. Add track with unique name
+        
+        Args:
+            gpx_data (gpxpy.gpx.GPX): GPX data to merge
+        
+        Returns:
+            int: Number of tracks appended
+        
+        Example:
+            >>> gpx = GPXHandler().load_gpx('other.gpx')
+            >>> count = track_manager.append_tracks_from_gpx(gpx)
+            >>> print(f"Appended {count} tracks")
+        """
+        
+        if not gpx_data or not gpx_data.tracks:
+            logger.warning("No tracks to append from GPX data")
+            return 0
+        
+        # Import calculator for distance calculation
+        from src.core.calculator import calculate_track_distance, validate_coordinate
+        
+        appended_count = 0
+        
+        # Process each track from incoming GPX
+        for gpx_track in gpx_data.tracks:
+            try:
+                # Get unique name (with suffix if collision)
+                unique_name = self.get_unique_track_name(gpx_track.name)
+                
+                # Extract trackpoints
+                trackpoints: List[Trackpoint] = []
+                distance_tuples: List[Tuple[float, float]] = []
+                has_elevation = False
+                has_time = False
+                
+                for segment in gpx_track.segments:
+                    for point in segment.points:
+                        # Create trackpoint
+                        tp = Trackpoint(
+                            latitude=point.latitude,
+                            longitude=point.longitude,
+                            elevation=point.elevation,
+                            timestamp=point.time
+                        )
+                        trackpoints.append(tp)
+                        distance_tuples.append((point.latitude, point.longitude))
+                        
+                        if point.elevation is not None:
+                            has_elevation = True
+                        if point.time is not None:
+                            has_time = True
+                
+                # Calculate distance
+                distance_km = calculate_track_distance(distance_tuples)
+                
+                # Create track data
+                track_data = TrackData(
+                    name=unique_name,
+                    trackpoints=trackpoints,
+                    distance_km=distance_km,
+                    has_elevation=has_elevation,
+                    has_time=has_time
+                )
+                
+                # Add to tracks
+                self.tracks.append(track_data)
+                appended_count += 1
+                
+                logger.debug(f"Appended track: {unique_name} ({len(trackpoints)} points, {distance_km:.2f} km)")
+                
+            except Exception as e:
+                logger.error(f"Error appending track {gpx_track.name}: {e}")
+                continue
+        
+        logger.info(f"Appended {appended_count} tracks from GPX")
+        return appended_count
+    
     def get_selected_track_info(self) -> Optional[Dict[str, Any]]:
         """
         Get information about the currently selected track.
