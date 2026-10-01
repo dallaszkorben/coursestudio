@@ -16,7 +16,7 @@ A PyQt5-based desktop application for viewing, editing, and manipulating GPX (GP
   - Interactive map with mbtiles-based tile support
   - Real-time track rendering
   - Pan and zoom controls
-  - Track path color and width customization
+  - Track path color and width customization with outline effects
 
 - **Trackpoint Management**
   - View all trackpoints in tabular format
@@ -29,20 +29,28 @@ A PyQt5-based desktop application for viewing, editing, and manipulating GPX (GP
   - Mouse wheel zoom support
   - Zoom in/out buttons with visual feedback
   - Recenter to default position
-  - Turning points (trackpoints) visualization on map
+  - Turning points (trackpoints) visualization on map with customizable outline
 
 - **Turning Points Display**
   - Visualize trackpoints as circles on the map
-  - Toggle visibility with dropdown menu
-  - Customizable colors and sizes
+  - Toggle visibility with toggle switch
+  - Customizable colors and sizes for general, single-selected, and multi-selected points
+  - Configurable outline colors and widths
   - Selected point highlighting
 
-### Advanced Features
-- Coordinate format conversion (DMS ↔ Decimal)
-- Distance and track statistics
-- Garmin compatibility validation
-- GPX version 1.1 support
-- Configuration file for customization
+- **Layout Control**
+  - Horizontal splitter between Track List and Trackpoints/Map panel (manually resizable)
+  - Vertical splitter between Trackpoints list and Map (manually resizable)
+  - Expand/collapse sections without losing work
+
+- **Settings Panel**
+  - **Appearance tab** with sub-tabs:
+    - Track Path: Configure body and outline colors/widths
+    - General Track Point: Settings for unselected trackpoints
+    - Single-Selected Track Point: Settings for single-selected trackpoints
+    - Multi-Selected Track Point: Settings for multi-selected trackpoints
+  - Real-time map updates when settings change
+  - Auto-save configuration to file
 
 ## Requirements
 

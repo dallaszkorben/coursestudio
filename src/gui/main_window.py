@@ -37,6 +37,7 @@ from src.gui.widgets.track_list_widget import TrackListWidget
 from src.gui.widgets.trackpoint_list_widget import TrackpointListWidget
 from src.gui.widgets.map_widget import MapWidget
 from src.gui.widgets.settings_widget import SettingsWidget
+from src.gui.dialogs.help_dialog import HelpDialog
 from src.map.mbtiles_provider import MBTilesProvider
 
 
@@ -323,6 +324,14 @@ class MainWindow(QMainWindow):
         # Help Menu
         help_menu = menubar.addMenu('&Help')
         
+        # Help > User Guide
+        help_action = QAction('&User Guide', self)
+        help_action.setStatusTip('Show user guide and help')
+        help_action.triggered.connect(self.action_help)
+        help_menu.addAction(help_action)
+        
+        help_menu.addSeparator()
+        
         # Help > About
         about_action = QAction('&About', self)
         about_action.setStatusTip('Show about information')
@@ -407,24 +416,27 @@ class MainWindow(QMainWindow):
         # ====================================================================
         
         editor_widget = QWidget()
-        editor_layout = QHBoxLayout()
+        editor_layout = QVBoxLayout()
         editor_widget.setLayout(editor_layout)
-        editor_layout.setContentsMargins(5, 5, 5, 5)
-        editor_layout.setSpacing(5)
+        editor_layout.setContentsMargins(0, 0, 0, 0)
+        editor_layout.setSpacing(0)
+        
+        # ====================================================================
+        # Main Horizontal Splitter: Track List (left) vs Trackpoints+Map (right)
+        # ====================================================================
+        
+        main_splitter = QSplitter(Qt.Horizontal)
         
         # Left Panel: Track List Widget
         self.track_list_widget = TrackListWidget(self.track_manager)
-        self.track_list_widget.setMaximumWidth(400)
-        self.track_list_widget.setMinimumWidth(80)  # Reduced from 250
-        
-        # Allow to shrink
+        self.track_list_widget.setMinimumWidth(80)
         self.track_list_widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         
         # Connect track list signals to main window
         self.track_list_widget.track_selected.connect(self._on_track_list_selection_changed)
         self.track_list_widget.track_double_clicked.connect(self._on_track_list_double_clicked)
         
-        editor_layout.addWidget(self.track_list_widget)
+        main_splitter.addWidget(self.track_list_widget)
         
         # Right Panel: Vertical splitter with Trackpoints and Map
         right_splitter = QSplitter(Qt.Vertical)
@@ -482,7 +494,17 @@ class MainWindow(QMainWindow):
         right_splitter.setCollapsible(0, False)  # Trackpoint list can't collapse
         right_splitter.setCollapsible(1, False)  # Map can't collapse
         
-        editor_layout.addWidget(right_splitter, 1)
+        # Add right splitter to main horizontal splitter
+        main_splitter.addWidget(right_splitter)
+        
+        # Set initial sizes for main splitter (30% tracks, 70% trackpoints+map)
+        main_splitter.setSizes([300, 700])
+        
+        # Make main splitter draggable - neither side can collapse
+        main_splitter.setCollapsible(0, False)  # Track list can't collapse
+        main_splitter.setCollapsible(1, False)  # Trackpoints+Map can't collapse
+        
+        editor_layout.addWidget(main_splitter)
         
         self.main_tab_widget.addTab(editor_widget, "Editor")
         
@@ -939,6 +961,11 @@ class MainWindow(QMainWindow):
         """Open preferences dialog."""
         logger.debug("Preferences action triggered (not yet implemented)")
         self.statusBar().showMessage("Preferences not yet implemented")
+    
+    def action_help(self):
+        """Show help dialog."""
+        help_dialog = HelpDialog(self)
+        help_dialog.exec_()
     
     def action_about(self):
         """Show about dialog."""
