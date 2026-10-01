@@ -153,6 +153,9 @@ class MapWidget(QWidget):
         self.pan_start_y = None
         self.setMouseTracking(True)
         
+        # Enable keyboard events (for ESC to deselect)
+        self.setFocusPolicy(Qt.StrongFocus)
+        
         # Render timer
         self.render_timer = QTimer()
         self.render_timer.timeout.connect(self.render_map)
@@ -668,7 +671,15 @@ class MapWidget(QWidget):
                         return
                 return  # Don't pan if Shift+click, even if insert failed
             
-            # Otherwise, start pan
+            # Otherwise, clear any selection and start pan
+            # Clicking on empty space should deselect
+            if self.selected_trackpoint_index is not None or self.selected_trackpoint_range is not None:
+                self.selected_trackpoint_index = None
+                self.selected_trackpoint_range = None
+                # Emit signal to deselect in list as well
+                self.point_clicked.emit(str(self.selected_track_id), -1)
+                self.render_map()
+            
             self.pan_start_x = x
             self.pan_start_y = y
     
@@ -846,6 +857,20 @@ class MapWidget(QWidget):
                 self.center_lon = cursor_lon + (screen_center_lon - mouse_pos_lon)
                 
                 self.render_map()
+    
+    def keyPressEvent(self, event):
+        """Handle keyboard events."""
+        if event.key() == Qt.Key_Escape:
+            # ESC clears selection
+            if self.selected_trackpoint_index is not None or self.selected_trackpoint_range is not None:
+                self.selected_trackpoint_index = None
+                self.selected_trackpoint_range = None
+                # Emit signal to deselect in list as well
+                self.point_clicked.emit(str(self.selected_track_id), -1)
+                self.render_map()
+            return
+        
+        super().keyPressEvent(event)
     
     def resizeEvent(self, event):
         """Handle window resize."""
