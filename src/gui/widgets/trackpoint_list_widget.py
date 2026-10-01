@@ -163,7 +163,7 @@ class TrackpointListWidget(QWidget):
         from config.app_config_yaml import AppConfig
         config = AppConfig()
         self.coordinate_format = config.get_str('CoordinatesDisplay.Format.coordinate_format', 'dms')
-        self.show_points = config.get_bool('Appearance.MapDisplay.TurningPoints.show', True)
+        self.show_points = config.get_bool('Appearance.MapDisplay.Trackpoints.show', True)
         
         # Setup UI
         self._setup_ui()
@@ -658,10 +658,10 @@ class TrackpointListWidget(QWidget):
         show_points = self.show_points_combo.currentData()
         self.show_points = show_points
         
-        # Save to config file (NEW structure)
+        # Save to config file
         from config.app_config_yaml import AppConfig
         config = AppConfig()
-        config.set('Appearance.MapDisplay.TurningPoints.show', show_points)
+        config.set('Appearance.MapDisplay.Trackpoints.show', show_points)
         config.save_to_file()
         
         # Update map widget if available
