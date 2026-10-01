@@ -518,13 +518,13 @@ class MainWindow(QMainWindow):
         self.settings_widget.track_path_widget.body_color_picker.color_changed.connect(
             self._on_track_path_settings_changed
         )
-        self.settings_widget.track_path_widget.body_width_slider.valueChanged.connect(
+        self.settings_widget.track_path_widget.body_width_slider.value_changed.connect(
             self._on_track_path_settings_changed
         )
         self.settings_widget.track_path_widget.outline_color_picker.color_changed.connect(
             self._on_track_path_settings_changed
         )
-        self.settings_widget.track_path_widget.outline_width_slider.valueChanged.connect(
+        self.settings_widget.track_path_widget.outline_width_slider.value_changed.connect(
             self._on_track_path_settings_changed
         )
         
@@ -1067,10 +1067,7 @@ A PyQt5 application for reading, editing, and exporting GPX navigation tracks.
             start_idx, end_idx = self.map_widget.selected_trackpoint_range
             trackpoints = self.track_manager.get_selected_trackpoints()
             
-            logger.info(f"[INSERT] Range selected: ({start_idx}, {end_idx}), trackpoint count: {len(trackpoints)}")
-            
             if start_idx >= len(trackpoints) or end_idx >= len(trackpoints):
-                logger.error(f"[INSERT] Invalid indices: start_idx={start_idx}, end_idx={end_idx}, len={len(trackpoints)}")
                 QMessageBox.critical(self, "Error", "Invalid trackpoint indices")
                 return
             

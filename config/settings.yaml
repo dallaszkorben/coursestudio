@@ -73,6 +73,8 @@ Appearance:
         Medium Blue: 0000CD
         Dark Blue: 00008B
         Navy: 000080
+    TurningPoints:
+      show: false
   Tiles:
     mbtiles_file: Sweden-Raster-Z10-Z16.mbtiles
     fallback_files:

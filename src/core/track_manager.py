@@ -332,7 +332,6 @@ class TrackManager:
         # Auto-select first track if any loaded
         if self.tracks:
             self.selected_track_index = 0
-            logger.info(f"Selected track 0: '{self.tracks[0].name}'")
         
         logger.info(f"Loaded {len(self.tracks)} tracks from GPX")
         return len(self.tracks)

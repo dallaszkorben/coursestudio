@@ -254,18 +254,13 @@ class MapWidget(QWidget):
     
     def on_track_list_selection_changed(self, track_id):
         """Handle track selection."""
-        logger.info(f"[MAP] on_track_list_selection_changed called with track_id={track_id} (type={type(track_id).__name__})")
         self.selected_track_id = track_id
         self.selected_trackpoint_index = None
         self.selected_trackpoint_range = None  # Clear range selection when track changes
-        logger.info(f"[MAP] After assignment: self.selected_track_id={self.selected_track_id}")
         self.render_map()
     
     def on_trackpoint_selected(self, track_id, trackpoint_index):
         """Handle trackpoint selection."""
-        logger.info(f"[MAP] on_trackpoint_selected called: track_id={track_id}, trackpoint_index={trackpoint_index}")
-        import traceback
-        logger.info(f"[MAP] Call stack:\n{''.join(traceback.format_stack()[-4:-1])}")
         self.selected_track_id = track_id
         self.selected_trackpoint_index = trackpoint_index
         self.render_map()
@@ -313,7 +308,7 @@ class MapWidget(QWidget):
                     os.remove(tmp_path)
         
         except Exception as e:
-            print(f"Error rendering map: {e}")
+            logger.error(f"Error rendering map: {e}")
     
     def _draw_tracks_on_image(self, pil_image, map_renderer):
         """
@@ -331,9 +326,7 @@ class MapWidget(QWidget):
             return pil_image
         
         # Only draw the selected track (handle both None and -1)
-        logger.debug(f"[RENDER] Checking: selected_track_id={self.selected_track_id} (is None: {self.selected_track_id is None}, is < 0: {self.selected_track_id is not None and self.selected_track_id < 0})")
         if self.selected_track_id is None or (isinstance(self.selected_track_id, int) and self.selected_track_id < 0):
-            logger.debug(f"[RENDER] selected_track_id is None or negative, skipping track rendering")
             return pil_image
         
         draw = ImageDraw.Draw(pil_image)
@@ -529,7 +522,6 @@ class MapWidget(QWidget):
                                 self.selected_trackpoint_range = (min_idx, max_idx)
                                 self.selected_trackpoint_index = None  # Clear single selection
                                 self.range_selection_changed.emit(True)  # Signal range change
-                                logger.info(f"[RANGE] Selected range: ({min_idx}, {max_idx})")
                                 self.render_map()
                                 return
                         elif self.selected_trackpoint_range is not None:
@@ -605,7 +597,7 @@ class MapWidget(QWidget):
                             self.selected_trackpoint_range = None
                             self.selected_trackpoint_index = insert_position
                             
-                            # Refresh list and render
+                            # Refresh list FIRST so it has the new trackpoint
                             main_window = QApplication.instance().activeWindow()
                             if main_window:
                                 if hasattr(main_window, 'trackpoint_list_widget'):
@@ -613,15 +605,15 @@ class MapWidget(QWidget):
                                 if hasattr(main_window, 'track_list_widget'):
                                     main_window.track_list_widget.update_track_info(self.selected_track_id)
                             
+                            # NOW emit signal to sync selection with updated trackpoints list
+                            self.point_clicked.emit(str(self.selected_track_id), insert_position)
+                            
                             self.render_map()
-                            logger.info(f"[INSERT+DRAG] Inserted point at {insert_position}, starting drag")
                             return
             
             # NEW: Shift+click on empty space (only if no point was found above) - insert point at end (or as first point)
             if event.modifiers() & Qt.ShiftModifier:
-                logger.info(f"[DEBUG] Shift+click on empty space at ({x}, {y})")
                 gps_coords = self.screen_to_gps(x, y)
-                logger.info(f"[DEBUG] gps_coords={gps_coords}, track_manager={self.track_manager}, selected_track_id={self.selected_track_id}")
                 if gps_coords and self.track_manager:
                     lat, lon = gps_coords
                     
@@ -632,7 +624,6 @@ class MapWidget(QWidget):
                         self.track_manager.tracks.append(new_track)
                         self.selected_track_id = len(self.track_manager.get_all_tracks()) - 1
                         self.track_manager.select_track(self.selected_track_id)
-                        logger.info(f"[DEBUG] Created new track: {new_track.name} at index {self.selected_track_id}")
                         
                         # Emit signal to update track list in UI
                         main_window = QApplication.instance().activeWindow()
@@ -656,14 +647,13 @@ class MapWidget(QWidget):
                     success = self.track_manager.add_trackpoint_selected_with_history(
                         lat, lon, None, insert_position
                     )
-                    logger.info(f"[DEBUG] Insert result: success={success}")
                     
                     if success:
                         # Select the new point
                         self.selected_trackpoint_index = insert_position
                         self.selected_trackpoint_range = None
                         
-                        # Refresh list and render
+                        # Refresh list FIRST so it has the new trackpoint
                         main_window = QApplication.instance().activeWindow()
                         if main_window:
                             if hasattr(main_window, 'trackpoint_list_widget'):
@@ -671,8 +661,10 @@ class MapWidget(QWidget):
                             if hasattr(main_window, 'track_list_widget'):
                                 main_window.track_list_widget.update_track_info(self.selected_track_id)
                         
+                        # NOW emit signal to sync selection with updated trackpoints list
+                        self.point_clicked.emit(str(self.selected_track_id), insert_position)
+                        
                         self.render_map()
-                        logger.info(f"[SHIFT+INSERT] Inserted point at position {insert_position}")
                         return
                 return  # Don't pan if Shift+click, even if insert failed
             
