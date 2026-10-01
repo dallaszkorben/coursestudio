@@ -354,6 +354,20 @@ pytest tests/ --cov=src --cov-report=html
 - **One Track Visible**: Only one track displays at a time (by design - prevents clutter)
 - **No Track Import/Export**: Can't copy tracks between files yet
 
+## Recent Fixes (Version 1.1.0)
+
+### Track Deletion Behavior
+- **Before**: Deleting the last point in a track would auto-select and display another track, causing confusion
+- **After**: Deleting a track leaves no track selected - the trackpoint list and map are empty until you select another track
+
+### Trackpoint Deletion Updates
+- **Before**: Deleting trackpoints didn't update the track info (distance, point count) in the track list
+- **After**: Track info updates dynamically after any trackpoint deletion
+
+### Auto-Track Creation
+- **Before**: You could only add points to an empty file if you opened it fresh, not if you deleted all tracks
+- **After**: Adding points to the map when no track is selected creates a new track (consistent behavior)
+
 ## Future Enhancements
 
 - [ ] Multi-track visualization on map
@@ -391,6 +405,24 @@ Contributions are welcome! Please:
 Mikael - Initial development and design
 
 ## Changelog
+
+### Version 1.1.0 (2026-10-02)
+
+**Bug Fixes & Improvements:**
+- ✅ Fixed track deletion behavior: Deleting last point in a track no longer auto-selects other tracks
+- ✅ Fixed trackpoint deletion: Track info (distance, point count) now updates dynamically when deleting points
+- ✅ Improved track/trackpoint creation: Auto-creates new track when no track is selected and points are added (consistent with startup behavior)
+- ✅ Fixed UI synchronization: Track list, trackpoint list, and map now properly stay in sync when deleting tracks/points
+- ✅ Trackpoint info updates on deletion:
+  - Single point deletion updates track info
+  - Range deletion from start updates track info
+  - Range deletion from end updates track info
+
+**Track Management Behavior:**
+- When no track is selected (empty file or after deletion), adding points creates a new track automatically
+- Deleting a track leaves no selection (instead of auto-selecting next track)
+- Deleting the last point in a track deletes the entire track
+- All deletions support undo (Ctrl+Z)
 
 ### Version 1.0.0 (2026-09-20)
 

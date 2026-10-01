@@ -52,8 +52,21 @@ class RangeSelectableTableWidget(QTableWidget):
     
     range_selected = pyqtSignal(int, int)  # Emitted with (start_index, end_index)
     range_right_clicked = pyqtSignal()  # Emitted when right-click on range selection
+    selection_cleared = pyqtSignal()  # Emitted when ESC clears selection
     last_clicked_row = None
     current_range = None
+    
+    def keyPressEvent(self, event):
+        """Handle keyboard events in table widget."""
+        # ESC key to unselect
+        if event.key() == Qt.Key_Escape:
+            print(f"DEBUG: [TABLE-ESC] Clearing selection")
+            self.clearSelection()
+            self.current_range = None
+            self.selection_cleared.emit()  # Notify parent widget
+            return
+        
+        super().keyPressEvent(event)
     
     def mousePressEvent(self, event):
         """Handle mouse press for range selection."""
@@ -72,6 +85,7 @@ class RangeSelectableTableWidget(QTableWidget):
             item = self.itemAt(event.pos())
             if item:
                 row = item.row()
+                print(f"DEBUG: [TABLE-CLICK] Clicked on row {row}")
                 
                 # Shift+click: select range (only 2 consecutive)
                 if event.modifiers() & Qt.ShiftModifier and self.last_clicked_row is not None:
@@ -89,6 +103,13 @@ class RangeSelectableTableWidget(QTableWidget):
                     self.clearSelection()
                     self.current_range = None
                     self.last_clicked_row = row
+            else:
+                # Clicked on empty space - clear selection
+                print(f"DEBUG: [TABLE-CLICK] Clicked on empty space")
+                self.clearSelection()
+                self.current_range = None
+                self.selection_cleared.emit()
+                return
         
         # Call parent implementation
         super().mousePressEvent(event)
@@ -275,6 +296,7 @@ class TrackpointListWidget(QWidget):
         self.table_widget.customContextMenuRequested.connect(self._on_context_menu)
         self.table_widget.range_selected.connect(self._on_range_selected_in_list)  # NEW: Handle Shift+click range
         self.table_widget.range_right_clicked.connect(self._show_range_context_menu)  # NEW: Handle right-click on range
+        self.table_widget.selection_cleared.connect(self._on_table_selection_cleared)  # NEW: Handle ESC key
         
         # Format combo signal
         self.format_combo.currentIndexChanged.connect(self._on_format_changed)
@@ -489,11 +511,17 @@ class TrackpointListWidget(QWidget):
         Select a trackpoint by index.
         
         Args:
-            point_index (int): Index of point to select (0-based)
+            point_index (int): Index of point to select (0-based), or -1 to clear selection
         
         Returns:
             bool: True if selected successfully, False otherwise
         """
+        
+        # Handle unselection (-1)
+        if point_index < 0:
+            print(f"DEBUG: select_point({point_index}) - clearing selection")
+            self.clear_selection()
+            return True
         
         if not 0 <= point_index < self.table_widget.rowCount():
             logger.warning(f"Invalid point index: {point_index}")
@@ -553,6 +581,9 @@ class TrackpointListWidget(QWidget):
         self.table_widget.clearSelection()
         self.current_selection = -1
         
+        # Emit signal to notify observers
+        self.point_selected.emit(-1)
+        
         # Notify map widget to clear selection
         from PyQt5.QtWidgets import QApplication
         main_window = QApplication.instance().activeWindow()
@@ -572,9 +603,11 @@ class TrackpointListWidget(QWidget):
         
         # Don't emit signal if we're updating from map (prevents feedback loop)
         if self._updating_from_map:
+            print(f"DEBUG: _on_selection_changed called but _updating_from_map=True, returning")
             return
         
         selected_items = self.table_widget.selectedItems()
+        print(f"DEBUG: _on_selection_changed - selected_items count: {len(selected_items)}")
         
         if selected_items:
             # Get first item in selection
@@ -583,13 +616,31 @@ class TrackpointListWidget(QWidget):
             point_index = item.data(Qt.UserRole)
             
             self.current_selection = row
+            print(f"DEBUG: Setting current_selection={row}")
+            logger.debug(f"[_on_selection_changed] Selection detected: row={row}, current_selection={self.current_selection}")
             
             # Emit signal
             self.point_selected.emit(point_index)
             
             logger.debug(f"Point selected: index={point_index}, row={row}")
         else:
+            print(f"DEBUG: No selected items - setting current_selection=-1")
+            logger.debug(f"[_on_selection_changed] No selection detected. Setting current_selection=-1")
             self.current_selection = -1
+    
+    def _on_table_selection_cleared(self):
+        """Handle ESC key in table widget to clear selection."""
+        logger.debug(f"[_on_table_selection_cleared] ESC pressed. Setting current_selection=-1")
+        self.current_selection = -1
+        self.point_selected.emit(-1)
+        
+        # Notify map widget to clear selection
+        from PyQt5.QtWidgets import QApplication
+        main_window = QApplication.instance().activeWindow()
+        if main_window and hasattr(main_window, 'map_widget'):
+            main_window.map_widget.selected_trackpoint_index = None
+            main_window.map_widget.selected_trackpoint_range = None
+            main_window.map_widget.render_map()
     
     def _on_range_selected_in_list(self, start_row: int, end_row: int):
         """Handle range selection from Shift+click in list."""
@@ -747,16 +798,35 @@ class TrackpointListWidget(QWidget):
             self._delete_from_end(selected_row)
     
     def keyPressEvent(self, event):
-        """Handle keyboard events (Delete key for removing trackpoints)."""
+        """Handle keyboard events (Delete key for removing trackpoints, ESC for unselection)."""
         from PyQt5.QtGui import QKeySequence
         from PyQt5.QtWidgets import QMessageBox
         
+        # ESC key to unselect
+        if event.key() == Qt.Key_Escape:
+            logger.debug(f"[ESC] Clearing selection. Before: current_selection={self.current_selection}")
+            self.clear_selection()
+            logger.debug(f"[ESC] After clear: current_selection={self.current_selection}")
+            # Don't return - let Qt handle the ESC normally too
+            event.accept()
+            return
+        
         # Delete key to remove trackpoint
         if event.key() == Qt.Key_Delete:
+            logger.debug(f"[DELETE] Pressed. current_selection={self.current_selection}, table_widget.currentRow()={self.table_widget.currentRow()}")
             if self.table_widget.hasFocus():
-                selected_row = self.table_widget.currentRow()
-                if selected_row >= 0:
-                    self._delete_trackpoint(selected_row)
+                # Check if a trackpoint is actually selected (not just current)
+                if self.current_selection < 0:
+                    logger.debug(f"[DELETE] No selection (current_selection={self.current_selection})")
+                    QMessageBox.information(
+                        self,
+                        "No Selection",
+                        "Please select a trackpoint to delete"
+                    )
+                    return
+                
+                logger.debug(f"[DELETE] Deleting trackpoint at index {self.current_selection}")
+                self._delete_trackpoint(self.current_selection)
                 return
         
         super().keyPressEvent(event)
