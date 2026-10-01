@@ -275,6 +275,8 @@ class MainWindow(QMainWindow):
         delete_trackpoint_action.setShortcut(Qt.CTRL + Qt.Key_D)
         delete_trackpoint_action.setStatusTip('Delete selected trackpoint')
         delete_trackpoint_action.triggered.connect(self.action_delete_trackpoint)
+        # Also add Del key as secondary shortcut
+        delete_trackpoint_action.setShortcuts([Qt.CTRL + Qt.Key_D, Qt.Key_Delete])
         edit_menu.addAction(delete_trackpoint_action)
         self.delete_trackpoint_action = delete_trackpoint_action
         

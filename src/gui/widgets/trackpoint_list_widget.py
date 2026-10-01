@@ -798,6 +798,9 @@ class TrackpointListWidget(QWidget):
         if removed:
             logger.info(f"Deleted trackpoint {row_index} from track '{track.name}'")
             
+            # Get the total number of trackpoints BEFORE deletion
+            total_before = len(track.trackpoints) + 1
+            
             # Clear selection on map BEFORE refreshing
             if self.map_widget:
                 self.map_widget.selected_trackpoint_index = None
@@ -809,19 +812,48 @@ class TrackpointListWidget(QWidget):
             # Refresh trackpoint list display
             self.refresh_trackpoints()
             
-            # Ensure no row is selected
-            self.table_widget.clearSelection()
-            self.current_selection = -1
+            # Determine which point to select after deletion
+            remaining_count = len(track.trackpoints)
+            new_selection_index = -1
+            
+            if remaining_count > 0:
+                # Strategy for auto-selection after deletion:
+                # 1. If middle point was deleted -> select previous point
+                # 2. If first point was deleted -> select next point (which is now at index 0)
+                # 3. If last point was deleted -> select previous point (which is now at index remaining_count-1)
+                
+                if row_index < total_before - 1:  # Was not the last point
+                    if row_index == 0:  # Was the first point
+                        new_selection_index = 0  # Select what is now the first point
+                    else:  # Was a middle or second-to-last point
+                        new_selection_index = row_index - 1  # Select previous point
+                else:  # Was the last point
+                    new_selection_index = remaining_count - 1  # Select new last point
+            
+            # Apply the selection if there are remaining points
+            if new_selection_index >= 0 and new_selection_index < remaining_count:
+                self.select_point(new_selection_index)
+                self.current_selection = new_selection_index
+            else:
+                # No points left
+                self.table_widget.clearSelection()
+                self.current_selection = -1
             
             # Reconnect selection changed signal
             self.table_widget.itemSelectionChanged.connect(self._on_selection_changed)
             
-            # Re-render map (this will show the track without any selected points)
+            # Re-render map
             if self.map_widget:
+                if new_selection_index >= 0:
+                    # Update map with the new selection
+                    self.map_widget.selected_trackpoint_index = new_selection_index
                 self.map_widget.render_map()
             
             # Emit signals
-            self.point_selected.emit(-1)
+            if new_selection_index >= 0:
+                self.point_selected.emit(new_selection_index)
+            else:
+                self.point_selected.emit(-1)
             self.history_changed.emit()  # Notify that history state changed
         else:
             QMessageBox.warning(self, "Error", "Could not delete trackpoint")
