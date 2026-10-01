@@ -160,19 +160,19 @@ Switch between formats using the **Format** dropdown in the Trackpoints window.
 
 ### Customizing Appearance
 
-Edit `config/settings.ini`:
+Edit `config/settings.yaml`:
 
-```ini
-[Map]
-# Track path color (hex RRGGBB)
-track_path_color = FF0000          # Red
-track_path_width = 3               # 3 pixels
+```yaml
+map:
+  # Track path color (hex RRGGBB)
+  track_path_color: FF0000          # Red
+  track_path_width: 3               # 3 pixels
 
-# Turning points (trackpoints)
-show_turning_points = true         # Show/hide all points
-turning_point_color = FFFF00       # Yellow
-selected_turning_point_color = 0000FF  # Blue
-turning_point_size = 4             # 4 pixel radius
+  # Turning points (trackpoints)
+  show_turning_points: true         # Show/hide all points
+  turning_point_color: FFFF00       # Yellow
+  selected_turning_point_color: 0000FF  # Blue
+  turning_point_size: 4             # 4 pixel radius
 ```
 
 ### Supported Coordinate Formats
@@ -205,8 +205,8 @@ CourseStudio/
 │       ├── mbtiles_provider.py    # MBTiles data source
 │       └── tile_server.py         # Tile management
 ├── config/
-│   ├── settings.ini               # Configuration file
-│   └── app_config.py              # Config loader
+│   ├── settings.yaml              # Configuration file (YAML format)
+│   └── app_config_yaml.py         # Config loader for YAML
 ├── mbtiles/
 │   └── Sweden-Raster-Z10-Z16.mbtiles  # Sample tile data
 ├── tests/
@@ -214,9 +214,19 @@ CourseStudio/
 │   └── gpx/
 │       └── *.gpx                  # Sample GPX files
 ├── doc/
-│   ├── STEP11_COMPLETION.md       # Map navigation docs
-│   ├── ARCHITECTURE.md            # System architecture
-│   └── CONFIGURATION_GUIDE.md     # Configuration help
+│   ├── ARCHITECTURE.md            # System architecture and design
+│   ├── QUICK_REFERENCE.md         # Quick reference for common tasks
+│   ├── USER_GUIDE.md              # Complete user guide with all features
+│   ├── PROJECT_SPECIFICATION.md   # Project specification
+│   ├── PROJECT_SUMMARY.md         # Project summary
+│   ├── UI_DEBUGGING_HARD_PROBLEMS.md  # UI debugging guide
+│   ├── TRACKPOINT_OPERATIONS.md   # Trackpoint operations documentation
+│   ├── RECENT_IMPROVEMENTS.md     # Recent improvements and fixes
+│   ├── TODO_LIST.md               # Development TODO list
+│   └── ... (additional documentation files)
+├── wiki/
+│   ├── editor-tab-general.jpg     # Screenshots of editor tab
+│   └── setting-tab-appearance-track_path-tab.jpg  # Screenshots of settings tab
 ├── requirements.txt               # Python dependencies
 └── README.md                      # This file
 ```
@@ -261,7 +271,7 @@ CourseStudio uses MBTiles format for map data. Included:
 
 To use different map data:
 1. Place `.mbtiles` file in `mbtiles/` directory
-2. Update `config/settings.ini` with filename
+2. Update `config/settings.yaml` with filename
 3. Restart application
 
 ### Tile Specifications
@@ -275,38 +285,39 @@ To use different map data:
 
 ## Configuration
 
-### settings.ini Sections
+### Configuration File (settings.yaml)
 
-**[Application]**
-- `app_name`: Application name (default: CourseStudio)
+The application is configured via `config/settings.yaml` in YAML format. Key sections include:
+
+**Application Settings**
+- `app_name`: Application name
 - `version`: Version string
 - `debug`: Enable debug logging
 
-**[Map]**
-- `default_mbtiles`: Primary tile file
-- `fallback_mbtiles`: Fallback options
+**Map Settings**
+- `default_mbtiles`: Primary tile file to use
 - `initial_zoom_level`: Default zoom on startup
-- `track_path_color`: Track line color (hex)
-- `track_path_width`: Track line width (pixels)
-- `turning_point_color`: Trackpoint color (hex)
-- `selected_turning_point_color`: Selected trackpoint color (hex)
-- `turning_point_size`: Trackpoint radius (pixels)
+- `track_path_color`: Track line color (hex RRGGBB)
+- `track_path_width`: Track line width in pixels
+- `turning_point_color`: Trackpoint color (hex RRGGBB)
+- `selected_turning_point_color`: Selected trackpoint color (hex RRGGBB)
+- `turning_point_size`: Trackpoint radius in pixels
 
-**[Coordinates]**
-- `coordinate_format`: Default format (dms/decimal)
-- `decimal_places`: Decimal precision
-- `dms_seconds_decimals`: DMS seconds precision
+**Coordinate Settings**
+- `coordinate_format`: Default format (dms or decimal)
+- `decimal_places`: Decimal precision for coordinate display
+- `dms_seconds_decimals`: Precision for DMS seconds
 
-**[Performance]**
-- `max_trackpoints_no_warning`: Warning threshold
-- `max_file_size_warning`: File size warning (MB)
-- `max_undo_redo_stack_size`: Undo history size
+**Performance Settings**
+- `max_trackpoints_no_warning`: Warning threshold for large tracks
+- `max_file_size_warning`: File size warning threshold (MB)
+- `max_undo_redo_stack_size`: Maximum undo history size
 
-**[Logging]**
+**Logging Settings**
 - `log_level`: Logging verbosity (DEBUG/INFO/WARNING/ERROR/CRITICAL)
-- `log_file`: Log file path
+- `log_file`: Log file path and name
 
-See `config/settings.ini` for complete list of options.
+See `config/settings.yaml` for complete list of options and examples.
 
 ## Testing
 
@@ -411,7 +422,7 @@ Contributions are welcome! Please:
 
 - **Bug Reports**: Open an issue on GitHub
 - **Documentation**: See `doc/` directory
-- **Configuration**: See `config/settings.ini` for all options
+- **Configuration**: See `config/settings.yaml` for all options
 - **Architecture**: See `doc/ARCHITECTURE.md`
 
 ## Author
@@ -490,7 +501,7 @@ Mikael - Initial development and design
 
 ### Developer Documentation
 - **[ARCHITECTURE.md](doc/ARCHITECTURE.md)** - System architecture and design
-- **[CONFIGURATION_GUIDE.md](doc/CONFIGURATION_GUIDE.md)** - Configuration options
+- **[PROJECT_SPECIFICATION.md](doc/PROJECT_SPECIFICATION.md)** - Project specification and requirements
 
 ## System Requirements
 
@@ -523,7 +534,7 @@ python src/main.py --debug
 
 ### Map Won't Display
 - Verify mbtiles file exists in `mbtiles/` directory
-- Check `config/settings.ini` for correct filename
+- Check `config/settings.yaml` for correct filename
 - Ensure coordinate format is valid (DMS or Decimal)
 - Check logs in `CourseStudio.log`
 
