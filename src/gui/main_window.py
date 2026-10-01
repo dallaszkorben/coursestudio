@@ -997,19 +997,13 @@ A PyQt5 application for reading, editing, and exporting GPX navigation tracks.
     
     def action_delete_trackpoint(self):
         """Delete selected trackpoint."""
-        print(f"DEBUG: action_delete_trackpoint called")
-        print(f"DEBUG: current_selection={self.trackpoint_list_widget.current_selection if hasattr(self, 'trackpoint_list_widget') else 'N/A'}")
-        
         if hasattr(self, 'trackpoint_list_widget'):
             # Check if a trackpoint is actually selected (use current_selection, not currentRow)
             # currentRow() returns the current row even if nothing is visually selected
-            print(f"DEBUG: Checking current_selection={self.trackpoint_list_widget.current_selection}")
             if self.trackpoint_list_widget.current_selection < 0:
-                print(f"DEBUG: No selection, showing message")
                 QMessageBox.information(self, "No Selection", "Please select a trackpoint to delete")
                 return
             
-            print(f"DEBUG: Deleting trackpoint at index {self.trackpoint_list_widget.current_selection}")
             self.trackpoint_list_widget._delete_trackpoint(self.trackpoint_list_widget.current_selection)
     
     def action_add_trackpoint(self):

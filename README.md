@@ -2,6 +2,20 @@
 
 A PyQt5-based desktop application for viewing, editing, and manipulating GPX (GPS Exchange Format) files with interactive map visualization. Designed for marine navigation and track management with support for Garmin GPS devices.
 
+### Screenshots
+
+**Editor Tab - Main Interface**
+
+![Editor Tab](wiki/editor-tab-general.jpg)
+
+The main interface showing the track list on the left, trackpoints in the center, and interactive map with pan/zoom controls.
+
+**Settings Tab - Appearance Configuration**
+
+![Settings Tab](wiki/setting-tab-appearance-track_path-tab.jpg)
+
+Customize track colors, point sizes, and other visual properties with real-time map updates.
+
 ## Features
 
 ### Core Functionality
