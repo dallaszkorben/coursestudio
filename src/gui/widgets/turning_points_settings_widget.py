@@ -99,9 +99,20 @@ class TurningPointsSettingsWidget(QGroupBox):
         
         toggle_layout = QHBoxLayout()
         toggle_layout.setContentsMargins(0, 0, 0, 0)
-        toggle_layout.setSpacing(0)
-        self.show_toggle = ToggleSwitchWidget(title="Show Points", initial_state=self.show)
-        toggle_layout.addWidget(self.show_toggle)
+        toggle_layout.setSpacing(8)
+        
+        # Label (same fixed width as other labels for alignment)
+        toggle_label = QLabel("Show:")
+        toggle_label.setStyleSheet("font-weight: bold; color: white;")
+        toggle_label.setFixedWidth(70)
+        toggle_layout.addWidget(toggle_label, 0, Qt.AlignLeft)
+        
+        # Toggle switch WITHOUT title
+        self.show_toggle = ToggleSwitchWidget(title="", initial_state=self.show)
+        toggle_layout.addWidget(self.show_toggle, 0, Qt.AlignLeft)
+        
+        # Add stretch to push everything left
+        toggle_layout.addStretch()
         layout.addLayout(toggle_layout)
         
         # ====================================================================

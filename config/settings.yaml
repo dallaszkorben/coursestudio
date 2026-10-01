@@ -11,7 +11,7 @@ Appearance:
   MapDisplay:
     TrackPath:
       body:
-        color: FF7F50
+        color: E97F49
         width: 5
       outline:
         color: '000676'
@@ -40,7 +40,7 @@ Appearance:
           color: FF0000
           size: 6
         outline:
-          color: 00008B
+          color: 000082
           size: 2
       SelectedPoints:
         body:

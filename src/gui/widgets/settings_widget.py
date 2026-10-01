@@ -8,12 +8,14 @@ Provides a tabbed interface for configuring application settings:
 """
 
 import logging
-from PyQt5.QtWidgets import QWidget, QVBoxLayout, QScrollArea
+from PyQt5.QtWidgets import QWidget, QVBoxLayout, QScrollArea, QTabWidget, QLabel, QHBoxLayout
 from PyQt5.QtCore import Qt, pyqtSignal
 
 from config.app_config_yaml import AppConfig
 from src.gui.widgets.track_path_settings_widget import TrackPathSettingsWidget
-from src.gui.widgets.turning_points_settings_widget import TurningPointsSettingsWidget
+from src.gui.widgets.trackpoint_type_settings_widget import TrackpointTypeSettingsWidget
+from src.gui.widgets.toggle_switch_widget import ToggleSwitchWidget
+from src.gui.widgets.custom_tab_bar import ContentAwareTabBar
 
 logger = logging.getLogger(__name__)
 
@@ -22,14 +24,12 @@ class SettingsWidget(QWidget):
     """
     Settings configuration widget.
     
-    Allows users to configure:
-    - APPEARANCE section: Map rendering settings (colors, sizes)
-    - COORDINATES & DISPLAY section: Format preferences
-    - FILE HANDLING section: File operation preferences
-    - PERFORMANCE section: Performance tuning
-    - ADVANCED section: Technical settings
-    
-    Expandable/collapsible sections implemented step by step.
+    Main tab structure:
+    - Appearance (with sub-tabs)
+      - Track Path
+      - General Track Point
+      - Single-Selected Track Point
+      - Multi-Selected Track Point
     """
     
     turning_points_settings_applied = pyqtSignal()  # Emitted when turning points settings are applied
@@ -52,45 +52,37 @@ class SettingsWidget(QWidget):
         main_layout.setContentsMargins(5, 5, 5, 5)
         main_layout.setSpacing(10)
         
-        # Create scrollable area for settings
-        scroll_area = QScrollArea()
-        scroll_area.setWidgetResizable(True)
-        scroll_area.setStyleSheet("QScrollArea { border: none; }")
-        
-        # Container widget for scroll area
-        scroll_widget = QWidget()
-        scroll_layout = QVBoxLayout()
-        scroll_widget.setLayout(scroll_layout)
-        scroll_layout.setSpacing(5)  # Reduced from 15 to 5 for tighter layout
-        scroll_layout.setContentsMargins(0, 0, 0, 0)
-        
         # ====================================================================
-        # APPEARANCE Section
+        # Main Tab Widget (top-level tabs)
         # ====================================================================
         
-        appearance_label = QWidget()
-        appearance_layout = QVBoxLayout()
-        appearance_label.setLayout(appearance_layout)
+        main_tab_widget = QTabWidget()
+        from PyQt5.QtWidgets import QSizePolicy
+        main_tab_widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         
-        # Track Path Settings
-        self.track_path_widget = TrackPathSettingsWidget(self.config)
-        self.track_path_widget.settings_changed.connect(self._on_settings_changed)
-        appearance_layout.addWidget(self.track_path_widget)
+        main_tab_widget.setStyleSheet("""
+            QTabWidget::pane { border: 1px solid #3d3d3d; }
+            QTabBar::tab { 
+                background: #2d2d2d; 
+                color: white; 
+                padding: 8px 20px; 
+                border: 1px solid #3d3d3d;
+            }
+            QTabBar::tab:selected { 
+                background: #404040; 
+                border-bottom: 2px solid #0078d4;
+            }
+        """)
         
-        # Turning Points Settings
-        self.turning_points_widget = TurningPointsSettingsWidget(self.config)
-        self.turning_points_widget.settings_changed.connect(self._on_settings_changed)
-        self.turning_points_widget.show_toggled.connect(self._on_turning_points_show_toggled)
-        self.turning_points_widget.settings_applied.connect(self._on_turning_points_settings_applied)
-        appearance_layout.addWidget(self.turning_points_widget)
+        # Replace default tab bar with custom one that sizes to content
+        main_custom_tab_bar = ContentAwareTabBar()
+        main_tab_widget.setTabBar(main_custom_tab_bar)
         
-        scroll_layout.addWidget(appearance_label)
+        # Create Appearance Tab
+        appearance_tab = self._create_appearance_tab()
+        main_tab_widget.addTab(appearance_tab, "Appearance")
         
-        # Add stretch to push settings to top
-        scroll_layout.addStretch()
-        
-        scroll_area.setWidget(scroll_widget)
-        main_layout.addWidget(scroll_area)
+        main_layout.addWidget(main_tab_widget)
         
         # ====================================================================
         # Control Buttons (at bottom)
@@ -99,46 +91,126 @@ class SettingsWidget(QWidget):
         # TODO: Add Apply, Reset, Cancel buttons
         # Placeholder for now
     
+    def _create_appearance_tab(self):
+        """Create the Appearance tab with sub-tabs for different visual elements."""
+        
+        # Container for appearance tab
+        appearance_container = QWidget()
+        appearance_layout = QVBoxLayout()
+        appearance_container.setLayout(appearance_layout)
+        appearance_layout.setContentsMargins(5, 5, 5, 5)
+        appearance_layout.setSpacing(10)
+        
+        # ====================================================================
+        # Show Trackpoints Toggle (global control at top)
+        # ====================================================================
+        
+        show_toggle_layout = QHBoxLayout()
+        show_toggle_layout.setContentsMargins(10, 0, 10, 10)
+        show_toggle_layout.setSpacing(15)
+        
+        show_label = QLabel("Show Trackpoints:")
+        show_label.setStyleSheet("font-weight: bold; color: white;")
+        show_label.setFixedWidth(120)
+        show_toggle_layout.addWidget(show_label, 0, Qt.AlignLeft)
+        
+        # Load show state from config
+        self.show_trackpoints = self.config.get_bool('Appearance.MapDisplay.Trackpoints.show', True)
+        self.show_toggle = ToggleSwitchWidget(title="", initial_state=self.show_trackpoints)
+        self.show_toggle.toggled.connect(self._on_show_trackpoints_toggled)
+        show_toggle_layout.addWidget(self.show_toggle, 0, Qt.AlignLeft)
+        show_toggle_layout.addStretch()
+        
+        appearance_layout.addLayout(show_toggle_layout)
+        
+        # ====================================================================
+        # Sub-Tab Widget (under Appearance)
+        # ====================================================================
+        
+        sub_tab_widget = QTabWidget()
+        # CRITICAL: Set size policy to allow expansion
+        from PyQt5.QtWidgets import QSizePolicy
+        sub_tab_widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        sub_tab_widget.setMinimumWidth(400)  # Ensure minimum width for long tab names
+        
+        sub_tab_widget.setStyleSheet("""
+            QTabWidget::pane { border: 1px solid #3d3d3d; }
+            QTabBar::tab { 
+                background: #2d2d2d; 
+                color: white; 
+                padding: 8px 15px; 
+                border: 1px solid #3d3d3d;
+                font-size: 10pt;
+            }
+            QTabBar::tab:selected { 
+                background: #3d3d3d; 
+                border-bottom: 2px solid #0078d4;
+            }
+        """)
+        
+        # Replace default tab bar with custom one that sizes to content
+        custom_tab_bar = ContentAwareTabBar()
+        sub_tab_widget.setTabBar(custom_tab_bar)
+        
+        # Allow the tab bar to expand horizontally to show all tabs
+        sub_tab_widget.tabBar().setExpanding(False)
+        sub_tab_widget.tabBar().setElideMode(Qt.ElideNone)
+        sub_tab_widget.tabBar().setUsesScrollButtons(True)
+        
+        # Allow the tab bar to expand horizontally to show all tabs
+        sub_tab_widget.tabBar().setExpanding(False)
+        sub_tab_widget.tabBar().setElideMode(Qt.ElideNone)
+        sub_tab_widget.tabBar().setUsesScrollButtons(True)
+        
+        # Track Path Sub-Tab
+        self.track_path_widget = TrackPathSettingsWidget(self.config)
+        self.track_path_widget.settings_changed.connect(self._on_settings_changed)
+        sub_tab_widget.addTab(self.track_path_widget, "Track Path")
+        
+        # General Track Point Sub-Tab
+        self.general_point_widget = TrackpointTypeSettingsWidget(self.config, 'GeneralPoints')
+        self.general_point_widget.settings_changed.connect(self._on_settings_changed)
+        sub_tab_widget.addTab(self.general_point_widget, "General Track Point")
+        
+        # Single-Selected Track Point Sub-Tab
+        self.single_selected_point_widget = TrackpointTypeSettingsWidget(self.config, 'SelectedPoints')
+        self.single_selected_point_widget.settings_changed.connect(self._on_settings_changed)
+        sub_tab_widget.addTab(self.single_selected_point_widget, "Single-Selected Track Point")
+        
+        # Multi-Selected Track Point Sub-Tab
+        self.multi_selected_point_widget = TrackpointTypeSettingsWidget(self.config, 'DoubleSelectedPoints')
+        self.multi_selected_point_widget.settings_changed.connect(self._on_settings_changed)
+        sub_tab_widget.addTab(self.multi_selected_point_widget, "Multi-Selected Track Point")
+        
+        appearance_layout.addWidget(sub_tab_widget)
+        
+        return appearance_container
+    
     def _on_settings_changed(self):
         """Handle settings change - auto-save to config file."""
         logger.debug("Settings changed - auto-saving to config")
-        
-        # Save track path settings
+        self._apply_all_settings()
+    
+    def _on_show_trackpoints_toggled(self, state: bool):
+        """Handle show trackpoints toggle."""
+        logger.debug(f"Show trackpoints toggled to: {state}")
+        self.config.set_bool('Appearance.MapDisplay.Trackpoints.show', state)
+        self.config.save_to_file()
+        self.turning_points_settings_applied.emit()
+    
+    def _apply_all_settings(self):
+        """Apply all settings to config."""
         if hasattr(self, 'track_path_widget'):
             self.track_path_widget.apply_to_config()
         
-        # Save turning points settings
-        if hasattr(self, 'turning_points_widget'):
-            self.turning_points_widget.apply_to_config()
+        if hasattr(self, 'general_point_widget'):
+            self.general_point_widget.apply_to_config()
         
-        # Save config to file
+        if hasattr(self, 'single_selected_point_widget'):
+            self.single_selected_point_widget.apply_to_config()
+        
+        if hasattr(self, 'multi_selected_point_widget'):
+            self.multi_selected_point_widget.apply_to_config()
+        
         self.config.save_to_file()
-        
-        # Emit signal to notify main window
         self.turning_points_settings_applied.emit()
-    
-    def _on_turning_points_show_toggled(self, state: bool):
-        """Handle turning points show/hide toggle."""
-        logger.debug(f"Turning points show toggled to: {state}")
-        self._on_settings_changed()
-    
-    def _on_turning_points_settings_applied(self):
-        """Relay turning points settings_applied signal."""
-        logger.debug("Turning points settings applied signal received")
-        # This will be connected to main_window handler
-    
-    def apply_settings(self):
-        """Apply all settings changes."""
-        self.track_path_widget.apply_to_config()
-        self.turning_points_widget.apply_to_config()
-        logger.info("Settings applied")
-    
-    def save_settings(self) -> bool:
-        """Save all settings to file."""
-        self.apply_settings()
-        return self.track_path_widget.save_to_file()
-    
-    def reset_settings(self):
-        """Reset all settings to defaults."""
-        # TODO: Implement reset logic
-        logger.info("Settings reset")

@@ -507,11 +507,17 @@ class MainWindow(QMainWindow):
         )
         
         # Connect turning points changes
-        self.settings_widget.turning_points_widget.show_toggled.connect(
+        self.settings_widget.show_toggle.toggled.connect(
             self._on_turning_points_show_toggled
         )
         # Connect all trackpoint settings changes to unified handler
-        self.settings_widget.turning_points_widget.settings_changed.connect(
+        self.settings_widget.general_point_widget.settings_changed.connect(
+            self._on_turning_points_settings_changed
+        )
+        self.settings_widget.single_selected_point_widget.settings_changed.connect(
+            self._on_turning_points_settings_changed
+        )
+        self.settings_widget.multi_selected_point_widget.settings_changed.connect(
             self._on_turning_points_settings_changed
         )
         self.settings_widget.turning_points_settings_applied.connect(
@@ -1406,9 +1412,9 @@ A PyQt5 application for reading, editing, and exporting GPX navigation tracks.
         
         # Update the toggle in settings without triggering its signal
         if hasattr(self, 'settings_widget'):
-            self.settings_widget.turning_points_widget.show_toggle.blockSignals(True)
-            self.settings_widget.turning_points_widget.show_toggle.set_state(state)
-            self.settings_widget.turning_points_widget.show_toggle.blockSignals(False)
+            self.settings_widget.show_toggle.blockSignals(True)
+            self.settings_widget.show_toggle.set_state(state)
+            self.settings_widget.show_toggle.blockSignals(False)
         
         logger.debug(f"Show points dropdown changed to: {state} - synced to settings toggle")
     
