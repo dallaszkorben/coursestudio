@@ -620,10 +620,12 @@ class MapWidget(QWidget):
                 if gps_coords and self.track_manager:
                     lat, lon = gps_coords
                     
-                    # If no track selected, create a new one
+                    # If no track selected, create a new one (same as startup behavior)
                     if self.selected_track_id is None:
                         from src.core.track_manager import TrackData
-                        new_track = TrackData(name=f"Track {len(self.track_manager.get_all_tracks()) + 1}", trackpoints=[])
+                        # Create new track with auto-incremented name
+                        track_count = len(self.track_manager.get_all_tracks())
+                        new_track = TrackData(name=f"Track {track_count + 1}", trackpoints=[])
                         self.track_manager.tracks.append(new_track)
                         self.selected_track_id = len(self.track_manager.get_all_tracks()) - 1
                         self.track_manager.select_track(self.selected_track_id)

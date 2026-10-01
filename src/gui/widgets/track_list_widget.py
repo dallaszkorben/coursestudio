@@ -407,8 +407,14 @@ class TrackListWidget(QWidget):
         # Deselect in manager
         self.track_manager.selected_track_index = -1
         
+        # Clear selection BEFORE refresh to prevent auto-selecting another track
+        self.current_selection = -1
+        
         # Refresh the list
         self.refresh_tracks()
+        
+        # Notify main window that no track is selected
+        self.track_selected.emit(-1)
         
         logger.info(f"Track deleted: {track.name} at index {track_index}")
     

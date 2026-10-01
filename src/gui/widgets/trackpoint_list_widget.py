@@ -26,7 +26,7 @@ from typing import Optional, List
 
 from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QTableWidget, QTableWidgetItem,
-    QLabel, QPushButton, QComboBox, QHeaderView, QAbstractItemView
+    QLabel, QPushButton, QComboBox, QHeaderView, QAbstractItemView, QApplication
 )
 from PyQt5.QtGui import QFont, QColor
 from PyQt5.QtCore import Qt, pyqtSignal, QSize
@@ -776,23 +776,84 @@ class TrackpointListWidget(QWidget):
         # Get trackpoint info
         point = track.trackpoints[row_index]
         
+        # Check if this is the last trackpoint
+        is_last_point = len(track.trackpoints) == 1
+        
         # Check if confirmation is required
         config = AppConfig()
         require_confirmation = config.get_bool('FileHandling.DeleteConfirmation.require_delete_confirmation', True)
         
         if require_confirmation:
-            # Show confirmation dialog
-            reply = QMessageBox.question(
-                self,
-                "Delete Trackpoint",
-                f"Delete trackpoint {row_index + 1}?\n\n({point.latitude:.4f}°, {point.longitude:.4f}°)",
-                QMessageBox.Yes | QMessageBox.No,
-                QMessageBox.Yes
-            )
+            if is_last_point:
+                # Deleting the last point means deleting the entire track
+                reply = QMessageBox.question(
+                    self,
+                    "Delete Track",
+                    f"This is the last trackpoint in track '{track.name}'.\nDeleting it will delete the entire track.\n\nProceed?",
+                    QMessageBox.Yes | QMessageBox.No,
+                    QMessageBox.Yes
+                )
+            else:
+                # Show confirmation dialog for normal trackpoint deletion
+                reply = QMessageBox.question(
+                    self,
+                    "Delete Trackpoint",
+                    f"Delete trackpoint {row_index + 1}?\n\n({point.latitude:.4f}°, {point.longitude:.4f}°)",
+                    QMessageBox.Yes | QMessageBox.No,
+                    QMessageBox.Yes
+                )
             
             if reply != QMessageBox.Yes:
                 return
         
+        # If last point, delete the entire track
+        if is_last_point:
+            deleted_track_name = track.name
+            self.track_manager.tracks.pop(self.current_track_index)
+            logger.info(f"Deleted entire track '{deleted_track_name}' (last trackpoint removed)")
+            
+            # Clear track manager selection
+            self.track_manager.selected_track_index = -1
+            
+            # Clear local track index BEFORE refreshing (so refresh knows no track is selected)
+            self.current_track_index = -1
+            
+            # CRITICAL: Clear selection in track_list_widget BEFORE refresh
+            # This prevents refresh_tracks() from re-selecting the first track
+            main_window = QApplication.instance().activeWindow()
+            if main_window and hasattr(main_window, 'track_list_widget'):
+                # Disconnect signal temporarily to prevent auto-selection during refresh
+                track_list = main_window.track_list_widget
+                track_list.list_widget.itemSelectionChanged.disconnect(track_list._on_selection_changed)
+                
+                # Clear selection to reset current_selection
+                track_list.current_selection = -1
+                track_list.list_widget.clearSelection()
+                
+                # Now refresh tracks (won't auto-select because current_selection is -1)
+                track_list.refresh_tracks()
+                
+                # Re-connect signal
+                track_list.list_widget.itemSelectionChanged.connect(track_list._on_selection_changed)
+            
+            # Clear map selection
+            if self.map_widget:
+                self.map_widget.selected_track_id = None
+                self.map_widget.selected_trackpoint_index = None
+                self.map_widget.selected_trackpoint_range = None
+                self.map_widget.render_map()
+            
+            # Clear trackpoint list (now current_track_index is -1, so this will clear the table)
+            self.refresh_trackpoints()
+            self.table_widget.clearSelection()
+            self.current_selection = -1
+            
+            # Mark history changed
+            self.history_changed.emit()
+            
+            return
+        
+        # Normal trackpoint deletion (not the last point)
         # Remove trackpoint using command history (undoable)
         removed = self.track_manager.remove_trackpoint_with_history(self.current_track_index, row_index)
         if removed:
@@ -841,6 +902,11 @@ class TrackpointListWidget(QWidget):
             
             # Reconnect selection changed signal
             self.table_widget.itemSelectionChanged.connect(self._on_selection_changed)
+            
+            # Update track info in track list (distance and point count)
+            main_window = QApplication.instance().activeWindow()
+            if main_window and hasattr(main_window, 'track_list_widget'):
+                main_window.track_list_widget.update_track_info(self.current_track_index)
             
             # Re-render map
             if self.map_widget:
@@ -907,6 +973,12 @@ class TrackpointListWidget(QWidget):
         if success:
             logger.info(f"Deleted {count_to_delete} trackpoints from start of track '{track.name}'")
             self.refresh_trackpoints()
+            
+            # Update track info in track list (distance and point count)
+            main_window = QApplication.instance().activeWindow()
+            if main_window and hasattr(main_window, 'track_list_widget'):
+                main_window.track_list_widget.update_track_info(self.current_track_index)
+            
             if self.map_widget:
                 self.map_widget.on_track_list_selection_changed(self.current_track_index)
             self.point_selected.emit(-1)
@@ -964,6 +1036,12 @@ class TrackpointListWidget(QWidget):
         if success:
             logger.info(f"Deleted {count_to_delete} trackpoints from end of track '{track.name}'")
             self.refresh_trackpoints()
+            
+            # Update track info in track list (distance and point count)
+            main_window = QApplication.instance().activeWindow()
+            if main_window and hasattr(main_window, 'track_list_widget'):
+                main_window.track_list_widget.update_track_info(self.current_track_index)
+            
             if self.map_widget:
                 self.map_widget.on_track_list_selection_changed(self.current_track_index)
             self.point_selected.emit(-1)
