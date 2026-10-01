@@ -10,8 +10,12 @@ Application:
 Appearance:
   MapDisplay:
     TrackPath:
-      color: E81B00
-      width: 4
+      body:
+        color: FF7F50
+        width: 5
+      outline:
+        color: '000676'
+        width: 2
       colors:
         Red: FF0000
         Deep Pink: FF1493
@@ -29,10 +33,29 @@ Appearance:
         Medium Blue: 0000CD
         Dark Blue: 00008B
         Navy: 000080
-    TurningPoints:
+    Trackpoints:
       show: true
-      color: 00BA00
-      size: 3
+      GeneralPoints:
+        body:
+          color: FF0000
+          size: 6
+        outline:
+          color: 00008B
+          size: 2
+      SelectedPoints:
+        body:
+          color: 00008B
+          size: 8
+        outline:
+          color: 00FF00
+          size: 3
+      DoubleSelectedPoints:
+        body:
+          color: 1E90FF
+          size: 8
+        outline:
+          color: FFFF00
+          size: 3
       colors:
         Red: FF0000
         Deep Pink: FF1493
@@ -50,46 +73,6 @@ Appearance:
         Medium Blue: 0000CD
         Dark Blue: 00008B
         Navy: 000080
-      selected:
-        color: 000080
-        size: 5
-        colors:
-          Red: FF0000
-          Deep Pink: FF1493
-          Hot Pink: FF69B4
-          Coral: FF7F50
-          Yellow: FFFF00
-          Gold: FFD700
-          Orange: FFA500
-          Lime: 00FF00
-          Spring Green: 00FF7F
-          Turquoise: 40E0D0
-          Cyan: 00FFFF
-          Magenta: FF00FF
-          Dodger Blue: 1E90FF
-          Medium Blue: 0000CD
-          Dark Blue: 00008B
-          Navy: 000080
-      doubleSelected:
-        color: 1E90FF
-        size: 5
-        colors:
-          Red: FF0000
-          Deep Pink: FF1493
-          Hot Pink: FF69B4
-          Coral: FF7F50
-          Yellow: FFFF00
-          Gold: FFD700
-          Orange: FFA500
-          Lime: 00FF00
-          Spring Green: 00FF7F
-          Turquoise: 40E0D0
-          Cyan: 00FFFF
-          Magenta: FF00FF
-          Dodger Blue: 1E90FF
-          Medium Blue: 0000CD
-          Dark Blue: 00008B
-          Navy: 000080
   Tiles:
     mbtiles_file: Sweden-Raster-Z10-Z16.mbtiles
     fallback_files:

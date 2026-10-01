@@ -493,28 +493,26 @@ class MainWindow(QMainWindow):
         self.settings_widget = SettingsWidget()
         
         # Connect settings changes to map widget for live preview
-        self.settings_widget.track_path_widget.color_picker.color_changed.connect(
-            self._on_track_path_color_changed
+        self.settings_widget.track_path_widget.body_color_picker.color_changed.connect(
+            self._on_track_path_settings_changed
         )
-        self.settings_widget.track_path_widget.width_slider_obj.valueChanged.connect(
-            self._on_track_path_width_changed
+        self.settings_widget.track_path_widget.body_width_slider.valueChanged.connect(
+            self._on_track_path_settings_changed
+        )
+        self.settings_widget.track_path_widget.outline_color_picker.color_changed.connect(
+            self._on_track_path_settings_changed
+        )
+        self.settings_widget.track_path_widget.outline_width_slider.valueChanged.connect(
+            self._on_track_path_settings_changed
         )
         
         # Connect turning points changes
         self.settings_widget.turning_points_widget.show_toggled.connect(
             self._on_turning_points_show_toggled
         )
-        self.settings_widget.turning_points_widget.color_picker.color_changed.connect(
-            self._on_turning_points_color_changed
-        )
-        self.settings_widget.turning_points_widget.size_slider.value_changed.connect(
-            self._on_turning_points_size_changed
-        )
-        self.settings_widget.turning_points_widget.selected_color_picker.color_changed.connect(
-            self._on_turning_points_selected_color_changed
-        )
-        self.settings_widget.turning_points_widget.selected_size_slider.value_changed.connect(
-            self._on_turning_points_selected_size_changed
+        # Connect all trackpoint settings changes to unified handler
+        self.settings_widget.turning_points_widget.settings_changed.connect(
+            self._on_turning_points_settings_changed
         )
         self.settings_widget.turning_points_settings_applied.connect(
             self._on_turning_points_settings_applied
@@ -1204,6 +1202,15 @@ A PyQt5 application for reading, editing, and exporting GPX navigation tracks.
     def _on_trackpoint_selected(self, point_index: int):
         """Handle trackpoint selection from trackpoint list widget."""
         
+        # If point_index is -1, it means no selection - clear map selection
+        if point_index < 0:
+            self._current_point_index = -1
+            if hasattr(self, 'map_widget'):
+                self.map_widget.selected_trackpoint_index = None
+                self.map_widget.selected_trackpoint_range = None
+                self.map_widget.render_map()
+            return
+        
         if self._current_track_index is None:
             return
         
@@ -1305,36 +1312,27 @@ A PyQt5 application for reading, editing, and exporting GPX navigation tracks.
                 # Show single selection in list
                 self.trackpoint_list_widget.select_point(self.map_widget.selected_trackpoint_index)
     
-    def _on_track_path_color_changed(self, hex_color: str):
-        """Handle track path color change from settings."""
+    def _on_track_path_settings_changed(self):
+        """Handle any track path setting change - reload all track path settings from config."""
         
         if hasattr(self, 'map_widget'):
-            # Convert hex to RGB
-            r = int(hex_color[0:2], 16)
-            g = int(hex_color[2:4], 16)
-            b = int(hex_color[4:6], 16)
-            rgb_color = (r, g, b)
+            # Reload all track path settings from config
+            from config.app_config_yaml import AppConfig
+            config = AppConfig()
             
-            self.map_widget.track_color = rgb_color
-            self.map_widget.selected_track_color = rgb_color
+            # Body
+            self.map_widget.track_color = self.map_widget._hex_to_rgb(config.get_str('Appearance.MapDisplay.TrackPath.body.color', 'FF0000'))
+            self.map_widget.track_path_width = config.get_int('Appearance.MapDisplay.TrackPath.body.width', 3)
+            
+            # Outline
+            self.map_widget.track_path_outline_color = self.map_widget._hex_to_rgb(config.get_str('Appearance.MapDisplay.TrackPath.outline.color', 'FFFFFF'))
+            self.map_widget.track_path_outline_width = config.get_int('Appearance.MapDisplay.TrackPath.outline.width', 1)
             
             # Trigger redraw
             self.map_widget.render_map()
             self.map_widget.update()
             
-            logger.debug(f"Track path color changed to: {hex_color}")
-    
-    def _on_track_path_width_changed(self, width: int):
-        """Handle track path width change from settings."""
-        
-        if hasattr(self, 'map_widget'):
-            self.map_widget.track_path_width = width
-            
-            # Trigger redraw
-            self.map_widget.render_map()
-            self.map_widget.update()
-            
-            logger.debug(f"Track path width changed to: {width}px")
+            logger.debug("Track path settings reloaded from config")
     
     def _on_turning_points_show_toggled(self, state: bool):
         """Handle turning points show/hide toggle from settings."""
@@ -1357,59 +1355,37 @@ A PyQt5 application for reading, editing, and exporting GPX navigation tracks.
         
         logger.debug(f"Turning points show toggled to: {state}")
     
-    def _on_turning_points_color_changed(self, hex_color: str):
-        """Handle turning points color change from settings."""
+    def _on_turning_points_settings_changed(self):
+        """Handle any turning points setting change - reload all trackpoint settings from config."""
         
         if hasattr(self, 'map_widget'):
-            # Convert hex to RGB
-            r = int(hex_color[0:2], 16)
-            g = int(hex_color[2:4], 16)
-            b = int(hex_color[4:6], 16)
-            rgb_color = (r, g, b)
+            # Reload all trackpoint settings from config
+            from config.app_config_yaml import AppConfig
+            config = AppConfig()
             
-            self.map_widget.turning_point_color = rgb_color
+            # General Points
+            self.map_widget.turning_point_color = self.map_widget._hex_to_rgb(config.get_str('Appearance.MapDisplay.Trackpoints.GeneralPoints.body.color', 'FFFF00'))
+            self.map_widget.turning_point_size = config.get_int('Appearance.MapDisplay.Trackpoints.GeneralPoints.body.size', 4)
+            self.map_widget.turning_point_outline_color = self.map_widget._hex_to_rgb(config.get_str('Appearance.MapDisplay.Trackpoints.GeneralPoints.outline.color', 'FFFFFF'))
+            self.map_widget.turning_point_outline_width = config.get_int('Appearance.MapDisplay.Trackpoints.GeneralPoints.outline.size', 1)
+            
+            # Selected Points
+            self.map_widget.selected_turning_point_color = self.map_widget._hex_to_rgb(config.get_str('Appearance.MapDisplay.Trackpoints.SelectedPoints.body.color', '0000FF'))
+            self.map_widget.selected_turning_point_size = config.get_int('Appearance.MapDisplay.Trackpoints.SelectedPoints.body.size', 7)
+            self.map_widget.selected_turning_point_outline_color = self.map_widget._hex_to_rgb(config.get_str('Appearance.MapDisplay.Trackpoints.SelectedPoints.outline.color', 'FFFFFF'))
+            self.map_widget.selected_turning_point_outline_width = config.get_int('Appearance.MapDisplay.Trackpoints.SelectedPoints.outline.size', 2)
+            
+            # Double Selected Points
+            self.map_widget.double_selected_turning_point_color = self.map_widget._hex_to_rgb(config.get_str('Appearance.MapDisplay.Trackpoints.DoubleSelectedPoints.body.color', 'FFA500'))
+            self.map_widget.double_selected_turning_point_size = config.get_int('Appearance.MapDisplay.Trackpoints.DoubleSelectedPoints.body.size', 8)
+            self.map_widget.double_selected_turning_point_outline_color = self.map_widget._hex_to_rgb(config.get_str('Appearance.MapDisplay.Trackpoints.DoubleSelectedPoints.outline.color', 'FFFFFF'))
+            self.map_widget.double_selected_turning_point_outline_width = config.get_int('Appearance.MapDisplay.Trackpoints.DoubleSelectedPoints.outline.size', 2)
             
             # Trigger redraw
             self.map_widget.render_map()
             self.map_widget.update()
             
-            logger.debug(f"Turning points color changed to: {hex_color}")
-    
-    def _on_turning_points_size_changed(self, size: int):
-        """Handle turning points size change from settings."""
-        
-        if hasattr(self, 'map_widget'):
-            self.map_widget.turning_point_size = size
-            
-            # Trigger redraw
-            self.map_widget.render_map()
-            self.map_widget.update()
-            
-            logger.debug(f"Turning points size changed to: {size}px")
-    
-    def _on_turning_points_selected_color_changed(self, hex_color: str):
-        """Handle selected turning point color change from settings."""
-        
-        if hasattr(self, 'map_widget'):
-            # Convert hex to RGB
-            r = int(hex_color[0:2], 16)
-            g = int(hex_color[2:4], 16)
-            b = int(hex_color[4:6], 16)
-            rgb_color = (r, g, b)
-            
-            self.map_widget.selected_turning_point_color = rgb_color
-            
-            # Trigger redraw
-            self.map_widget.render_map()
-            self.map_widget.update()
-            
-            logger.debug(f"Selected turning point color changed to: {hex_color}")
-    
-    def _on_turning_points_selected_size_changed(self, size: int):
-        """Handle selected turning point size change from settings."""
-        
-        if hasattr(self, 'map_widget'):
-            self.map_widget.selected_turning_point_size = size
+            logger.debug("Trackpoint settings reloaded from config")
             
             # Trigger redraw
             self.map_widget.render_map()

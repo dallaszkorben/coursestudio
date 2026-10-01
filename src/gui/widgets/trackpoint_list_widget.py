@@ -797,11 +797,29 @@ class TrackpointListWidget(QWidget):
         removed = self.track_manager.remove_trackpoint_with_history(self.current_track_index, row_index)
         if removed:
             logger.info(f"Deleted trackpoint {row_index} from track '{track.name}'")
-            # Refresh display
-            self.refresh_trackpoints()
-            # Update map - re-select the current track to force redraw
+            
+            # Clear selection on map BEFORE refreshing
             if self.map_widget:
-                self.map_widget.on_track_list_selection_changed(self.current_track_index)
+                self.map_widget.selected_trackpoint_index = None
+                self.map_widget.selected_trackpoint_range = None
+            
+            # Temporarily disconnect selection changed signal to prevent auto-selection
+            self.table_widget.itemSelectionChanged.disconnect(self._on_selection_changed)
+            
+            # Refresh trackpoint list display
+            self.refresh_trackpoints()
+            
+            # Ensure no row is selected
+            self.table_widget.clearSelection()
+            self.current_selection = -1
+            
+            # Reconnect selection changed signal
+            self.table_widget.itemSelectionChanged.connect(self._on_selection_changed)
+            
+            # Re-render map (this will show the track without any selected points)
+            if self.map_widget:
+                self.map_widget.render_map()
+            
             # Emit signals
             self.point_selected.emit(-1)
             self.history_changed.emit()  # Notify that history state changed
