@@ -688,4 +688,31 @@ Application uses AppConfig throughout
 
 ---
 
+## See Also
+
+**Related Documentation - Critical for Understanding System Design:**
+
+- **[Hard Problems and Solutions](HARD_PROBLEMS_AND_SOLUTIONS.md)** ⭐⭐⭐
+  - Documents 10 major issues encountered during development
+  - Each with failed attempts, root cause analysis, and solutions
+  - Essential reading for understanding non-obvious gotchas
+  - Topics: UI state sync, signal chains, coordinate systems, PyQt5 constraints
+
+- **[MBTiles Analysis](MBTILES_ANALYSIS.md)**
+  - Deep dive into tile coordinate systems (TMS vs XYZ)
+  - SQLite schema and performance optimization
+  - How Web Mercator coordinates map to tile indices
+
+- **[Trackpoint Operations](TRACKPOINT_OPERATIONS.md)**
+  - Complete guide to how trackpoint selection, movement, and deletion work
+  - Performance optimizations and real-time feedback
+  - State management and signal flows
+
+- **[Implementation Notes](IMPLEMENTATION_NOTES.md)**
+  - Design decision rationale
+  - Why components were designed as they are
+  - Lessons learned from implementation
+
+---
+
 **End of Architecture Document**

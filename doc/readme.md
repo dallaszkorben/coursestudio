@@ -1,8 +1,8 @@
 # CourseStudio Documentation Index
 
 **Project:** CourseStudio - GPX File Manipulator  
-**Status:** Specification & Planning Complete - Ready for Development  
-**Last Updated:** 2026-09-20  
+**Status:** Complete - Production Ready  
+**Last Updated:** 2026-10-06  
 
 ---
 
@@ -11,73 +11,72 @@
 1. **Read First:** [`PROJECT_SUMMARY.md`](#project-summarymd)
 2. **Understand Full Spec:** [`PROJECT_SPECIFICATION.md`](#project-specificationmd)
 3. **See Architecture:** [`ARCHITECTURE.md`](#architecturemd)
-4. **Start Development:** [`TODO_LIST.md`](#todo_listmd) - Step 1
+4. **Understand Hard Problems:** [`HARD_PROBLEMS_AND_SOLUTIONS.md`](#hard_problems_and_solutionsmd) ⭐
+5. **Start Development:** [`TODO_LIST.md`](#todo_listmd)
 
 ---
 
-## 📚 COMPLETE DOCUMENTATION
+## 📚 CORE DOCUMENTATION
 
-### PROJECT_SUMMARY.md
-**Purpose:** Quick overview and reference guide  
-**Length:** ~5 KB  
+### ARCHITECTURE.md
+**Purpose:** System design, component relationships, and data flow  
+**Status:** ✅ Complete  
 **Contains:**
-- Project status and key decisions
-- Quick reference for configuration and structure
-- Development workflow and code quality standards
-- Success criteria checklist
+- High-level architecture diagram
+- Data flow diagrams (file operations, undo/redo)
+- Class hierarchy and signal/slot connections
+- Data structures and configuration flow
+- Performance considerations
+- **Links to:** HARD_PROBLEMS_AND_SOLUTIONS, MBTILES_ANALYSIS, TRACKPOINT_OPERATIONS
 
-**Read this if:** You want a 5-minute overview before starting work.
+**Read this if:** You want to understand how the system is designed and components interact.
+
+---
+
+### HARD_PROBLEMS_AND_SOLUTIONS.md ⭐⭐⭐
+**Purpose:** Document complex issues, failed attempts, root causes, and solutions  
+**Status:** ✅ Complete (New - 2026-10-06)  
+**Length:** ~1,200 lines  
+**Contains:**
+- 10 detailed hard problems with:
+  - Problem description (what went wrong)
+  - Failed attempts (what didn't work)
+  - Root cause analysis (why it failed)
+  - Final solution (what actually worked)
+  - Key learning (non-obvious connection)
+
+**Problems Documented:**
+1. Trackpoint deletion - Map/List state inconsistency
+2. Deletion didn't update track info
+3. Last trackpoint deletion removed entire track
+4. GUI crashes when clicking trackpoint
+5. PyQt5 layout size constraint conflicts
+6. Splitter handle not appearing
+7. Track distance not recalculated
+8. Signal/slot connection confusion
+9. Web Mercator coordinate system
+10. MBTiles tile coordinates (TMS vs XYZ)
+
+**Read this if:** You want to understand complex system gotchas, remember non-obvious connections, and learn from past mistakes.
+
+**Critical for Kiro Memory:** Non-obvious connections like signal chains hiding root causes, coordinate system inversions, and state sync fragility.
 
 ---
 
 ### PROJECT_SPECIFICATION.md
 **Purpose:** Complete functional and technical specification  
-**Length:** ~24 KB  
+**Status:** ✅ Complete  
 **Contains:**
-- Project overview and core purpose
-- Detailed functional requirements (file mgmt, track info, map, editing, undo/redo)
-- Non-functional requirements (tech stack, project structure, code quality)
-- Configuration management system
+- Project overview and requirements
+- Detailed functional specifications
+- Technical stack and architecture
 - Garmin compatibility requirements
-- Coordinate format handling (DMS vs decimal)
-- UI layout specification with ASCII diagrams
+- Coordinate format handling
+- UI layout specification
 - Error handling strategy
-- Performance constraints
 - Testing strategy
-- Development phases and milestones
-- Success criteria
 
-**Read this if:** You need to understand the complete project scope and all details.
-
----
-
-### ARCHITECTURE.md
-**Purpose:** Visual documentation of system design and data flow  
-**Length:** ~24 KB  
-**Contains:**
-- High-level architecture diagram
-- Data flow diagrams (file open, edit, save, undo/redo)
-- Class hierarchy and relationships
-- Signal/slot connections (PyQt5)
-- Data structures and internal state
-- File I/O flow
-- Error handling patterns
-- Thread safety considerations (future)
-- Configuration hierarchy
-- Performance considerations
-- Extension points for future features
-
-**Read this if:** You want to understand how components interact and data flows through the system.
-
----
-
-### TODO_LIST.md
-**Purpose:** Step-by-step development tasks organized by phase  
-**Length:** ~37 KB  
-**Contains:**
-- 23 development steps across 5 phases
-- Each step includes:
-  - Clear objective
+**Read this if:** You need to understand the complete project scope and requirements.
   - Detailed tasks checklist
   - Acceptance criteria
   - Dependencies

@@ -274,8 +274,32 @@ All acceptance criteria met exactly as specified:
 
 ---
 
-**Last Updated:** 2026-09-20  
-**Current Phase:** 1 - Foundation & Core GPX Handling (COMPLETE)  
-**Next Phase:** Phase 2 - Track Display & Map Visualization  
-**Next Step:** Step 2 - Core GPX Handling: Reading GPX Files  
-**Next Review:** After Step 2 completion
+---
+
+## Hard Problems Encountered
+
+**See also:** [Hard Problems and Solutions](HARD_PROBLEMS_AND_SOLUTIONS.md) ⭐⭐⭐
+
+During development beyond Phase 1, several complex issues were encountered:
+
+- **UI state sync problems** - Map, list, and toolbar selections getting out of sync
+- **Signal chain confusion** - Root causes hidden far away in signal chains
+- **Coordinate system transformations** - Converting between GPS, Web Mercator, and TMS coordinates
+- **PyQt5 size constraint conflicts** - Parent and child size constraints interacting unexpectedly
+- **Cached value invalidation** - Track distance not updating after edits
+- **Index synchronization** - Table row indices diverging from data list after deletions
+
+Each problem in the linked document includes:
+1. What went wrong (symptoms)
+2. Failed attempts (what didn't work)
+3. Root cause analysis (why it failed)
+4. Final solution (what actually worked)
+5. Key learning (non-obvious connection)
+
+Critical reading for understanding non-obvious system gotchas and preventing regression.
+
+---
+
+**Last Updated:** 2026-10-06  
+**Current Phase:** Complete (Phases 1-11 implemented)  
+**Status:** Production-ready with comprehensive hard problem documentation
