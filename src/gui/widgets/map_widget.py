@@ -639,14 +639,15 @@ class MapWidget(QWidget):
                             self.render_map()
                             return
             
-            # NEW: Shift+click on empty space (only if no point was found above) - insert point at end (or as first point)
+            # Shift+click on empty space - insert point at end of current track (or create new track if none selected)
+            # Note: When user clicks "X" to unselect a track, track_selected emits -1 (not None), so we check both
             if event.modifiers() & Qt.ShiftModifier:
                 gps_coords = self.screen_to_gps(x, y)
                 if gps_coords and self.track_manager:
                     lat, lon = gps_coords
                     
-                    # If no track selected, create a new one (same as startup behavior)
-                    if self.selected_track_id is None:
+                    # If no track selected (selected_track_id is None or -1 from unselect), create a new one
+                    if self.selected_track_id is None or self.selected_track_id == -1:
                         from src.core.track_manager import TrackData
                         # Create new track with auto-incremented name
                         track_count = len(self.track_manager.get_all_tracks())
