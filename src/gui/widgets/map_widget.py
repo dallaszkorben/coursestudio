@@ -773,6 +773,13 @@ class MapWidget(QWidget):
                             main_window.trackpoint_list_widget.update_trackpoint_row(
                                 self.dragged_trackpoint_index, new_lat, new_lon
                             )
+                            
+                            # Update track info (distance and point count) in track list
+                            # because moving a point can change the track distance
+                            if hasattr(main_window, 'track_list_widget'):
+                                main_window.track_list_widget.update_track_info(
+                                    self.track_manager.get_selected_track_index()
+                                )
                 
                 # Exit drag mode
                 self.dragging_trackpoint = False
