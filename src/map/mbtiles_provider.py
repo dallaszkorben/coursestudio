@@ -10,16 +10,51 @@ This module handles:
 
 MBTiles Format:
 - SQLite database containing raster or vector tiles
-- Tables: metadata (key-value pairs), tiles (zoom/column/row tile data)
+- Tables:
+  * metadata: Key-value pairs (name, version, format, bounds, etc.)
+  * tiles: Tile data (zoom_level, tile_column, tile_row, tile_data)
 - Raster format: PNG/JPG image tiles (used in this application)
 - Vector format: PBF vector tiles (not currently supported)
+
+Tile Coordinate System:
+- Uses Web Mercator projection (EPSG:3857)
+- Zoom levels: 0-28 (higher = more detail)
+- Each zoom level N has 2^N × 2^N tiles
+- Example: Zoom 0 has 1×1 tile (whole world)
+           Zoom 1 has 2×2 tiles (4 tiles)
+           Zoom 15 has 32768×32768 tiles
+- Tile coordinate (x, y) follows TMS convention (origin at bottom-left)
+
+SQL Schema (relevant for queries):
+    CREATE TABLE metadata (
+        name TEXT PRIMARY KEY,
+        value TEXT
+    );
+    
+    CREATE TABLE tiles (
+        zoom_level INTEGER,
+        tile_column INTEGER,
+        tile_row INTEGER,
+        tile_data BLOB
+    );
+    CREATE UNIQUE INDEX tile_index on tiles(zoom_level, tile_column, tile_row);
+
+Performance Considerations:
+- Database kept open in memory for fast queries
+- Metadata cached after first load
+- Indexed tile lookups (zoom_level, tile_column, tile_row)
+- Connection reused across multiple get_tile() calls
 
 Usage:
     provider = MBTilesProvider(config, logger)
     provider.load_default_mbtiles()
     if provider.is_loaded():
+        # Get tile image data
         tile_data = provider.get_tile(z=13, x=1234, y=5678)
+        # Get metadata
         metadata = provider.get_metadata()
+        # Check available zoom levels
+        zooms = provider.get_available_zooms()
 """
 
 import sqlite3
@@ -34,17 +69,20 @@ class TileMetadata:
     """
     Metadata extracted from MBTiles file.
     
+    MBTiles stores metadata as key-value pairs in the metadata table.
+    These values describe the tileset, its bounds, zoom levels, and format.
+    
     Attributes:
-        name: Tileset name (e.g., "OpenMapTiles")
-        version: Tileset version
+        name: Tileset name (e.g., "Sweden-Raster-Z10-Z16")
+        version: Tileset version (e.g., "1.0")
         format: Tile format (e.g., "png", "jpg", "pbf")
-        bounds: Geographic bounds as (west, south, east, north)
+        bounds: Geographic bounds as (west, south, east, north) in decimal degrees
         center: Center point as (longitude, latitude, zoom)
-        min_zoom: Minimum zoom level
-        max_zoom: Maximum zoom level
-        attribution: Data attribution string
-        description: Tileset description
-        tile_format: Format of tiles (png, jpg, pbf, etc.)
+        min_zoom: Minimum zoom level available in tileset
+        max_zoom: Maximum zoom level available in tileset
+        attribution: Data attribution string (copyright, source)
+        description: Human-readable description of tileset
+        tile_format: Format of tile images (png, jpg, pbf, etc.)
     """
     name: str
     version: str
@@ -65,17 +103,31 @@ class MBTilesProvider:
     Handles SQLite-based mbtiles files containing raster or vector tiles.
     Supports fallback file selection if primary file not found.
     
+    Architecture:
+    - Single SQLite connection kept open for performance
+    - Metadata extracted on first load and cached
+    - Tile queries indexed by (zoom_level, tile_column, tile_row)
+    - Supports both raster (PNG/JPG) and vector (PBF) formats
+    
     Attributes:
         config: AppConfig instance for reading configuration
         logger: Logger instance for debug/info/error messages
         _db_connection: SQLite database connection (or None if not loaded)
         _metadata: Cached metadata from mbtiles file
         _loaded_path: Path to currently loaded mbtiles file
+    
+    State Machine:
+    - UNLOADED: _db_connection is None, can call load_default_mbtiles()
+    - LOADED: _db_connection is sqlite3.Connection, ready for queries
+    - CLOSED: Connection was explicitly closed via close()
     """
     
     def __init__(self, config: Any, logger: logging.Logger) -> None:
         """
         Initialize MBTiles provider.
+        
+        Sets up provider with config and logger, but does NOT load mbtiles yet.
+        Must call load_default_mbtiles() or load_file() to actually load tiles.
         
         Args:
             config: AppConfig instance with map settings
@@ -383,32 +435,46 @@ class MBTilesProvider:
         """
         Get tile image data for given tile coordinates.
         
-        Uses Web Mercator (XYZ) tile coordinates where:
-        - zoom: Zoom level (0-18)
-        - x: Column index (0 to 2^zoom - 1)
-        - y: Row index (0 to 2^zoom - 1)
+        Queries SQLite database for tile image (PNG/JPG bytes).
+        Handles coordinate system conversion and validation.
+        
+        Tile Coordinate Systems:
+        - Web Mercator (XYZ): Y=0 at top, increases downward (screen coordinates)
+        - TMS (Tile Map Service): Y=0 at bottom, increases upward (geographic)
+        - MBTiles uses TMS internally, but Web Mercator is more common in web maps
+        - Must convert: tms_y = (2^zoom - 1) - web_mercator_y
+        
+        Example Conversion (Zoom 2, World divided into 16 tiles):
+        - Web Mercator: y=0 (top), y=1, y=2, y=3 (bottom)
+        - TMS: y=3 (bottom), y=2, y=1, y=0 (top)
+        - Get Web Mercator (0,0) → Convert to TMS (0,3) → Query database
         
         Args:
-            zoom: Zoom level
-            x: Tile column index
-            y: Tile row index
+            zoom: Zoom level (0-18 typically, depends on tileset)
+            x: Tile column index (0 to 2^zoom - 1)
+            y: Tile row index (0 to 2^zoom - 1) in Web Mercator coordinates
             
         Returns:
-            Tile image data (bytes) if found, None if not found or error
+            Tile image data (bytes, PNG/JPG) if found
+            None if tile not found or no file loaded
             
         Raises:
-            ValueError: If zoom level not supported
+            ValueError: If zoom level not supported by tileset
             sqlite3.Error: If database query fails
         """
+        
+        # Step 1: Validate that mbtiles file is loaded
         if not self.is_loaded():
             self.logger.warning("Cannot get tile: no mbtiles file loaded")
             return None
         
+        # Step 2: Validate zoom level (check if within min/max supported)
         if not self.validate_zoom_level(zoom):
             raise ValueError(f"Zoom level {zoom} not supported "
                            f"(range: {self._metadata.min_zoom}-{self._metadata.max_zoom})")
         
-        # Validate tile coordinates
+        # Step 3: Validate tile coordinates are within bounds
+        # At zoom N, tiles go from 0 to 2^N - 1
         max_tile = 2 ** zoom
         if not (0 <= x < max_tile and 0 <= y < max_tile):
             self.logger.debug(f"Invalid tile coordinates: z={zoom}, x={x}, y={y}")
@@ -417,20 +483,25 @@ class MBTilesProvider:
         try:
             cursor = self._db_connection.cursor()
             
-            # MBTiles uses TMS (Tile Map Service) coordinates for Y axis
-            # TMS Y is inverted compared to Web Mercator: max_y - web_mercator_y
+            # Step 4: Convert from Web Mercator to TMS coordinate system
+            # MBTiles database stores TMS coordinates (Y=0 at bottom)
+            # Web Mercator coordinates have Y=0 at top
+            # Formula: tms_y = (2^zoom - 1) - y
+            # Example: Zoom 2, web_mercator_y=0 → tms_y=(4-1)-0=3
             max_tile_y = (2 ** zoom) - 1
             tms_y = max_tile_y - y
             
-            # Query tile data from database
+            # Step 5: Query tile data from SQLite database
+            # Indexed by (zoom_level, tile_column, tile_row) for fast lookup
             cursor.execute(
                 "SELECT tile_data FROM tiles WHERE zoom_level = ? AND tile_column = ? AND tile_row = ?",
                 (zoom, x, tms_y)
             )
             
+            # Step 6: Return tile data if found, None otherwise
             row = cursor.fetchone()
             if row:
-                return row[0]
+                return row[0]  # tile_data is BLOB column
             
             return None
         

@@ -14,21 +14,22 @@ Key Classes:
     - TrackManager: Central manager for all tracks and operations
 
 Example:
-    >>> from src.core.track_manager import TrackManager
-    >>> from src.core.gpx_handler import GPXHandler
-    >>> 
-    >>> manager = TrackManager()
-    >>> handler = GPXHandler()
-    >>> gpx = handler.load_gpx('track.gpx')
-    >>> manager.load_from_gpx(gpx)
-    >>> 
-    >>> # Get all tracks
-    >>> tracks = manager.get_all_tracks()
-    >>> 
-    >>> # Select and work with a track
-    >>> manager.select_track(0)
-    >>> info = manager.get_selected_track_info()
-    >>> print(f"Track: {info['name']} ({info['point_count']} points)")
+    # Load GPX file and manage tracks
+    from src.core.track_manager import TrackManager
+    from src.core.gpx_handler import GPXHandler
+    
+    manager = TrackManager()
+    handler = GPXHandler()
+    gpx = handler.load_gpx('track.gpx')
+    manager.load_from_gpx(gpx)
+    
+    # Get all tracks
+    tracks = manager.get_all_tracks()
+    
+    # Select and work with a track
+    manager.select_track(0)
+    info = manager.get_selected_track_info()
+    # info['name'] contains track name, info['point_count'] has point count
 """
 
 from dataclasses import dataclass, field
@@ -66,8 +67,8 @@ class Trackpoint:
         index (int): Position in track (0-based)
     
     Example:
-        >>> point = Trackpoint(57.5126, 17.2456, 25.0, "2023-06-15T10:30:00Z", 0)
-        >>> print(f"Point at {point.latitude}, {point.longitude}")
+        point = Trackpoint(57.5126, 17.2456, 25.0, "2023-06-15T10:30:00Z", 0)
+        # Point at 57.5126, 17.2456
     """
     
     latitude: float
@@ -105,16 +106,16 @@ class TrackData:
         original_track (Optional[gpxpy.gpx.GPXTrack]): Original GPX track object
     
     Example:
-        >>> points = [
-        ...     Trackpoint(57.5126, 17.2456, 25.0, None, 0),
-        ...     Trackpoint(57.5200, 17.2500, 26.0, None, 1),
-        ... ]
-        >>> track = TrackData(
-        ...     name="My Track",
-        ...     trackpoints=points,
-        ...     distance_km=10.5
-        ... )
-        >>> print(f"{track.name}: {len(track.trackpoints)} points")
+        points = [
+            Trackpoint(57.5126, 17.2456, 25.0, None, 0),
+            Trackpoint(57.5200, 17.2500, 26.0, None, 1),
+        ]
+        track = TrackData(
+            name="My Track",
+            trackpoints=points,
+            distance_km=10.5
+        )
+        # track.name: "My Track", 2 points
     """
     
     name: str
@@ -174,26 +175,27 @@ class TrackManager:
         - Track dirty state for save detection
     
     Example:
-        >>> manager = TrackManager()
-        >>> 
-        >>> # Load from GPX
-        >>> from src.core.gpx_handler import GPXHandler
-        >>> handler = GPXHandler()
-        >>> gpx = handler.load_gpx('track.gpx')
-        >>> manager.load_from_gpx(gpx)
-        >>> 
-        >>> # Get track list
-        >>> for i, track in enumerate(manager.get_all_tracks()):
-        ...     print(f"{i}: {track.name} ({track.get_point_count()} points)")
-        >>> 
-        >>> # Select and work with a track
-        >>> manager.select_track(0)
-        >>> info = manager.get_selected_track_info()
-        >>> print(info['name'], info['distance_km'])
-        >>> 
-        >>> # Rename track
-        >>> manager.rename_selected_track("New Name")
-        >>> print(manager.get_selected_track().name)  # "New Name"
+        manager = TrackManager()
+        
+        # Load from GPX
+        from src.core.gpx_handler import GPXHandler
+        handler = GPXHandler()
+        gpx = handler.load_gpx('track.gpx')
+        manager.load_from_gpx(gpx)
+        
+        # Get track list
+        for i, track in enumerate(manager.get_all_tracks()):
+            # Print: 0: Track Name (123 points)
+            pass
+        
+        # Select and work with a track
+        manager.select_track(0)
+        info = manager.get_selected_track_info()
+        # info['name'] and info['distance_km']
+        
+        # Rename track
+        manager.rename_selected_track("New Name")
+        # manager.get_selected_track().name == "New Name"
     """
     
     def __init__(self, use_history: bool = False):
@@ -240,11 +242,11 @@ class TrackManager:
             ValueError: If gpx_data is None or invalid
         
         Example:
-            >>> manager = TrackManager()
-            >>> handler = GPXHandler()
-            >>> gpx = handler.load_gpx('track.gpx')
-            >>> num_tracks = manager.load_from_gpx(gpx, 'track.gpx')
-            >>> print(f"Loaded {num_tracks} tracks")
+            manager = TrackManager()
+            handler = GPXHandler()
+            gpx = handler.load_gpx('track.gpx')
+            num_tracks = manager.load_from_gpx(gpx, 'track.gpx')
+            # Loaded N tracks
         """
         
         if not gpx_data:
@@ -358,9 +360,9 @@ class TrackManager:
             bool: True if track selected successfully, False if invalid index
         
         Example:
-            >>> manager.select_track(1)
+        manager.select_track(1)
             True
-            >>> print(manager.get_selected_track().name)
+        print(manager.get_selected_track().name)
         """
         
         if not 0 <= track_index < len(self.tracks):
@@ -387,9 +389,9 @@ class TrackManager:
             Optional[TrackData]: Selected track, or None if not selected
         
         Example:
-            >>> track = manager.get_selected_track()
-            >>> if track:
-            ...     print(track.name)
+        track = manager.get_selected_track()
+        if track:
+                print(track.name)
         """
         
         if 0 <= self.selected_track_index < len(self.tracks):
@@ -491,9 +493,9 @@ class TrackManager:
             int: Number of tracks appended
         
         Example:
-            >>> gpx = GPXHandler().load_gpx('other.gpx')
-            >>> count = track_manager.append_tracks_from_gpx(gpx)
-            >>> print(f"Appended {count} tracks")
+        gpx = GPXHandler().load_gpx('other.gpx')
+        count = track_manager.append_tracks_from_gpx(gpx)
+        print(f"Appended {count} tracks")
         """
         
         if not gpx_data or not gpx_data.tracks:
@@ -577,9 +579,9 @@ class TrackManager:
             - is_dirty: Has unsaved changes (bool)
         
         Example:
-            >>> info = manager.get_selected_track_info()
-            >>> if info:
-            ...     print(f"{info['name']}: {info['distance_km']:.2f} km")
+        info = manager.get_selected_track_info()
+        if info:
+                print(f"{info['name']}: {info['distance_km']:.2f} km")
         """
         
         track = self.get_selected_track()
@@ -639,7 +641,7 @@ class TrackManager:
             bool: True if renamed successfully, False if invalid index
         
         Example:
-            >>> manager.rename_track(0, "My New Track Name")
+        manager.rename_track(0, "My New Track Name")
             True
         """
         
@@ -667,10 +669,10 @@ class TrackManager:
             bool: True if renamed successfully, False if invalid index or history disabled
         
         Example:
-            >>> manager = TrackManager(use_history=True)
-            >>> manager.rename_track_with_history(0, "New Name")
+        manager = TrackManager(use_history=True)
+        manager.rename_track_with_history(0, "New Name")
             True
-            >>> manager.history.undo()  # Undo the rename
+        manager.history.undo()  # Undo the rename
         """
         
         if not self.history:
@@ -700,8 +702,8 @@ class TrackManager:
             bool: True if renamed successfully, False if no track selected
         
         Example:
-            >>> manager.select_track(0)
-            >>> manager.rename_selected_track("Updated Track")
+        manager.select_track(0)
+        manager.rename_selected_track("Updated Track")
             True
         """
         
@@ -715,6 +717,15 @@ class TrackManager:
         """
         Recalculate distance for a track (e.g., after point modifications).
         
+        CRITICAL: Must be called after:
+        - Adding trackpoints (distance increases)
+        - Removing trackpoints (distance decreases)
+        - Moving trackpoints (distance can increase or decrease)
+        - Deleting range of points (distance decreases)
+        
+        Why: Track distance is cached for performance (not calculated on-the-fly).
+        Cached value becomes stale after any point modification.
+        
         Args:
             track_index (int): Track index (0-based)
         
@@ -722,24 +733,45 @@ class TrackManager:
             Optional[float]: New distance in km, or None if invalid index
         
         Example:
-            >>> distance = manager.recalculate_distance(0)
-            >>> print(f"New distance: {distance:.2f} km")
+        distance = manager.recalculate_distance(0)
+        print(f"New distance: {distance:.2f} km")
+        
+        Side Effects:
+            - Updates track.distance_km with new value
+            - Marks track as dirty (unsaved changes)
+            - Logs distance change
         """
         
         from src.core.calculator import calculate_track_distance
         
+        # Validate track exists
         track = self.get_track_by_index(track_index)
         if not track:
             logger.warning(f"Cannot recalculate: invalid track index {track_index}")
             return None
         
-        # Convert trackpoints to tuples for calculator
+        # ===== DISTANCE RECALCULATION PROCESS =====
+        # 1. Extract all trackpoints as (lat, lon) tuples
+        # 2. Pass to calculator which sums all consecutive point distances
+        # 3. Calculator uses Haversine formula (great-circle distance)
+        # 4. Update cached distance_km value
+        # 5. Mark track as dirty (needs saving)
+        
+        # Step 1: Convert trackpoints to tuples for calculator
+        # (Calculator expects list of (latitude, longitude) tuples)
         distance_tuples = [(tp.latitude, tp.longitude) for tp in track.trackpoints]
         
+        # Step 2: Save old distance for logging comparison
         old_distance = track.distance_km
+        
+        # Step 3: Recalculate using Haversine formula (via calculator)
+        # This sums: distance(p0→p1) + distance(p1→p2) + ... + distance(pn-1→pn)
         track.distance_km = calculate_track_distance(distance_tuples)
+        
+        # Step 4: Mark track as having unsaved changes
         track.mark_dirty()
         
+        # Step 5: Log the change for debugging
         logger.info(f"Recalculated distance for '{track.name}': "
                   f"{old_distance:.2f} km → {track.distance_km:.2f} km")
         
@@ -893,14 +925,14 @@ class TrackManager:
             ValueError: If indices are invalid or out of range
         
         Example:
-            >>> manager = TrackManager()
-            >>> # ... load tracks ...
-            >>> manager.select_track(0)
-            >>> removed = manager.remove_trackpoint(0, 5)
-            >>> if removed:
-            ...     print(f"Removed point at ({removed.latitude}, {removed.longitude})")
-            >>> else:
-            ...     print("Failed to remove trackpoint")
+        manager = TrackManager()
+        # ... load tracks ...
+        manager.select_track(0)
+        removed = manager.remove_trackpoint(0, 5)
+        if removed:
+                print(f"Removed point at ({removed.latitude}, {removed.longitude})")
+        else:
+                print("Failed to remove trackpoint")
         """
         
         # Validate track index
@@ -943,9 +975,9 @@ class TrackManager:
             Optional[Trackpoint]: Removed trackpoint if successful, None otherwise
         
         Example:
-            >>> manager = TrackManager()
-            >>> manager.select_track(0)
-            >>> removed = manager.remove_trackpoint_selected(5)
+        manager = TrackManager()
+        manager.select_track(0)
+        removed = manager.remove_trackpoint_selected(5)
         """
         if self.selected_track_index < 0:
             logger.warning("No track selected")
@@ -967,10 +999,10 @@ class TrackManager:
             Optional[List[Trackpoint]]: Removed trackpoints if successful, None otherwise
         
         Example:
-            >>> manager = TrackManager()
-            >>> manager.select_track(0)
-            >>> removed = manager.remove_trackpoints_from_start(0, 10)
-            >>> print(f"Removed {len(removed)} points from start")
+        manager = TrackManager()
+        manager.select_track(0)
+        removed = manager.remove_trackpoints_from_start(0, 10)
+        print(f"Removed {len(removed)} points from start")
         """
         
         # Validate track index
@@ -1019,10 +1051,10 @@ class TrackManager:
             Optional[List[Trackpoint]]: Removed trackpoints if successful, None otherwise
         
         Example:
-            >>> manager = TrackManager()
-            >>> manager.select_track(0)
-            >>> removed = manager.remove_trackpoints_from_end(0, 500)
-            >>> print(f"Removed {len(removed)} points from end")
+        manager = TrackManager()
+        manager.select_track(0)
+        removed = manager.remove_trackpoints_from_end(0, 500)
+        print(f"Removed {len(removed)} points from end")
         """
         
         # Validate track index
@@ -1072,10 +1104,10 @@ class TrackManager:
             bool: True if successful, False otherwise
         
         Example:
-            >>> manager = TrackManager()
-            >>> manager.select_track(0)
-            >>> success = manager.add_trackpoint(0, 57.5126, 12.2584, altitude=42.5)
-            >>> print(f"Added: {success}")
+        manager = TrackManager()
+        manager.select_track(0)
+        success = manager.add_trackpoint(0, 57.5126, 12.2584, altitude=42.5)
+        print(f"Added: {success}")
         """
         
         # Validate track index

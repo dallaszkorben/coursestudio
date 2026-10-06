@@ -476,7 +476,32 @@ class MapWidget(QWidget):
         logger.debug("Map settings reloaded from config")
     
     def mousePressEvent(self, event):
-        """Handle mouse button press."""
+        """
+        Handle mouse button press - implements trackpoint dragging and map panning.
+        
+        State Machine (two mutually exclusive behaviors):
+        
+        1. DRAGGING STATE (if point was clicked):
+           - Save original point position
+           - Set dragging_trackpoint=True, dragged_trackpoint_index=index
+           - mouseMoveEvent() will update point position in real-time
+           - mouseReleaseEvent() will save move as undoable command
+        
+        2. PANNING STATE (if map was clicked):
+           - Save pan start coordinates (pan_start_x, pan_start_y)
+           - mouseMoveEvent() will pan the map
+           - mouseReleaseEvent() will clear pan state
+        
+        Preconditions:
+        - A track must be selected (self.selected_track_id != None)
+        - For dragging: point must exist and have valid coordinates
+        - For panning: mbtiles provider must exist
+        
+        Signals emitted:
+        - trackpoint_dragging: During drag (real-time coordinate updates)
+        - point_clicked: When dragging completes
+        - range_selection_changed: When range is modified
+        """
         if event.button() == Qt.RightButton:
             # Right-click: show context menu
             self._show_context_menu(event.pos())
@@ -718,21 +743,45 @@ class MapWidget(QWidget):
             delta_y = self.pan_start_y - event.y()
             
             if self.mbtiles_provider:
-                # Pan using Web Mercator math
-                import math
-                TILE_SIZE = 256
-                tiles_at_zoom = 2 ** self.zoom_level
-                earth_circumference_m = 40075016.686
+                # ===== Web Mercator Panning Math =====
+                # Convert mouse movement (screen pixels) to geographic movement (latitude/longitude degrees)
+                # 
+                # Web Mercator (EPSG:3857) is the standard projection used by most map tiles:
+                # - Projects spherical Earth onto a square grid
+                # - At each zoom level N: grid has 2^N × 2^N tiles
+                # - Each tile is 256×256 pixels
+                # - Tiles are square, so map is distorted (especially at poles)
+                #
+                # Challenge: Pixels represent different geographic distances at different latitudes
+                # - At equator: 1 pixel ≈ distance X
+                # - At 60°N: 1 pixel ≈ distance X/cos(60°) = distance 2X (longitude lines converge)
+                # - At poles: longitude becomes meaningless
+                # Solution: Adjust longitude delta by cos(current_latitude)
                 
-                cos_lat = math.cos(math.radians(self.center_lat))
+                import math
+                
+                # Web Mercator grid parameters (from OSM/Google Maps spec)
+                TILE_SIZE = 256  # pixels per tile
+                earth_circumference_m = 40075016.686  # meters at equator (WGS84 spheroid)
+                tiles_at_zoom = 2 ** self.zoom_level  # grid size: 2^zoom tiles across
+                
+                # Calculate meters per pixel at current zoom level
+                # Formula: earth_circumference / (tile_size * tiles_at_zoom) = m/pixel
+                cos_lat = math.cos(math.radians(self.center_lat))  # Latitude adjustment factor
                 m_per_pixel_lon = (earth_circumference_m * cos_lat) / (TILE_SIZE * tiles_at_zoom)
                 m_per_pixel_lat = earth_circumference_m / (TILE_SIZE * tiles_at_zoom)
                 
+                # Convert meters to geographic degrees
+                # Latitude: approximately constant, 1° ≈ 111,320 meters everywhere
+                # Longitude: varies by latitude (computed above using cos)
                 deg_per_m = 1.0 / 111320.0
                 
+                # Calculate geographic deltas from screen deltas
+                # Negative sign on lat_delta: screen Y increases downward, geographic latitude increases upward
                 lon_delta = delta_x * m_per_pixel_lon * deg_per_m
                 lat_delta = -delta_y * m_per_pixel_lat * deg_per_m
                 
+                # Update center position with deltas
                 self.center_lon += lon_delta
                 self.center_lat += lat_delta
                 
@@ -742,7 +791,28 @@ class MapWidget(QWidget):
             self.pan_start_y = event.y()
     
     def mouseReleaseEvent(self, event):
-        """Handle mouse button release."""
+        """
+        Handle mouse button release - completes dragging or panning.
+        
+        For dragging (self.dragging_trackpoint=True):
+        1. Get final point position from memory (updated by mouseMoveEvent)
+        2. Save move as undoable command via track_manager.move_trackpoint_with_history()
+        3. Update UI: trackpoint row, track info (distance), emit point_clicked signal
+        4. Emit point_clicked(-1) to sync selection state
+        5. Exit dragging mode and clear all drag state variables
+        
+        For panning (self.dragging_trackpoint=False):
+        1. Simply clear pan state (pan_start_x, pan_start_y)
+        2. No command needed - pan state is transient, not saved
+        
+        Important: After point move completes, we MUST:
+        - Update track info in left panel (distance changes when points move)
+        - Update trackpoint row (new lat/lon displayed)
+        - Let map re-render from last mouseMoveEvent (don't render again here)
+        
+        Why no render_map() call? The point is already displayed at correct position
+        from the last mouseMoveEvent during dragging.
+        """
         if event.button() == Qt.LeftButton:
             # Handle end of trackpoint drag
             if self.dragging_trackpoint and self.dragged_trackpoint_index is not None:

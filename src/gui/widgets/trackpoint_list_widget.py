@@ -10,15 +10,15 @@ Classes:
     - TrackpointListModel: Data model for trackpoint list
 
 Example:
-    >>> from PyQt5.QtWidgets import QApplication
-    >>> from src.gui.widgets.trackpoint_list_widget import TrackpointListWidget
-    >>> from src.core.track_manager import TrackManager
-    >>> 
-    >>> app = QApplication([])
-    >>> manager = TrackManager()
-    >>> widget = TrackpointListWidget(manager)
-    >>> widget.set_track(0)
-    >>> widget.show()
+        from PyQt5.QtWidgets import QApplication
+        from src.gui.widgets.trackpoint_list_widget import TrackpointListWidget
+        from src.core.track_manager import TrackManager
+        
+        app = QApplication([])
+        manager = TrackManager()
+        widget = TrackpointListWidget(manager)
+        widget.set_track(0)
+        widget.show()
 """
 
 import logging
@@ -48,7 +48,28 @@ logger = logging.getLogger(__name__)
 # ============================================================================
 
 class RangeSelectableTableWidget(QTableWidget):
-    """QTableWidget that supports Shift+click range selection (max 2 consecutive points)."""
+    """
+    QTableWidget that supports Shift+click range selection for two consecutive points.
+    
+    Selection Model:
+    - Normal click: Select single row (clears any previous selection)
+    - Shift+click: Select 2 consecutive rows (start_row, end_row)
+    - Right-click on range: Show context menu (delete, insert operations)
+    - ESC key: Clear all selection, emit selection_cleared signal
+    - Click on empty space: Clear selection
+    
+    Why 2 consecutive points?
+    - Use case: Delete range (from start row to end row)
+    - Use case: Insert point between two points
+    - Constraint: Only 2 consecutive rows to prevent UI complexity
+    
+    Examples:
+    - Click row 5 → selected = [5]
+    - Click row 5, Shift+click row 6 → selected = [5, 6]
+    - Click row 5, Shift+click row 8 → rejected (not consecutive) → selected stays [5]
+    - Right-click row 5 (with range selected) → show delete menu
+    - Press ESC → selected = [], emit selection_cleared
+    """
     
     range_selected = pyqtSignal(int, int)  # Emitted with (start_index, end_index)
     range_right_clicked = pyqtSignal()  # Emitted when right-click on range selection
@@ -68,7 +89,18 @@ class RangeSelectableTableWidget(QTableWidget):
         super().keyPressEvent(event)
     
     def mousePressEvent(self, event):
-        """Handle mouse press for range selection."""
+        """
+        Handle mouse press for range selection.
+        
+        Three cases:
+        1. Right-click on range: Emit signal to show context menu
+        2. Shift+click on different row: Select 2-point range (if consecutive)
+        3. Normal click: Select single row (clear previous selection)
+        
+        Validation:
+        - Range must be exactly 2 consecutive: if end - start == 1, it's valid
+        - Ranges of 3+ rows are rejected (return without changing selection)
+        """
         if event.button() == Qt.RightButton:
             # Right-click: show context menu (don't change selection)
             item = self.itemAt(event.pos())
@@ -90,7 +122,8 @@ class RangeSelectableTableWidget(QTableWidget):
                     start = min(self.last_clicked_row, row)
                     end = max(self.last_clicked_row, row)
                     
-                    # Only allow 2 consecutive points
+                    # Only allow 2 consecutive points (exactly 1 row between them)
+                    # This prevents accidental selection of large ranges
                     if end - start == 1:
                         self.clearSelection()  # Clear any existing selection first
                         self.current_range = (start, end)
@@ -135,11 +168,11 @@ class TrackpointListWidget(QWidget):
         coordinate_format_changed: Emitted when format changes
     
     Example:
-        >>> manager = TrackManager()
-        >>> widget = TrackpointListWidget(manager)
-        >>> widget.point_selected.connect(on_point_selected)
-        >>> widget.set_track(0)
-        >>> widget.show()
+        manager = TrackManager()
+        widget = TrackpointListWidget(manager)
+        widget.point_selected.connect(on_point_selected)
+        widget.set_track(0)
+        widget.show()
     """
     
     # Signals
@@ -164,8 +197,8 @@ class TrackpointListWidget(QWidget):
             map_widget (MapWidget): Reference to map widget (optional)
         
         Example:
-            >>> manager = TrackManager()
-            >>> widget = TrackpointListWidget(manager)
+        manager = TrackManager()
+        widget = TrackpointListWidget(manager)
         """
         
         super().__init__()
@@ -319,9 +352,9 @@ class TrackpointListWidget(QWidget):
             bool: True if track set successfully, False otherwise
         
         Example:
-            >>> widget.set_track(0)
+        widget.set_track(0)
             True
-            >>> widget.refresh_trackpoints()
+        widget.refresh_trackpoints()
         """
         
         # Clear any existing selections when switching tracks

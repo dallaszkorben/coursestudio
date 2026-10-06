@@ -48,28 +48,51 @@ class Command(ABC):
     """
     Abstract base class for all reversible commands.
     
-    All command subclasses must implement execute() and undo() methods
-    to support reversible operations.
+    Implements the Command Pattern to support undo/redo functionality.
+    Every track modification must be a Command subclass that can:
+    1. Execute the operation
+    2. Undo (reverse) the operation
+    
+    Why Command Pattern?
+    - Encapsulates operations as objects (decouples UI from logic)
+    - Enables undo/redo stacks (history of operations)
+    - Allows operation logging and replay
+    - Makes operations atomic (all-or-nothing)
+    
+    All command subclasses must implement:
+    - execute() - Perform the operation
+    - undo() - Reverse the operation
+    - description property - Human-readable name for menus
+    
+    State Capture:
+    - Commands capture state needed to reverse operations
+    - Examples:
+      - RenameTrackCommand: captures old name, new name, track index
+      - AddTrackpointCommand: captures point data, insertion index
+      - RemoveTrackpointCommand: captures removed point (to restore)
     
     Example:
-        >>> class MyCommand(Command):
-        ...     def execute(self) -> bool:
-        ...         # Perform operation
-        ...         return True
-        ...     
-        ...     def undo(self) -> bool:
-        ...         # Reverse operation
-        ...         return True
-        ...     
-        ...     @property
-        ...     def description(self) -> str:
-        ...         return "My Operation"
+        class MyCommand(Command):
+            def execute(self) -> bool:
+                # Perform operation
+                return True
+            
+            def undo(self) -> bool:
+                # Reverse operation
+                return True
+            
+            @property
+            def description(self) -> str:
+                return "My Operation"
     """
     
     @abstractmethod
     def execute(self) -> bool:
         """
         Execute the command.
+        
+        Called by CommandHistory when user performs operation.
+        Should modify state and return True/False for success.
         
         Returns:
             bool: True if successful, False otherwise
@@ -79,7 +102,10 @@ class Command(ABC):
     @abstractmethod
     def undo(self) -> bool:
         """
-        Reverse the command.
+        Reverse the command (undo operation).
+        
+        Called by CommandHistory.undo() to reverse last operation.
+        Must restore state to before execute() was called.
         
         Returns:
             bool: True if successful, False otherwise
@@ -92,6 +118,11 @@ class Command(ABC):
         """
         Get human-readable description for undo/redo menu.
         
+        Used to display in UI menu:
+        - "Undo: Rename Track"
+        - "Redo: Delete Point"
+        - "Undo: Add Trackpoint"
+        
         Returns:
             str: Description like "Rename Track", "Delete Point"
         """
@@ -103,18 +134,41 @@ class Command(ABC):
 # ============================================================================
 
 class RenameTrackCommand(Command):
-    """Command to rename a track."""
+    """
+    Command to rename a track.
+    
+    State Captured:
+    - track_index: Which track to rename
+    - old_name: Original name (for undo)
+    - new_name: New name (for redo)
+    
+    Undo Behavior:
+    - execute(): track.name = new_name, mark dirty
+    - undo(): track.name = old_name, mark dirty
+    
+    Example Flow:
+    1. User renames "Track A" to "Track B"
+    2. execute() called → track.name = "Track B"
+    3. User presses Ctrl+Z
+    4. undo() called → track.name = "Track A"
+    5. User presses Ctrl+Y
+    6. execute() called again → track.name = "Track B"
+    
+    Note: Both execute and undo mark track as dirty (unsaved changes)
+    """
     
     def __init__(self, track_manager: TrackManager, track_index: int,
                  old_name: str, new_name: str):
         """
         Initialize rename command.
         
+        Captures state needed to reverse the operation.
+        
         Args:
             track_manager: TrackManager instance
             track_index: Index of track to rename
-            old_name: Original track name
-            new_name: New track name
+            old_name: Original track name (stored for undo)
+            new_name: New track name (stored for redo)
         """
         self.track_manager = track_manager
         self.track_index = track_index
@@ -123,28 +177,47 @@ class RenameTrackCommand(Command):
         self.executed = False
     
     def execute(self) -> bool:
-        """Execute the rename command."""
+        """
+        Execute the rename command.
+        
+        Updates track name to new_name and marks track as dirty.
+        
+        Returns:
+            bool: True if track found and renamed, False if track not found
+        """
         
         track = self.track_manager.get_track_by_index(self.track_index)
         if not track:
             logger.error(f"Track {self.track_index} not found")
             return False
         
+        # Update track name
         track.name = self.new_name
+        # Mark as having unsaved changes
         track.is_dirty = True
         self.executed = True
         logger.info(f"Executed: Renamed track {self.track_index} from '{self.old_name}' to '{self.new_name}'")
         return True
     
     def undo(self) -> bool:
-        """Undo the rename command."""
+        """
+        Undo the rename command.
+        
+        Restores track name to old_name and marks track as dirty.
+        This is called when user presses Ctrl+Z.
+        
+        Returns:
+            bool: True if track found and reverted, False if track not found
+        """
         
         track = self.track_manager.get_track_by_index(self.track_index)
         if not track:
             logger.error(f"Track {self.track_index} not found")
             return False
         
+        # Restore original name
         track.name = self.old_name
+        # Mark as having unsaved changes
         track.is_dirty = True
         self.executed = False
         logger.info(f"Undone: Renamed track {self.track_index} back to '{self.old_name}'")
@@ -152,7 +225,13 @@ class RenameTrackCommand(Command):
     
     @property
     def description(self) -> str:
-        """Get command description."""
+        """
+        Get command description for UI menu.
+        
+        Returns string like:
+        - "Undo: Rename to 'New Name'"
+        - "Redo: Rename to 'New Name'"
+        """
         return f"Rename to '{self.new_name}'"
 
 
@@ -457,17 +536,33 @@ class CommandHistory:
     """
     Manages undo/redo stacks for reversible commands.
     
-    Maintains separate stacks for undo and redo operations.
-    When a new command is executed, the redo stack is cleared.
+    Implements the standard undo/redo stack pattern:
+    - Maintain two stacks: undo_stack and redo_stack
+    - When command executed: add to undo_stack, clear redo_stack
+    - When user presses Ctrl+Z: move command from undo to redo, call undo()
+    - When user presses Ctrl+Y: move command from redo to undo, call execute()
+    
+    Stack Behavior:
+    1. User performs operation A: undo=[A], redo=[]
+    2. User performs operation B: undo=[A,B], redo=[]
+    3. User presses Ctrl+Z (undo): undo=[A], redo=[B], B.undo() called
+    4. User performs operation C: undo=[A,C], redo=[] (redo stack cleared!)
+    
+    This matches standard behavior (e.g., Word, Photoshop, VS Code)
+    
+    Size Limits:
+    - Max stack size can be set to prevent memory growth
+    - Oldest operations removed when limit exceeded
+    - Default: 100 operations (configurable)
     
     Example:
-        >>> history = CommandHistory()
-        >>> cmd = MyCommand()
-        >>> history.execute(cmd)
-        >>> history.undo()
-        >>> history.redo()
-        >>> print(f"Can undo: {history.can_undo()}")
-        >>> print(f"Can redo: {history.can_redo()}")
+        history = CommandHistory(max_size=50)
+        cmd = RenameTrackCommand(manager, 0, "Old", "New")
+        history.execute(cmd)
+        # Can undo: True, Can redo: False
+        history.undo()
+        # Can undo: False, Can redo: True
+        history.redo()
     """
     
     def __init__(self, max_size: int = 100):
@@ -486,6 +581,16 @@ class CommandHistory:
         """
         Execute a command and add it to history.
         
+        Performs these steps:
+        1. Call command.execute() to perform the operation
+        2. If successful, add command to undo_stack
+        3. Enforce max_size limit (remove oldest if exceeded)
+        4. Clear redo_stack (new command invalidates redo history)
+        
+        This matches standard undo/redo behavior:
+        - After executing new command, you lose ability to redo
+        - Example: Ctrl+Z, Ctrl+Z, Ctrl+Z, then new edit → redo is gone
+        
         Args:
             command: Command to execute
         
@@ -497,14 +602,16 @@ class CommandHistory:
         success = command.execute()
         
         if success:
-            # Add to undo stack
+            # Add to undo stack (so we can undo this operation later)
             self.undo_stack.append(command)
             
-            # Enforce max size
+            # Enforce max size (prevent unbounded memory growth)
             if len(self.undo_stack) > self.max_size:
+                # Remove oldest operation (first element)
                 self.undo_stack.pop(0)
             
-            # Clear redo stack
+            # Clear redo stack when new command executed
+            # This ensures redo only works for undone commands
             self.redo_stack.clear()
             
             logger.debug(f"Executed command: {command.description}")
@@ -517,8 +624,21 @@ class CommandHistory:
         """
         Undo the last command.
         
+        Performs these steps:
+        1. Pop command from undo_stack
+        2. Call command.undo() to reverse the operation
+        3. Push command to redo_stack (so we can redo it)
+        4. Update UI to reflect new state
+        
+        Called when user presses Ctrl+Z.
+        
         Returns:
-            bool: True if successful, False otherwise
+            bool: True if successful or no more undos, False if undo failed
+        
+        Example:
+            history.execute(cmd)  # undo=[cmd], redo=[]
+            history.undo()        # undo=[], redo=[cmd]
+            history.undo()        # Nothing to undo (returns True)
         """
         
         if not self.can_undo():

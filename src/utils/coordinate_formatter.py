@@ -56,13 +56,11 @@ def decimal_to_dms(decimal: float, is_longitude: bool = False) -> Tuple[int, int
         ValueError: If decimal value is outside valid range
     
     Example:
-        >>> dms = decimal_to_dms(57.5126, is_longitude=False)
-        >>> print(dms)
-        (57, 30, 45.36, 'N')
+        dms = decimal_to_dms(57.5126, is_longitude=False)
+        # Returns: (57, 30, 45.36, 'N')
         
-        >>> dms = decimal_to_dms(-12.2584, is_longitude=True)
-        >>> print(dms)
-        (12, 15, 30.24, 'W')
+        dms = decimal_to_dms(-12.2584, is_longitude=True)
+        # Returns: (12, 15, 30.24, 'W')
     """
     
     # Validate range
@@ -111,13 +109,11 @@ def dms_to_decimal(degrees: int, minutes: int, seconds: float, direction: str) -
         ValueError: If components are outside valid ranges or direction is invalid
     
     Example:
-        >>> decimal = dms_to_decimal(57, 30, 45.36, 'N')
-        >>> print(f"{decimal:.4f}")
-        57.5126
+        decimal = dms_to_decimal(57, 30, 45.36, 'N')
+        # Returns: 57.5126°
         
-        >>> decimal = dms_to_decimal(12, 15, 30.24, 'W')
-        >>> print(f"{decimal:.4f}")
-        -12.2584
+        decimal = dms_to_decimal(12, 15, 30.24, 'W')
+        # Returns: -12.2584°
     """
     
     # Validate components
@@ -162,9 +158,8 @@ def format_dms(degrees: int, minutes: int, seconds: float, direction: str,
         str: Formatted DMS string (e.g., "57°30'45.5"N")
     
     Example:
-        >>> dms_str = format_dms(57, 30, 45.36, 'N', seconds_decimals=1)
-        >>> print(dms_str)
-        57°30'45.4"N
+        dms_str = format_dms(57, 30, 45.36, 'N', seconds_decimals=1)
+        # Returns: "57°30'45.4"N"
     """
     
     # Format with specified decimal places for seconds
@@ -190,14 +185,12 @@ def format_decimal(decimal: float, include_direction: bool = True,
         str: Formatted decimal string (e.g., "57.5126°N" or "57.5126")
     
     Example:
-        >>> dec_str = format_decimal(57.5126, include_direction=True, 
-        ...                         is_longitude=False, decimals=4)
-        >>> print(dec_str)
-        57.5126°N
+        dec_str = format_decimal(57.5126, include_direction=True, 
+                                is_longitude=False, decimals=4)
+        # Returns: "57.5126°N"
         
-        >>> dec_str = format_decimal(12.2584, include_direction=False, decimals=2)
-        >>> print(dec_str)
-        12.26
+        dec_str = format_decimal(12.2584, include_direction=False, decimals=2)
+        # Returns: "12.26°"
     """
     
     # Format with specified decimal places
@@ -238,11 +231,13 @@ def format_coordinate(value: float, is_longitude: bool = False,
         ValueError: If value is outside valid range or format_type is invalid
     
     Example:
-        >>> print(format_coordinate(57.5126, is_longitude=False, format_type='dms'))
-        57°30'45.4"N
+        # Format as DMS
+        print(format_coordinate(57.5126, is_longitude=False, format_type='dms'))
+        # Output: 57°30'45.4"N
         
-        >>> print(format_coordinate(57.5126, is_longitude=False, format_type='decimal'))
-        57.5126°N
+        # Format as decimal
+        print(format_coordinate(57.5126, is_longitude=False, format_type='decimal'))
+        # Output: 57.5126°N
     """
     
     if format_type not in ('dms', 'decimal'):
@@ -287,13 +282,11 @@ def parse_coordinate(coord_string: str, is_longitude: bool = False) -> float:
         ValueError: If string cannot be parsed or values are invalid
     
     Example:
-        >>> decimal = parse_coordinate("57°30'45.5\"N", is_longitude=False)
-        >>> print(f"{decimal:.4f}")
-        57.5126
+        decimal = parse_coordinate("57°30'45.5\"N", is_longitude=False)
+        # Returns: 57.5126°
         
-        >>> decimal = parse_coordinate("57.5126N", is_longitude=False)
-        >>> print(f"{decimal:.4f}")
-        57.5126
+        decimal = parse_coordinate("57.5126N", is_longitude=False)
+        # Returns: 57.5126°
     """
     
     if not isinstance(coord_string, str):
@@ -316,97 +309,155 @@ def parse_coordinate(coord_string: str, is_longitude: bool = False) -> float:
 
 def _parse_dms_string(coord_string: str, is_longitude: bool) -> Optional[float]:
     """
-    Try to parse string as DMS format.
+    Try to parse string as DMS (Degrees-Minutes-Seconds) format.
     
-    Accepts multiple delimiter variations:
-    - ° ' " (Unicode symbols)
-    - d m s (letters)
-    - - (dashes)
-    - space (space separator)
+    Robust parsing accepts multiple delimiter variations to handle different input styles:
+    - Unicode: 57°30'45.5"N (most formal)
+    - Letters: 57d30m45.5sN (common in GPS devices)
+    - Dashes: 57-30-45.5N (ASCII-only format)
+    - Spaces: 57 30 45.5N (space-separated)
     
     Args:
         coord_string (str): String to parse
-        is_longitude (bool): Whether this is longitude
+        is_longitude (bool): Whether this is longitude (for direction validation)
     
     Returns:
         Optional[float]: Decimal value if parsed successfully, None otherwise
+    
+    Validation:
+        - Degrees: 0-360 (actual limits: 0-90 for latitude, 0-180 for longitude)
+        - Minutes: 0-59
+        - Seconds: 0-59.999
+        - Direction: N/S for latitude, E/W for longitude
+    
+    Examples:
+        # Parse Unicode format
+        _parse_dms_string("57°30'45.5\"N", False)
+        # Returns: 57.5126
+        
+        # Parse letter delimiters
+        _parse_dms_string("57d30m45.5sN", False)
+        # Returns: 57.5126
+        
+        # Parse dash separators
+        _parse_dms_string("57-30-45.5N", False)
+        # Returns: 57.5126
     """
     
-    # Pattern to match DMS with various delimiters
-    # Matches: 57°30'45.5"N or 57d30m45.5sN or 57-30-45.5N or 57 30 45.5N
-    pattern = r'(\d+(?:\.\d+)?)\s*[°d]\s*(\d+(?:\.\d+)?)\s*[\'m]\s*(\d+(?:\.\d+)?)\s*[\"s]?\s*([NSEW])'
+    # ===== DMS PARSING REGEX PATTERNS =====
+    # Three separate patterns to handle different delimiter styles
+    # Each pattern extracts: degrees, minutes, seconds, direction
     
+    # Pattern 1: Unicode symbols (° ' ") or letter delimiters (d m s)
+    # Matches: 57°30'45.5"N or 57d30m45.5sN
+    # Allows optional spaces around delimiters for flexibility
+    pattern = r'(\d+(?:\.\d+)?)\s*[°d]\s*(\d+(?:\.\d+)?)\s*[\'m]\s*(\d+(?:\.\d+)?)\s*[\"s]?\s*([NSEW])'
     match = re.match(pattern, coord_string, re.IGNORECASE)
+    
     if not match:
-        # Try with space separators
+        # Pattern 2: Space-separated format
+        # Matches: 57 30 45.5N
+        # Simpler but can't distinguish degrees from dashes without explicit spaces
         pattern = r'(\d+(?:\.\d+)?)\s+(\d+(?:\.\d+)?)\s+(\d+(?:\.\d+)?)\s*([NSEW])'
         match = re.match(pattern, coord_string, re.IGNORECASE)
     
     if not match:
-        # Try with dash separators
+        # Pattern 3: Dash-separated format (ASCII-only, no Unicode symbols needed)
+        # Matches: 57-30-45.5N or 57-30-45.5 (direction optional)
         pattern = r'(\d+(?:\.\d+)?)-(\d+(?:\.\d+)?)-(\d+(?:\.\d+)?)\s*([NSEW])?'
         match = re.match(pattern, coord_string, re.IGNORECASE)
     
     if not match:
-        return None
+        return None  # No DMS pattern matched
     
     try:
+        # Extract components from regex match groups
         degrees = int(match.group(1))
         minutes = int(match.group(2))
         seconds = float(match.group(3))
         direction = match.group(4).upper() if match.group(4) else None
         
-        # Validate direction if provided
+        # Validate direction if provided in string
+        # Latitude must be N or S, longitude must be E or W
         if direction:
             if is_longitude and direction not in VALID_LON_DIRECTIONS:
-                return None
+                return None  # Invalid direction for longitude
             if not is_longitude and direction not in VALID_LAT_DIRECTIONS:
-                return None
+                return None  # Invalid direction for latitude
         else:
-            # Assume positive direction if not specified
+            # If direction not specified, assume positive
+            # (North for latitude, East for longitude)
             direction = CARDINAL_EAST if is_longitude else CARDINAL_NORTH
         
+        # Convert DMS components to decimal degrees
         return dms_to_decimal(degrees, minutes, seconds, direction)
     
     except (ValueError, IndexError):
+        # Component conversion failed (invalid numbers)
         return None
 
 
 def _parse_decimal_string(coord_string: str, is_longitude: bool) -> Optional[float]:
     """
-    Try to parse string as decimal format.
+    Try to parse string as decimal degrees format.
     
-    Accepts: 57.5126N or 57.5126°N or 57.5126 or -57.5126
+    Handles various decimal input styles:
+    - With direction: 57.5126N or 57.5126°N
+    - Without direction: 57.5126 or -57.5126 (sign indicates direction)
+    - Optional Unicode degree symbol
+    
+    Direction Conversion:
+        - If direction provided: uses N/S/E/W to determine sign
+        - If only sign: negative = South or West, positive = North or East
+        - Direction overrides sign if both present
     
     Args:
         coord_string (str): String to parse
-        is_longitude (bool): Whether this is longitude
+        is_longitude (bool): Whether this is longitude (for validation)
     
     Returns:
         Optional[float]: Decimal value if parsed successfully, None otherwise
+    
+    Examples:
+        _parse_decimal_string("57.5126N", False)  # With direction
+        57.5126
+        _parse_decimal_string("-57.5126", False)  # Negative (South)
+        -57.5126
+        _parse_decimal_string("57.5126°N", False)  # With degree symbol
+        57.5126
     """
     
-    # Pattern to match decimal with optional direction
-    # Matches: 57.5126N or 57.5126°N or 57.5126 or -57.5126
+    # ===== DECIMAL PARSING REGEX PATTERN =====
+    # Matches: -?number [°symbol] [direction]
+    # Examples:
+    #   57.5126N        (number + direction)
+    #   57.5126°N       (number + symbol + direction)
+    #   57.5126         (number only, no direction or symbol)
+    #   -57.5126        (negative number, implies South/West)
+    
     pattern = r'(-?\d+(?:\.\d+)?)\s*[°]?\s*([NSEW])?'
     match = re.match(pattern + '$', coord_string, re.IGNORECASE)
     
     if not match:
-        return None
+        return None  # Pattern doesn't match
     
     try:
+        # Extract numeric value and optional direction
         decimal = float(match.group(1))
         direction = match.group(2)
         
         if direction:
+            # Direction provided - validate it matches coordinate type
             direction = direction.upper()
-            # Validate direction
-            if is_longitude and direction not in VALID_LON_DIRECTIONS:
-                return None
-            if not is_longitude and direction not in VALID_LAT_DIRECTIONS:
-                return None
             
-            # Apply direction
+            # Check direction validity for this coordinate type
+            if is_longitude and direction not in VALID_LON_DIRECTIONS:
+                return None  # E/W required for longitude
+            if not is_longitude and direction not in VALID_LAT_DIRECTIONS:
+                return None  # N/S required for latitude
+            
+            # Convert: decimal number + direction → proper signed value
+            # Examples: 57.5126 + N → 57.5126, 57.5126 + S → -57.5126
             decimal = dms_to_decimal(
                 int(abs(decimal)),
                 int((abs(decimal) - int(abs(decimal))) * 60),
@@ -414,17 +465,18 @@ def _parse_decimal_string(coord_string: str, is_longitude: bool) -> Optional[flo
                 direction
             )
         
-        # Validate range
+        # Validate final decimal value is within valid range
         if is_longitude:
             if not (-180 <= decimal <= 180):
-                return None
+                return None  # Out of range for longitude
         else:
             if not (-90 <= decimal <= 90):
-                return None
+                return None  # Out of range for latitude
         
         return decimal
     
     except (ValueError, IndexError):
+        # Number conversion failed (invalid format)
         return None
 
 

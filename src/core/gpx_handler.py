@@ -3,12 +3,36 @@ GPX file handling for CourseStudio.
 
 Provides GPX file loading, parsing, validation, and saving with Garmin compatibility.
 
+GPX Format Background:
+- GPX (GPS Exchange Format) is XML-based standard for GPS data
+- Defined by Topografix (https://www.topografix.com/gpx.asp)
+- Structured as: GPX document → Tracks/Routes/Waypoints → Segments → Points
+- Each point: latitude, longitude, elevation (optional), timestamp (optional)
+
+GPX Structure:
+    <gpx version="1.1">
+        <trk>
+            <name>Track Name</name>
+            <trkseg>
+                <trkpt lat="57.5126" lon="12.2584">
+                    <ele>25.0</ele>
+                    <time>2023-06-15T10:30:00Z</time>
+                </trkpt>
+            </trkseg>
+        </trk>
+    </gpx>
+
+Garmin Extensions:
+- Garmin adds custom namespace: xmlns:gpxx="http://www.garmin.com/xmlschemas/GpxExtensions/v3"
+- Extensions: color, displayMode, category metadata
+- CourseStudio preserves these for round-trip compatibility
+
 Key Features:
-- Load GPX files using gpxpy library
-- Extract tracks, routes, and waypoints
-- Validate Garmin compatibility
-- Calculate track statistics (distance, point count)
-- Save modified GPX files with proper formatting
+- Load GPX files using gpxpy library (abstracts XML parsing)
+- Extract tracks, routes, and waypoints (different data types)
+- Validate Garmin compatibility (check for required Garmin extensions)
+- Calculate track statistics (distance, point count) using Haversine formula
+- Save modified GPX files with proper formatting (preserves structure)
 - Handle errors gracefully with user-friendly messages
 
 Author: Development Team
@@ -31,18 +55,31 @@ class GPXHandler:
     Provides methods for loading, parsing, validating, and saving GPX files
     with support for Garmin device compatibility.
     
+    GPX Operations Supported:
+    - load_gpx(): Parse XML file into gpxpy.GPX object
+    - get_tracks(): Extract all tracks (skip routes/waypoints)
+    - get_track_info(): Calculate distance, point count for track
+    - validate_garmin_compatibility(): Check if valid for Garmin devices
+    - save_gpx(): Write GPX back to file (preserves structure/extensions)
+    
+    Data Model:
+    - gpxpy.GPX object: Root document (version, creator)
+    - Track: Sequence of track segments (logical division)
+    - Segment: Sequence of points (continuous recording)
+    - Point: Single GPS location (lat, lon, elev, time)
+    
     Attributes:
         gpx_data (gpxpy.gpx.GPX): Loaded GPX data
         file_path (str): Path to loaded GPX file
         is_valid (bool): Whether loaded GPX is valid
     
     Example:
-        >>> handler = GPXHandler()
-        >>> gpx = handler.load_gpx('track.gpx')
-        >>> tracks = handler.get_tracks(gpx)
-        >>> for track in tracks:
-        ...     info = handler.get_track_info(track)
-        ...     print(f"{info['name']}: {info['distance']:.2f} km")
+        handler = GPXHandler()
+        gpx = handler.load_gpx('track.gpx')
+        tracks = handler.get_tracks(gpx)
+        for track in tracks:
+            info = handler.get_track_info(track)
+            # info['name'], info['distance'], info['point_count']
     """
     
     def __init__(self):
@@ -59,6 +96,17 @@ class GPXHandler:
         """
         Load and parse a GPX file.
         
+        Process:
+        1. Verify file exists and is readable
+        2. Open with UTF-8 encoding (errors='replace' handles bad chars)
+        3. Parse XML using gpxpy library
+        4. Store result and mark as valid
+        
+        Error Handling:
+        - FileNotFoundError: File doesn't exist
+        - PermissionError: File not readable (permissions issue)
+        - ValueError: GPX format invalid (malformed XML, wrong schema)
+        
         Args:
             file_path (str): Path to GPX file
         
@@ -70,32 +118,37 @@ class GPXHandler:
             ValueError: If file is not valid GPX
         
         Example:
-            >>> handler = GPXHandler()
-            >>> gpx = handler.load_gpx('track.gpx')
-            >>> if gpx:
-            ...     print(f"Loaded GPX file with {len(gpx.tracks)} tracks")
+            handler = GPXHandler()
+            gpx = handler.load_gpx('track.gpx')
+            if gpx:
+                # Loaded successfully
+                tracks = gpx.tracks
         """
         
-        # Verify file exists
+        # Step 1: Verify file exists
         if not os.path.exists(file_path):
             raise FileNotFoundError(f"GPX file not found: {file_path}")
         
-        # Verify file is readable
+        # Step 2: Verify file is readable (not permission denied)
         if not os.access(file_path, os.R_OK):
             raise PermissionError(f"Cannot read GPX file (permission denied): {file_path}")
         
-        # Parse GPX file
+        # Step 3: Parse GPX file using gpxpy
         try:
             with open(file_path, 'r', encoding='utf-8', errors='replace') as gpx_file:
+                # gpxpy.parse() handles XML parsing and validates GPX structure
                 self.gpx_data = gpxpy.parse(gpx_file)
         except gpxpy.gpx.GPXException as e:
+            # GPX schema validation failed (wrong element names, structure)
             raise ValueError(f"Invalid GPX file format: {str(e)}")
         except UnicodeDecodeError as e:
+            # File encoding issue (not valid UTF-8)
             raise ValueError(f"GPX file encoding error: {str(e)}")
         except Exception as e:
+            # Other XML parsing errors
             raise ValueError(f"Error parsing GPX file: {str(e)}")
         
-        # Store file path and mark as valid
+        # Step 4: Store file path and mark as valid
         self.file_path = file_path
         self.is_valid = True
         
