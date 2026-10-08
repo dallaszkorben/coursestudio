@@ -103,8 +103,8 @@ class MainWindow(QMainWindow):
         
         # Initialize map provider
         self.mbtiles_provider = MBTilesProvider(self.config, logger)
-        if not self.mbtiles_provider.load_default_mbtiles():
-            logger.warning("Could not load default mbtiles file - map may not display")
+        if not self.mbtiles_provider.load_recent_mbtiles():
+            logger.warning("Could not load any mbtiles file - map may not display")
         
         # Application state
         self.current_file_path: Optional[str] = None
@@ -323,6 +323,29 @@ class MainWindow(QMainWindow):
         zoom_out_action.triggered.connect(self.action_zoom_out)
         view_menu.addAction(zoom_out_action)
         
+        # View > Map submenu
+        map_menu = view_menu.addMenu('&Map')
+        
+        # View > Map > Load MBTiles File
+        load_mbtiles_action = QAction('&Load MBTiles File...', self)
+        load_mbtiles_action.setStatusTip('Load a different mbtiles file')
+        load_mbtiles_action.triggered.connect(self.action_load_mbtiles)
+        map_menu.addAction(load_mbtiles_action)
+        
+        # View > Map > Load Default MBTiles
+        load_default_mbtiles_action = QAction('Load &Default MBTiles', self)
+        load_default_mbtiles_action.setStatusTip('Load the default configured mbtiles')
+        load_default_mbtiles_action.triggered.connect(self.action_load_default_mbtiles)
+        map_menu.addAction(load_default_mbtiles_action)
+        
+        map_menu.addSeparator()
+        
+        # View > Map > Reset to Default Center
+        reset_center_action = QAction('Reset to &Default Center', self)
+        reset_center_action.setStatusTip('Reset map to default center position')
+        reset_center_action.triggered.connect(self.action_reset_center)
+        map_menu.addAction(reset_center_action)
+        
         # Help Menu
         help_menu = menubar.addMenu('&Help')
         
@@ -465,7 +488,7 @@ class MainWindow(QMainWindow):
         right_splitter.addWidget(self.trackpoint_list_widget)
         
         # Map Widget (bottom)
-        self.map_widget = MapWidget(mbtiles_provider=self.mbtiles_provider)
+        self.map_widget = MapWidget(mbtiles_provider=self.mbtiles_provider, config=self.config)
         self.map_widget.setMinimumHeight(150)  # Reduced from 300
         self.map_widget.setMinimumWidth(1)  # Allow horizontal shrinking
         
@@ -954,6 +977,59 @@ class MainWindow(QMainWindow):
         """Zoom out."""
         logger.debug("Zoom out action triggered")
         self.statusBar().showMessage("Zoom out")
+    
+    def action_load_mbtiles(self):
+        """Load a different mbtiles file via file dialog."""
+        file_dialog = QFileDialog()
+        file_dialog.setFileMode(QFileDialog.ExistingFile)
+        file_dialog.setNameFilter("MBTiles Files (*.mbtiles)")
+        file_dialog.setWindowTitle("Load MBTiles File")
+        
+        if file_dialog.exec_():
+            file_paths = file_dialog.selectedFiles()
+            if file_paths:
+                mbtiles_path = file_paths[0]
+                logger.info(f"Loading mbtiles file: {mbtiles_path}")
+                
+                if self.mbtiles_provider.load_mbtiles_from_path(mbtiles_path):
+                    # Update recent_mbtiles in config
+                    filename = self.mbtiles_provider.get_loaded_filename()
+                    self.config.set('Appearance.Tiles.recent_mbtiles', filename)
+                    self.config.save_to_file()
+                    
+                    # Re-render map with new tiles
+                    self.map_widget.render_map()
+                    
+                    self.statusBar().showMessage(f"Loaded mbtiles: {filename}")
+                    logger.info(f"Successfully loaded mbtiles: {filename}")
+                else:
+                    QMessageBox.warning(self, "Error", "Failed to load mbtiles file. Check the log for details.")
+                    self.statusBar().showMessage("Failed to load mbtiles file")
+    
+    def action_load_default_mbtiles(self):
+        """Load the default configured mbtiles file."""
+        logger.info("Loading default mbtiles file")
+        
+        if self.mbtiles_provider.load_default_mbtiles():
+            # Update recent_mbtiles in config
+            filename = self.mbtiles_provider.get_loaded_filename()
+            self.config.set('Appearance.Tiles.recent_mbtiles', filename)
+            self.config.save_to_file()
+            
+            # Re-render map with new tiles
+            self.map_widget.render_map()
+            
+            self.statusBar().showMessage(f"Loaded default mbtiles: {filename}")
+            logger.info(f"Successfully loaded default mbtiles: {filename}")
+        else:
+            QMessageBox.warning(self, "Error", "Failed to load default mbtiles file. Check the log for details.")
+            self.statusBar().showMessage("Failed to load default mbtiles file")
+    
+    def action_reset_center(self):
+        """Reset map to default center position."""
+        logger.info("Resetting map center to default")
+        self.map_widget.recenter_on_default()
+        self.statusBar().showMessage("Map reset to default center")
     
     # ========================================================================
     # Application Operations

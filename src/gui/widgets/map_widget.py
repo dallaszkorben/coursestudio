@@ -39,13 +39,14 @@ class MapWidget(QWidget):
     CONTROLS_PADDING_TOP = 10
     ZOOM_LEVEL_DEFAULT = 15  # Sweden-Raster-Z10-Z16 has min zoom 15
     
-    def __init__(self, parent=None, mbtiles_provider=None):
+    def __init__(self, parent=None, mbtiles_provider=None, config=None):
         """
         Initialize the map widget.
         
         Args:
             parent (QWidget): Parent widget
             mbtiles_provider (MBTilesProvider): The tile provider to use
+            config (AppConfig): Application configuration (optional, loads from scratch if not provided)
         """
         super().__init__(parent)
         
@@ -57,8 +58,9 @@ class MapWidget(QWidget):
         self.show_turning_points = True  # Show/hide turning points
         
         # Load track display settings from config
-        from config.app_config_yaml import AppConfig
-        config = AppConfig()
+        if config is None:
+            from config.app_config_yaml import AppConfig
+            config = AppConfig()
         
         # Parse colors from config (hex format: RRGGBB)
         # TrackPath - body and outline
@@ -88,10 +90,20 @@ class MapWidget(QWidget):
         self.double_selected_turning_point_outline_color = self._hex_to_rgb(config.get_str('Appearance.MapDisplay.Trackpoints.DoubleSelectedPoints.outline.color', 'FFFFFF'))
         self.double_selected_turning_point_outline_width = config.get_int('Appearance.MapDisplay.Trackpoints.DoubleSelectedPoints.outline.size', 2)
         
-        # Map state
-        self.center_lat = 56.168
-        self.center_lon = 15.586
+        # Map state - load from recent_center, fall back to default_center
+        recent_center_lat = config.get_float('Appearance.Tiles.recent_center.lat', None)
+        recent_center_lon = config.get_float('Appearance.Tiles.recent_center.lon', None)
+        
+        if recent_center_lat is not None and recent_center_lon is not None:
+            self.center_lat = recent_center_lat
+            self.center_lon = recent_center_lon
+        else:
+            # Fall back to default center
+            self.center_lat = config.get_float('Appearance.Tiles.default_center.lat', 56.168)
+            self.center_lon = config.get_float('Appearance.Tiles.default_center.lon', 15.586)
+        
         self.zoom_level = self.ZOOM_LEVEL_DEFAULT
+        self.config = config  # Store config for later use (e.g., saving center position)
         
         # Drag state for moving trackpoints
         self.dragging_trackpoint = False
@@ -450,10 +462,40 @@ class MapWidget(QWidget):
                 self.render_map()
     
     def recenter_on_default(self):
-        """Recenter on default position."""
-        self.center_lat = 56.168
-        self.center_lon = 15.586
+        """Recenter on default position and update recent center."""
+        default_center_lat = self.config.get_float('Appearance.Tiles.default_center.lat', 56.168)
+        default_center_lon = self.config.get_float('Appearance.Tiles.default_center.lon', 15.586)
+        
+        self.center_lat = default_center_lat
+        self.center_lon = default_center_lon
+        
+        # Update recent center in config
+        self.config.set('Appearance.Tiles.recent_center.lat', self.center_lat)
+        self.config.set('Appearance.Tiles.recent_center.lon', self.center_lon)
+        self.config.save_to_file()
+        
         self.render_map()
+    
+    def reset_to_recent_center(self):
+        """Reset map to the recent center position (same as startup)."""
+        recent_center_lat = self.config.get_float('Appearance.Tiles.recent_center.lat', None)
+        recent_center_lon = self.config.get_float('Appearance.Tiles.recent_center.lon', None)
+        
+        if recent_center_lat is not None and recent_center_lon is not None:
+            self.center_lat = recent_center_lat
+            self.center_lon = recent_center_lon
+        else:
+            # Fall back to default if recent not available
+            self.center_lat = self.config.get_float('Appearance.Tiles.default_center.lat', 56.168)
+            self.center_lon = self.config.get_float('Appearance.Tiles.default_center.lon', 15.586)
+        
+        self.render_map()
+    
+    def save_center_position(self):
+        """Save current map center to recent_center in config."""
+        self.config.set('Appearance.Tiles.recent_center.lat', self.center_lat)
+        self.config.set('Appearance.Tiles.recent_center.lon', self.center_lon)
+        self.config.save_to_file()
     
     def reload_settings(self):
         """Reload turning points settings from config and re-render map."""
@@ -740,51 +782,68 @@ class MapWidget(QWidget):
         
         # Handle map panning
         if self.pan_start_x is not None and self.pan_start_y is not None:
+            # Get delta in pixels (how far the cursor moved)
             delta_x = self.pan_start_x - event.x()
             delta_y = self.pan_start_y - event.y()
             
             if self.mbtiles_provider:
-                # ===== Web Mercator Panning Math =====
-                # Convert mouse movement (screen pixels) to geographic movement (latitude/longitude degrees)
-                # 
-                # Web Mercator (EPSG:3857) is the standard projection used by most map tiles:
-                # - Projects spherical Earth onto a square grid
-                # - At each zoom level N: grid has 2^N × 2^N tiles
-                # - Each tile is 256×256 pixels
-                # - Tiles are square, so map is distorted (especially at poles)
-                #
-                # Challenge: Pixels represent different geographic distances at different latitudes
-                # - At equator: 1 pixel ≈ distance X
-                # - At 60°N: 1 pixel ≈ distance X/cos(60°) = distance 2X (longitude lines converge)
-                # - At poles: longitude becomes meaningless
-                # Solution: Adjust longitude delta by cos(current_latitude)
-                
                 import math
                 
-                # Web Mercator grid parameters (from OSM/Google Maps spec)
-                TILE_SIZE = 256  # pixels per tile
-                earth_circumference_m = 40075016.686  # meters at equator (WGS84 spheroid)
-                tiles_at_zoom = 2 ** self.zoom_level  # grid size: 2^zoom tiles across
+                # ===== WEB MERCATOR PANNING - CORRECTED FORMULA =====
+                # 
+                # The issue with the previous approach was using a linear meter-to-degree
+                # conversion for latitude, which doesn't work in Web Mercator.
+                #
+                # Correct approach: Use Web Mercator's tile coordinate system
+                # Screen pixels → Tile coords → Lat/Lon (proper inverse formula)
+                #
+                # Web Mercator properties:
+                # - At zoom level N: 2^N tiles horizontally and vertically
+                # - Each tile is 256x256 pixels
+                # - Tiles are addressed as (zoom, x, y) where:
+                #   * x: 0 to 2^N-1 (increases left to right)
+                #   * y: 0 to 2^N-1 (increases top to bottom in tile coords)
                 
-                # Calculate meters per pixel at current zoom level
-                # Formula: earth_circumference / (tile_size * tiles_at_zoom) = m/pixel
-                cos_lat = math.cos(math.radians(self.center_lat))  # Latitude adjustment factor
-                m_per_pixel_lon = (earth_circumference_m * cos_lat) / (TILE_SIZE * tiles_at_zoom)
-                m_per_pixel_lat = earth_circumference_m / (TILE_SIZE * tiles_at_zoom)
+                TILE_SIZE = 256
+                tiles_at_zoom = 2 ** self.zoom_level
+                earth_circumference_m = 40075016.686
                 
-                # Convert meters to geographic degrees
-                # Latitude: approximately constant, 1° ≈ 111,320 meters everywhere
-                # Longitude: varies by latitude (computed above using cos)
-                deg_per_m = 1.0 / 111320.0
+                # Convert current center lat/lon to tile coordinates
+                # This is the Web Mercator projection formula
+                def latlon_to_tile(lat, lon, zoom):
+                    """Convert lat/lon to tile coordinates (as floats, not integers)."""
+                    n = 2.0 ** zoom
+                    # Longitude to tile X
+                    tile_x = (lon + 180.0) / 360.0 * n
+                    # Latitude to tile Y (using Web Mercator formula)
+                    lat_rad = math.radians(lat)
+                    tile_y = (1.0 - math.log(math.tan(lat_rad) + 1.0 / math.cos(lat_rad)) / math.pi) / 2.0 * n
+                    return tile_x, tile_y
                 
-                # Calculate geographic deltas from screen deltas
-                # Negative sign on lat_delta: screen Y increases downward, geographic latitude increases upward
-                lon_delta = delta_x * m_per_pixel_lon * deg_per_m
-                lat_delta = -delta_y * m_per_pixel_lat * deg_per_m
+                def tile_to_latlon(tile_x, tile_y, zoom):
+                    """Convert tile coordinates back to lat/lon."""
+                    n = 2.0 ** zoom
+                    # Tile X to longitude
+                    lon = tile_x / n * 360.0 - 180.0
+                    # Tile Y to latitude (using Web Mercator inverse formula)
+                    lat_rad = math.atan(math.sinh(math.pi * (1.0 - 2.0 * tile_y / n)))
+                    lat = math.degrees(lat_rad)
+                    return lat, lon
                 
-                # Update center position with deltas
-                self.center_lon += lon_delta
-                self.center_lat += lat_delta
+                # Get current position in tile coordinates
+                tile_x, tile_y = latlon_to_tile(self.center_lat, self.center_lon, self.zoom_level)
+                
+                # Calculate tile delta from pixel delta
+                # (pixels_per_tile = TILE_SIZE, so tile_delta = pixel_delta / TILE_SIZE)
+                tile_delta_x = delta_x / TILE_SIZE
+                tile_delta_y = delta_y / TILE_SIZE
+                
+                # Update tile position
+                new_tile_x = tile_x + tile_delta_x
+                new_tile_y = tile_y + tile_delta_y
+                
+                # Convert back to lat/lon
+                self.center_lat, self.center_lon = tile_to_latlon(new_tile_x, new_tile_y, self.zoom_level)
                 
                 self.render_map()
             
@@ -863,9 +922,12 @@ class MapWidget(QWidget):
                 # NO render_map() here - the map already shows the point in correct position
                 # from the last mouseMoveEvent during dragging
             else:
-                # Normal pan end
+                # Normal pan end - save the new center position
                 self.pan_start_x = None
                 self.pan_start_y = None
+                
+                # Save center position to config after panning completes
+                self.save_center_position()
     
     def wheelEvent(self, event):
         """Handle mouse wheel for zooming centered on cursor position."""

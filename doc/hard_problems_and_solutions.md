@@ -861,3 +861,148 @@ In CourseStudio UI:
 
 ---
 
+## Problem 12: Map Panning Asymmetry - Horizontal Lag vs Vertical Lead
+
+### Problem Description
+
+When panning the map by dragging the mouse:
+- **Horizontal (left-right)**: Map moves LESS than cursor movement (lag)
+- **Vertical (up-down)**: Map moves MORE than cursor movement (lead)
+- **Result**: Asymmetric panning experience; cursor doesn't follow map smoothly
+
+The bug manifested at latitude 57°N (Sweden) where the Web Mercator distortion is significant. At lower latitudes, the effect was less noticeable.
+
+### What I Did Wrong (Failed Attempts)
+
+**Attempt 1**: Assumed it was a rendering issue
+```python
+# Added debug rendering, cleared caches
+self.render_map()  # More frequent renders
+```
+- **Result**: ❌ Failed - Problem persisted, just got worse performance
+- **Why**: Panning math was wrong, not the rendering
+
+**Attempt 2**: Tried to adjust cos_lat factor
+```python
+# Thought maybe cos_lat was being applied wrong
+cos_lat = math.cos(math.radians(self.center_lat))
+m_per_pixel_lon = (earth_circumference_m * cos_lat) / (TILE_SIZE * tiles_at_zoom)
+# Maybe increase/decrease factor?
+lon_delta = delta_x * m_per_pixel_lon * deg_per_m * (1.5)  # Arbitrary fudge factor
+```
+- **Result**: ❌ Failed - Made it worse at different latitudes
+- **Why**: Root cause was deeper; bandaid doesn't work
+
+**Attempt 3**: Tried separately handling latitude
+```python
+# Maybe latitude needs special treatment?
+lat_delta = -delta_y * m_per_pixel_lat * deg_per_m * cos_lat  # Add cos_lat here too
+```
+- **Result**: ❌ Failed - Still asymmetric, just different values
+- **Why**: Didn't understand Web Mercator's non-linear latitude
+
+### Root Cause
+
+The panning code used a FUNDAMENTALLY WRONG conversion formula for Web Mercator:
+
+```python
+# WRONG (old code):
+deg_per_m = 1.0 / 111320.0  # Linear conversion constant
+lon_delta = delta_x * m_per_pixel_lon * deg_per_m
+lat_delta = -delta_y * m_per_pixel_lat * deg_per_m  # Linear formula for latitude!
+```
+
+**Why this is wrong:**
+
+1. **Web Mercator uses non-linear latitude projection**
+   - Longitude is approximately linear (with cos_lat adjustment)
+   - Latitude uses Mercator projection formula: `y = ln(tan(π/4 + lat/2))`
+   - This formula is exponential, not linear!
+
+2. **Linear meter-to-degree conversion breaks the math**
+   - Works approximately at equator where 1° ≈ 111,320 meters
+   - Breaks at latitude 57°N where Web Mercator distorts coordinates heavily
+   - Latitude axis in tile space is non-linear, but code treated it as linear
+
+3. **Why the asymmetry happened:**
+   - Longitude: Had cos_lat applied, but still used wrong linear conversion → laggy
+   - Latitude: Had no latitude adjustment, used wrong linear conversion → leads
+   - The two errors didn't cancel; they compounded to create asymmetry
+
+4. **Key insight:** This is a **coordinate system transformation problem**, not a UI problem
+   - The error was in the math domain, not the rendering domain
+   - Classic case of mixing incompatible coordinate systems
+
+### Solution
+
+Use Web Mercator's NATIVE coordinate system: **tile coordinates**
+
+Tile coordinates are linear! Panning in tile space is simple vector addition.
+
+```python
+# CORRECT (new code):
+
+# Step 1: Convert lat/lon to tile coordinates (using Web Mercator formulas)
+def latlon_to_tile(lat, lon, zoom):
+    n = 2.0 ** zoom
+    tile_x = (lon + 180.0) / 360.0 * n
+    lat_rad = math.radians(lat)
+    tile_y = (1.0 - math.log(math.tan(lat_rad) + 1.0 / math.cos(lat_rad)) / math.pi) / 2.0 * n
+    return tile_x, tile_y
+
+# Step 2: Calculate tile delta from pixel delta (linear and symmetric!)
+tile_delta_x = delta_x / 256.0  # 256 pixels per tile
+tile_delta_y = delta_y / 256.0
+new_tile_x = tile_x + tile_delta_x
+new_tile_y = tile_y + tile_delta_y
+
+# Step 3: Convert back to lat/lon (using Web Mercator inverse formulas)
+def tile_to_latlon(tile_x, tile_y, zoom):
+    n = 2.0 ** zoom
+    lon = tile_x / n * 360.0 - 180.0
+    lat_rad = math.atan(math.sinh(math.pi * (1.0 - 2.0 * tile_y / n)))
+    lat = math.degrees(lat_rad)
+    return lat, lon
+
+self.center_lat, self.center_lon = tile_to_latlon(new_tile_x, new_tile_y, self.zoom_level)
+```
+
+**Why this works:**
+
+1. **Tile coordinates are linear** - panning is just vector addition
+2. **Same scale in both directions** - no asymmetry possible
+3. **Works at all latitudes** - including poles
+4. **Standard formulas** - used by Google Maps, OpenStreetMap, Leaflet.js, Mapbox
+5. **No fudge factors** - pure mathematics
+
+### Impact
+
+- **Before**: Panning was confusing, cursor didn't follow map smoothly
+- **After**: Panning is smooth, symmetric, and feels natural
+- **Code complexity**: Increased (added 2 helper functions), but correctness improved dramatically
+- **Performance**: No impact (same operations, just correct order)
+
+### Key Learning
+
+**When mixing coordinate systems (pixels → meters → degrees), ensure the transformation pipeline is mathematically sound:**
+
+1. **Identify what coordinate system each operation works in:**
+   - Pixels: screen coordinates (linear)
+   - Tiles: Web Mercator native (linear)
+   - Degrees: geographic (non-linear in Web Mercator)
+
+2. **Don't mix incompatible transforms:**
+   - ❌ Wrong: pixels → meters → linear degrees (mixes non-linear projection with linear math)
+   - ✅ Right: pixels → tiles → degrees (stays within Web Mercator until final step)
+
+3. **When in doubt, use the native coordinate system:**
+   - For Web Mercator: use tile coordinates, not lat/lon
+   - For other projections: identify the native space and work there
+
+4. **Asymmetry in vector operations signals coordinate system errors:**
+   - If X and Y behave differently, you're likely mixing coordinate systems
+   - Linear operations should be symmetric
+
+---
+
+

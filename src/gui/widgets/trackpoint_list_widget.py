@@ -315,6 +315,10 @@ class TrackpointListWidget(QWidget):
         
         button_layout.addStretch()
         
+        self.reset_center_button = QPushButton("Reset Center")
+        self.reset_center_button.setToolTip("Reset map to default center position")
+        button_layout.addWidget(self.reset_center_button)
+        
         main_layout.addLayout(button_layout)
     
     def _connect_signals(self):
@@ -336,6 +340,7 @@ class TrackpointListWidget(QWidget):
         
         # Button signals
         self.clear_button.clicked.connect(self.clear_selection)
+        self.reset_center_button.clicked.connect(self._on_reset_center_clicked)
     
     # ========================================================================
     # Track Management
@@ -622,6 +627,14 @@ class TrackpointListWidget(QWidget):
             main_window.map_widget.render_map()
         
         logger.debug("Point selection cleared")
+    
+    def _on_reset_center_clicked(self):
+        """Handle 'Reset Center' button click."""
+        from PyQt5.QtWidgets import QApplication
+        main_window = QApplication.instance().activeWindow()
+        if main_window and hasattr(main_window, 'map_widget'):
+            main_window.map_widget.recenter_on_default()
+            logger.info("Map center reset to default")
     
     # ========================================================================
     # Signal Handlers

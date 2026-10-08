@@ -172,8 +172,8 @@ class MBTilesProvider:
         """
         Load default mbtiles file from configuration.
         
-        Attempts to load the default file specified in config[Map].default_mbtiles.
-        If that fails, tries fallback files from config[Map].fallback_mbtiles.
+        Attempts to load the default file specified in config[Appearance.Tiles.default_mbtiles].
+        If that fails, tries fallback files from config[Appearance.Tiles.fallback_files].
         
         Returns:
             True if a file was successfully loaded, False if all attempts failed
@@ -181,8 +181,8 @@ class MBTilesProvider:
         Raises:
             sqlite3.Error: If database connection fails
         """
-        # Get default filename from config (new structure: Appearance.Tiles)
-        default_file = self.config.get_str("Appearance.Tiles.mbtiles_file", None)
+        # Get default filename from config
+        default_file = self.config.get_str("Appearance.Tiles.default_mbtiles", None)
         
         if not default_file:
             self.logger.error("No default_mbtiles configured in settings.yaml")
@@ -206,6 +206,27 @@ class MBTilesProvider:
         
         self.logger.error("Could not load any mbtiles files (default or fallback)")
         return False
+    
+    def load_recent_mbtiles(self) -> bool:
+        """
+        Load recent mbtiles file from configuration.
+        
+        Attempts to load the file specified in config[Appearance.Tiles.recent_mbtiles].
+        If that fails, falls back to loading the default file.
+        
+        Returns:
+            True if a file was successfully loaded, False otherwise
+        """
+        # Get recent filename from config
+        recent_file = self.config.get_str("Appearance.Tiles.recent_mbtiles", None)
+        
+        if recent_file and self._load_file(recent_file):
+            self.logger.info(f"Successfully loaded recent mbtiles: {recent_file}")
+            return True
+        
+        # Fall back to default if recent not available
+        self.logger.info("Recent mbtiles unavailable, loading default")
+        return self.load_default_mbtiles()
     
     def _load_file(self, filename: str) -> bool:
         """
@@ -656,6 +677,94 @@ class MBTilesProvider:
         
         return (int(x), int(y))
     
+    def load_mbtiles_from_path(self, file_path: str) -> bool:
+        """
+        Load mbtiles file from an absolute or relative file path.
+        
+        Args:
+            file_path: Full path to mbtiles file (e.g., "/home/user/maps/world.mbtiles")
+            
+        Returns:
+            True if file was loaded successfully, False otherwise
+            
+        Raises:
+            sqlite3.Error: If database connection fails
+        """
+        path = Path(file_path)
+        
+        if not path.exists() or not path.is_file():
+            self.logger.error(f"MBTiles file not found: {file_path}")
+            return False
+        
+        # Close existing connection if any
+        if self._db_connection:
+            self._db_connection.close()
+            self._db_connection = None
+        
+        try:
+            # Open SQLite connection to mbtiles file
+            self._db_connection = sqlite3.connect(str(path))
+            self._db_connection.row_factory = sqlite3.Row
+            
+            # Verify it's a valid mbtiles file (has required tables)
+            cursor = self._db_connection.cursor()
+            cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
+            tables = {row[0] for row in cursor.fetchall()}
+            
+            if "metadata" not in tables or "tiles" not in tables:
+                self.logger.warning(f"Invalid mbtiles file (missing tables): {path}")
+                self._db_connection.close()
+                self._db_connection = None
+                return False
+            
+            # Load metadata
+            self._metadata = self._load_metadata()
+            self._loaded_path = path
+            
+            self.logger.info(f"Loaded mbtiles file from path: {path}")
+            self.logger.debug(f"Metadata: name={self._metadata.name}, "
+                            f"zoom={self._metadata.min_zoom}-{self._metadata.max_zoom}")
+            
+            return True
+        
+        except sqlite3.Error as e:
+            self.logger.error(f"Database error loading mbtiles file {path}: {e}")
+            if self._db_connection:
+                self._db_connection.close()
+                self._db_connection = None
+            return False
+    
+    def get_loaded_filename(self) -> Optional[str]:
+        """
+        Get the filename of the currently loaded mbtiles file.
+        
+        Returns:
+            Just the filename (e.g., "Sweden-Raster.mbtiles"), or None if no file loaded
+        """
+        if self._loaded_path:
+            return self._loaded_path.name
+        return None
+    
+    def get_loaded_filepath(self) -> Optional[str]:
+        """
+        Get the full path of the currently loaded mbtiles file.
+        
+        Returns:
+            Full path as string, or None if no file loaded
+        """
+        if self._loaded_path:
+            return str(self._loaded_path)
+        return None
+    
+    def is_loaded(self) -> bool:
+        """
+        Check if an mbtiles file is currently loaded.
+        
+        Returns:
+            True if a file is loaded, False otherwise
+        """
+        return self._db_connection is not None and self._loaded_path is not None
+
     def close(self) -> None:
         """
         Close the database connection and clean up resources.

@@ -76,14 +76,17 @@ Appearance:
     TurningPoints:
       show: false
   Tiles:
-    mbtiles_file: Sweden-Raster-Z10-Z16.mbtiles
+    default_mbtiles: Sweden-Raster-Z10-Z16.mbtiles
+    recent_mbtiles: Sweden-Raster-Z10-Z16.mbtiles
     fallback_files:
-    - OSM-OpenCPN2-Baltic.mbtiles
-    - OSM-OpenCPN-Baltic.mbtiles
+    - Sweden-Raster-Z10-Z16.mbtiles
     initial_zoom: 13
     default_center:
-      lat: 57.5
-      lon: 12.0
+      lat: 56.16735279922952
+      lon: 15.591300721620287
+    recent_center:
+      lat: 56.168099833150684
+      lon: 15.591254394764633
 CoordinatesDisplay:
   Format:
     coordinate_format: dms
