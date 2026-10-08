@@ -80,13 +80,14 @@ Appearance:
     recent_mbtiles: Sweden-Raster-Z10-Z16.mbtiles
     fallback_files:
     - Sweden-Raster-Z10-Z16.mbtiles
-    initial_zoom: 13
+    default_zoom: 9
+    recent_zoom: 15
     default_center:
       lat: 56.16735279922952
       lon: 15.591300721620287
     recent_center:
-      lat: 56.168099833150684
-      lon: 15.591254394764633
+      lat: 56.15953750343409
+      lon: 15.597455662007064
 CoordinatesDisplay:
   Format:
     coordinate_format: dms

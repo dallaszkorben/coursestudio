@@ -997,6 +997,11 @@ class MainWindow(QMainWindow):
                     self.config.set('Appearance.Tiles.recent_mbtiles', filename)
                     self.config.save_to_file()
                     
+                    # Check if recent zoom is available in new mbtiles, adjust if needed
+                    recent_zoom = self.config.get_int('Appearance.Tiles.recent_zoom', None)
+                    if recent_zoom:
+                        self.map_widget.set_zoom_with_compatibility(recent_zoom)
+                    
                     # Re-render map with new tiles
                     self.map_widget.render_map()
                     
@@ -1015,6 +1020,11 @@ class MainWindow(QMainWindow):
             filename = self.mbtiles_provider.get_loaded_filename()
             self.config.set('Appearance.Tiles.recent_mbtiles', filename)
             self.config.save_to_file()
+            
+            # Check if recent zoom is available in new mbtiles, adjust if needed
+            recent_zoom = self.config.get_int('Appearance.Tiles.recent_zoom', None)
+            if recent_zoom:
+                self.map_widget.set_zoom_with_compatibility(recent_zoom)
             
             # Re-render map with new tiles
             self.map_widget.render_map()

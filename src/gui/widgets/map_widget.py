@@ -102,8 +102,18 @@ class MapWidget(QWidget):
             self.center_lat = config.get_float('Appearance.Tiles.default_center.lat', 56.168)
             self.center_lon = config.get_float('Appearance.Tiles.default_center.lon', 15.586)
         
-        self.zoom_level = self.ZOOM_LEVEL_DEFAULT
-        self.config = config  # Store config for later use (e.g., saving center position)
+        # Map zoom - load from recent_zoom, fall back to default_zoom, then ZOOM_LEVEL_DEFAULT
+        recent_zoom = config.get_int('Appearance.Tiles.recent_zoom', None)
+        if recent_zoom is not None:
+            self.zoom_level = recent_zoom
+        else:
+            default_zoom = config.get_int('Appearance.Tiles.default_zoom', None)
+            if default_zoom is not None:
+                self.zoom_level = default_zoom
+            else:
+                self.zoom_level = self.ZOOM_LEVEL_DEFAULT
+        
+        self.config = config  # Store config for later use (e.g., saving center position and zoom)
         
         # Drag state for moving trackpoints
         self.dragging_trackpoint = False
@@ -448,6 +458,7 @@ class MapWidget(QWidget):
                 new_zoom = min(self.zoom_level + 1, max_zoom)
                 self.zoom_level = new_zoom
                 self.zoom_level_label.setText(f"Z:{new_zoom}")
+                self.save_zoom_level()
                 self.render_map()
     
     def zoom_out(self):
@@ -459,6 +470,7 @@ class MapWidget(QWidget):
                 new_zoom = max(self.zoom_level - 1, min_zoom)
                 self.zoom_level = new_zoom
                 self.zoom_level_label.setText(f"Z:{new_zoom}")
+                self.save_zoom_level()
                 self.render_map()
     
     def recenter_on_default(self):
@@ -496,6 +508,40 @@ class MapWidget(QWidget):
         self.config.set('Appearance.Tiles.recent_center.lat', self.center_lat)
         self.config.set('Appearance.Tiles.recent_center.lon', self.center_lon)
         self.config.save_to_file()
+    
+    def save_zoom_level(self):
+        """Save current zoom level to recent_zoom in config."""
+        self.config.set('Appearance.Tiles.recent_zoom', self.zoom_level)
+        self.config.save_to_file()
+    
+    def set_zoom_with_compatibility(self, new_zoom):
+        """
+        Set zoom level, checking if it's available in current mbtiles.
+        If not available, use the closest available zoom level.
+        
+        Args:
+            new_zoom: Desired zoom level
+        """
+        if self.mbtiles_provider:
+            available_zooms = self.mbtiles_provider.get_available_zooms()
+            if available_zooms:
+                # Check if requested zoom is available
+                if new_zoom in available_zooms:
+                    self.zoom_level = new_zoom
+                else:
+                    # Find closest available zoom
+                    closest_zoom = min(available_zooms, key=lambda z: abs(z - new_zoom))
+                    logger.info(f"Requested zoom {new_zoom} not available in mbtiles. "
+                               f"Using closest available: {closest_zoom}")
+                    self.zoom_level = closest_zoom
+            else:
+                # No zoom info available, just use requested
+                self.zoom_level = new_zoom
+        else:
+            self.zoom_level = new_zoom
+        
+        # Save the zoom level we actually set
+        self.save_zoom_level()
     
     def reload_settings(self):
         """Reload turning points settings from config and re-render map."""
@@ -969,6 +1015,7 @@ class MapWidget(QWidget):
             if new_zoom != self.zoom_level:
                 self.zoom_level = new_zoom
                 self.zoom_level_label.setText(f"Z:{new_zoom}")
+                self.save_zoom_level()  # Save zoom after mouse wheel
                 
                 # Create new renderer with NEW zoom level, but centered on the cursor's GPS location
                 # This way, the GPS point that was under the cursor will stay under the cursor
