@@ -200,6 +200,43 @@ FILE: osm-2020-02-10-v3.11_europe.mbtiles
 
 ---
 
+## MBTiles Sources
+
+### Available Download Locations
+
+MBTiles files for marine navigation and general mapping can be sourced from:
+
+1. **OpenSeaMap Community Charts (Primary)**
+   - **URL:** https://ftp.gwdg.de/pub/misc/openstreetmap/openseamap/charts/mbtiles/
+   - **Description:** Community-maintained marine navigation charts
+   - **Format:** Typically raster PNG tiles in MBTiles format
+   - **Coverage:** Global coverage with focus on coastal/marine areas
+   - **Updates:** Regularly updated from OSM data
+
+2. **Sailing Amazing Grace Community Charts (Alternative)**
+   - **URL:** https://sailingamazinggrace.com/charts/community
+   - **Description:** Alternative source for community charts
+   - **Format:** May vary depending on specific chart available
+   - **Coverage:** Sailing-focused chart collections
+   - **Availability:** Check "more" section for current offerings
+
+### Obtaining New MBTiles Files
+
+When looking for new MBTiles files:
+- Prefer **raster format (PNG tiles)** for direct compatibility with CourseStudio's current rendering engine
+- Vector PBF format requires conversion or app modifications (see "How to Use This File" section above)
+- Always verify zoom level coverage matches your use case
+- Check file size and coverage area before downloading
+
+### File Organization
+
+Once downloaded, new MBTiles files should be:
+1. Placed in `mbtiles/` directory
+2. Updated in `config/settings.yaml` (change `default_mbtiles` value)
+3. Application restarted to load the new tileset
+
+---
+
 ## Next Steps
 
 ### To Use This File:

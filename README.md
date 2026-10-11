@@ -283,6 +283,10 @@ To use different map data:
 | Projection | Web Mercator (EPSG:3857) |
 | Zoom Levels | Varies by tileset |
 
+### Finding New MBTiles Files
+
+For sources and detailed information about obtaining new MBTiles files, including available download locations and format recommendations, see **[doc/mbtiles_analysis.md](doc/mbtiles_analysis.md#mbtiles-sources)** → "MBTiles Sources" section.
+
 ## Configuration
 
 ### Configuration File (settings.yaml)
