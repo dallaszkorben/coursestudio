@@ -1005,4 +1005,269 @@ self.center_lat, self.center_lon = tile_to_latlon(new_tile_x, new_tile_y, self.z
 
 ---
 
+## Problem 13: Tile Server Design - Why a Naive Implementation Breaks the System
+
+### Problem Description
+
+Building a tile server component requires careful architectural choices:
+- **What goes wrong**: Simple, direct SQLite queries from UI layer
+- **Symptom 1**: No image format conversion - caller must handle PNG/JPEG/WebP
+- **Symptom 2**: No caching - performance degrades rapidly with pan/zoom
+- **Symptom 3**: No metadata handling - tile boundaries and availability unknown
+- **Symptom 4**: Tight coupling - renderer and UI layer both depend on database queries
+- **Result**: System becomes brittle, slow, and hard to modify
+
+### What a Naive Tile Server Looks Like (WRONG)
+
+```python
+class NaiveTileServer:
+    def get_tile(self, zoom, x, y) -> Optional[bytes]:
+        """Direct SQLite query, returns raw bytes"""
+        conn = sqlite3.connect(self.mbtiles_path)
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT tile_data FROM tiles WHERE zoom_level=? AND tile_column=? AND tile_row=?",
+            (zoom, x, y)
+        )
+        result = cursor.fetchone()
+        conn.close()
+        return result[0] if result else None
+
+# Problems with this approach:
+# 1. No image conversion - caller gets raw bytes
+# 2. No caching - new database connection for each tile
+# 3. Database connection opened/closed repeatedly
+# 4. No metadata - can't check if tile exists without querying
+# 5. No error handling - caller must handle all exceptions
+# 6. No format detection - caller must know if it's PNG or JPEG
+```
+
+### Problems This Causes in the UI Layer
+
+When MapRenderer receives raw bytes from naive tile server:
+
+```python
+# In render_map():
+tile_data = tile_server.get_tile(zoom, x, y)
+if tile_data:
+    try:
+        # Caller must do all this work:
+        tile_image = Image.open(io.BytesIO(tile_data))
+        
+        # Check and convert format
+        if tile_image.mode != 'RGBA':
+            tile_image = tile_image.convert('RGBA')
+        
+        # Handle exceptions
+        render_image.paste(tile_image, (screen_x, screen_y))
+    except Exception as e:
+        logger.debug(f"Error rendering tile: {e}")
+
+# Problems:
+# - Rendering logic mixed with data access logic
+# - Format conversion happens in renderer (wrong layer)
+# - No way to cache tiles efficiently
+# - Each tile fetch is slow (new database connection)
+```
+
+### The Right Way: MBTilesProvider Design
+
+```python
+class MBTilesProvider:
+    """Proper tile provider with all responsibilities encapsulated"""
+    
+    def __init__(self, config, logger):
+        self.config = config
+        self.logger = logger
+        self._db_connection = None  # One connection, kept open
+        self._cache = {}  # Tile cache for performance
+        self._metadata = None  # Metadata cache
+    
+    def get_tile_image(self, zoom, x, y) -> Optional[Image.Image]:
+        """Returns ready-to-use PIL Image (fully processed)"""
+        
+        # 1. Check cache first (fast)
+        key = (zoom, x, y)
+        if key in self._cache:
+            return self._cache[key]
+        
+        # 2. Query database (with persistent connection)
+        tile_data = self._query_tile(zoom, x, y)
+        if not tile_data:
+            return None
+        
+        # 3. Convert to Image (provider's responsibility)
+        try:
+            tile_image = Image.open(io.BytesIO(tile_data))
+        except Exception as e:
+            self.logger.error(f"Cannot open tile image: {e}")
+            return None
+        
+        # 4. Convert format (provider's responsibility)
+        if tile_image.mode != 'RGBA':
+            tile_image = tile_image.convert('RGBA')
+        
+        # 5. Cache for next time (performance)
+        self._cache[key] = tile_image
+        
+        # 6. Return ready-to-use image
+        return tile_image
+    
+    def get_metadata(self) -> Optional[TileMetadata]:
+        """Metadata is cached and available"""
+        if self._metadata is None:
+            self._metadata = self._load_metadata()
+        return self._metadata
+    
+    def _query_tile(self, zoom, x, y) -> Optional[bytes]:
+        """Internal - handles persistent connection"""
+        if not self._db_connection:
+            self._db_connection = sqlite3.connect(self.mbtiles_path)
+        
+        cursor = self._db_connection.cursor()
+        cursor.execute(
+            "SELECT tile_data FROM tiles WHERE zoom_level=? AND tile_column=? AND tile_row=?",
+            (zoom, x, y)
+        )
+        result = cursor.fetchone()
+        return result[0] if result else None
+
+# Now MapRenderer can be clean:
+tile_image = self.mbtiles_provider.get_tile_image(zoom, x, y)
+if tile_image:
+    render_image.paste(tile_image, (screen_x, screen_y))
+# That's it! No format conversion, no error handling, no caching logic
+```
+
+### Why This Matters
+
+**Performance Impact:**
+
+```
+Naive Tile Server (per 20 visible tiles during pan):
+- 20 new database connections (open/close)
+- 20 image format conversions in renderer
+- 20 full image object allocations
+- Next pan: repeat all 20 operations (no cache)
+- Result: Lag visible during fast panning
+
+Proper MBTilesProvider:
+- 1 persistent connection (reused)
+- Tiles cached in memory
+- Format conversion done once, cached
+- Next pan: uses cached images from previous view
+- Result: Smooth, responsive interaction
+```
+
+**Architecture Impact:**
+
+| Aspect | Naive | Proper |
+|--------|-------|--------|
+| **Database connection** | Open/close per tile | One persistent connection |
+| **Image conversion** | In renderer layer | In provider layer |
+| **Caching** | No caching | Built-in LRU cache |
+| **Metadata access** | Mixed with tile queries | Separate, cached |
+| **Error handling** | UI layer handles all | Provider handles errors |
+| **Format detection** | Caller's problem | Provider's responsibility |
+| **Testability** | Hard to mock | Easy to test independently |
+
+**Coupling Impact:**
+
+```
+Naive design:
+    Renderer → depends on tile format
+    Renderer → depends on database connection management
+    Renderer → depends on exception handling
+    Renderer → depends on caching strategy
+    Result: Renderer is overloaded with responsibilities
+
+Proper design:
+    Renderer → depends only on "get_tile_image()"
+    Provider → handles everything else
+    Result: Separation of concerns, easy to change
+```
+
+### What Goes Wrong Without Proper Tile Server
+
+1. **Performance Degrades During Use**
+   - Users pan map → feels laggy
+   - Zoom in → tiles appear slowly
+   - Scroll fast → tiles disappear/reappear
+
+2. **Pan/Zoom Asymmetry**
+   - Panning fast: some tiles not fetched (dropped connections)
+   - Zooming: tiles from wrong level appear (format errors)
+   - Back/forth: same tiles fetched twice (no cache)
+
+3. **Memory Leaks**
+   - Database connections not properly closed
+   - Tile images not garbage collected
+   - Image objects accumulate in memory
+
+4. **Hard to Debug**
+   - Image format issues appear in renderer (wrong place to fix)
+   - Performance problems blamed on coordinate math (wrong root cause)
+   - Caching issues cause intermittent bugs
+
+5. **Impossible to Scale**
+   - Adding features (tiles from multiple sources) requires rewriting
+   - Adding preprocessing (tiles at different resolutions) forces renderer changes
+   - Adding metadata becomes complicated (mixed with tile queries)
+
+### Solution Principles
+
+A proper tile server must:
+
+1. **Encapsulate all tile access logic**
+   - Database connection management
+   - Format detection and conversion
+   - Metadata extraction
+   - Error handling
+
+2. **Provide simple interface to callers**
+   ```python
+   # Caller should just do this:
+   image = provider.get_tile_image(zoom, x, y)
+   if image:
+       render_image.paste(image, (screen_x, screen_y))
+   ```
+
+3. **Handle performance internally**
+   - Connection pooling
+   - Tile caching (with eviction policy)
+   - Metadata caching
+   - Prefetching (if needed)
+
+4. **Handle metadata separately**
+   - Tile bounds, zoom range, center
+   - Format, attribution, description
+   - Not mixed with individual tile queries
+
+5. **Maintain persistent resources**
+   - One database connection (not per-tile)
+   - Cache lifecycle management
+   - Resource cleanup on close()
+
+### Key Learning
+
+**Tile server is not just a database accessor - it's the foundation of the map system.**
+
+A naive implementation that "just fetches bytes" causes:
+- ❌ Performance issues (slow panning/zooming)
+- ❌ Complexity in renderer (format conversion, error handling)
+- ❌ Tight coupling (renderer depends on database details)
+- ❌ Impossible to optimize (caching, prefetching, pooling)
+- ❌ Hard to test (database queries in rendering code)
+
+A proper implementation that provides "ready-to-use images" enables:
+- ✅ Smooth performance (caching, pooling, conversion happens once)
+- ✅ Clean renderer code (just paste images, no format logic)
+- ✅ Loose coupling (renderer only knows about images, not database)
+- ✅ Easy to optimize (caching, prefetching all in one place)
+- ✅ Easy to test (mock provider returns images, no database needed)
+
+**When building any tile system, invest in the tile server first.** Everything else depends on it working well.
+
+---
+
 
