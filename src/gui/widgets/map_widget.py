@@ -90,6 +90,13 @@ class MapWidget(QWidget):
         self.double_selected_turning_point_outline_color = self._hex_to_rgb(config.get_str('Appearance.MapDisplay.Trackpoints.DoubleSelectedPoints.outline.color', 'FFFFFF'))
         self.double_selected_turning_point_outline_width = config.get_int('Appearance.MapDisplay.Trackpoints.DoubleSelectedPoints.outline.size', 2)
         
+        # Crosshair settings
+        self.show_crosshair = config.get_bool('Appearance.MapDisplay.Crosshair.show', True)
+        self.crosshair_color = self._hex_to_rgb(config.get_str('Appearance.MapDisplay.Crosshair.body.color', 'FF0000'))
+        self.crosshair_outline_color = self._hex_to_rgb(config.get_str('Appearance.MapDisplay.Crosshair.outline.color', 'FFFFFF'))
+        self.crosshair_outline_width = config.get_int('Appearance.MapDisplay.Crosshair.outline.width', 1)
+        self.crosshair_size = config.get_int('Appearance.MapDisplay.Crosshair.size', 20)
+        
         # Map state - load from recent_center, fall back to default_center
         recent_center_lat = config.get_float('Appearance.Tiles.recent_center.lat', None)
         recent_center_lon = config.get_float('Appearance.Tiles.recent_center.lon', None)
@@ -136,33 +143,22 @@ class MapWidget(QWidget):
         # Override minimum size to allow actual shrinking
         self.map_label.setMinimumSize(1, 1)  # Allow to shrink to 1x1 pixel if needed
         
-        # Zoom controls (invisible clickable overlays - visuals drawn on map)
-        self.zoom_in_button = QPushButton("+", self)
-        self.zoom_in_button.setFixedSize(self.ZOOM_BUTTON_SIZE, self.ZOOM_BUTTON_SIZE)
-        self.zoom_in_button.clicked.connect(self.zoom_in)
-        self.zoom_in_button.setStyleSheet("background-color: transparent; border: none; color: transparent;")
-        self.zoom_in_button.setFocusPolicy(Qt.NoFocus)
-        
-        self.zoom_out_button = QPushButton("-", self)
-        self.zoom_out_button.setFixedSize(self.ZOOM_BUTTON_SIZE, self.ZOOM_BUTTON_SIZE)
-        self.zoom_out_button.clicked.connect(self.zoom_out)
-        self.zoom_out_button.setStyleSheet("background-color: transparent; border: none; color: transparent;")
-        self.zoom_out_button.setFocusPolicy(Qt.NoFocus)
-        
-        # Zoom level display
+        # Zoom level display (not a button, just a label)
         self.zoom_level_label = QLabel(f"Z:{self.ZOOM_LEVEL_DEFAULT}", self)
         font = QFont()
         font.setPointSize(self.ZOOM_BUTTON_SIZE // 2)
         self.zoom_level_label.setFont(font)
         self.zoom_level_label.setStyleSheet("background-color: transparent; border: none; color: transparent;")
         
-        # Recenter button
-        self.recenter_button = QPushButton("⊙", self)
-        self.recenter_button.setFixedSize(self.ZOOM_BUTTON_SIZE, self.ZOOM_BUTTON_SIZE)
-        self.recenter_button.setToolTip("Recenter on default position")
-        self.recenter_button.clicked.connect(self.recenter_on_default)
-        self.recenter_button.setStyleSheet("background-color: transparent; border: none; color: transparent;")
-        self.recenter_button.setFocusPolicy(Qt.NoFocus)
+        # Button hit areas (for click detection)
+        # We'll handle clicks in mousePressEvent and check which button was clicked
+        self.button_rects = {
+            'zoom_in': None,
+            'zoom_out': None,
+            'zoom_level': None,
+            'mark_center': None,
+            'recenter': None
+        }
         
         # Main layout
         main_layout = QVBoxLayout()
@@ -185,7 +181,6 @@ class MapWidget(QWidget):
         
         # Initial render
         self.render_map()
-        self._reposition_controls()
         self.map_ready.emit()
     
     @staticmethod
@@ -316,8 +311,9 @@ class MapWidget(QWidget):
             # Draw tracks
             pil_image = self._draw_tracks_on_image(pil_image, map_renderer)
             
-            # Draw UI controls
-            pil_image = self.draw_ui_controls(pil_image)
+            # Draw UI controls and calculate button hit areas
+            pil_image, button_rects = self.draw_ui_controls(pil_image)
+            self.button_rects = button_rects
             
             # Convert PIL to QPixmap
             with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tmp:
@@ -327,7 +323,6 @@ class MapWidget(QWidget):
                 pil_image.save(tmp_path, 'PNG')
                 pixmap = QPixmap(tmp_path)
                 self.map_label.setPixmap(pixmap)
-                self._reposition_controls()
             finally:
                 if os.path.exists(tmp_path):
                     os.remove(tmp_path)
@@ -458,7 +453,7 @@ class MapWidget(QWidget):
                 new_zoom = min(self.zoom_level + 1, max_zoom)
                 self.zoom_level = new_zoom
                 self.zoom_level_label.setText(f"Z:{new_zoom}")
-                self.save_zoom_level()
+                self.update_recent_state()  # Save zoom + center
                 self.render_map()
     
     def zoom_out(self):
@@ -470,23 +465,70 @@ class MapWidget(QWidget):
                 new_zoom = max(self.zoom_level - 1, min_zoom)
                 self.zoom_level = new_zoom
                 self.zoom_level_label.setText(f"Z:{new_zoom}")
-                self.save_zoom_level()
+                self.update_recent_state()  # Save zoom + center
                 self.render_map()
     
     def recenter_on_default(self):
-        """Recenter on default position and update recent center."""
-        default_center_lat = self.config.get_float('Appearance.Tiles.default_center.lat', 56.168)
-        default_center_lon = self.config.get_float('Appearance.Tiles.default_center.lon', 15.586)
+        """
+        Recenter on marked default position and zoom.
         
+        If default_center and default_zoom are set (user marked them), navigate to that location.
+        If not set, do nothing (user hasn't marked a default yet).
+        """
+        default_zoom = self.config.get_int('Appearance.Tiles.default_zoom', None)
+        default_center_lat = self.config.get_float('Appearance.Tiles.default_center.lat', None)
+        default_center_lon = self.config.get_float('Appearance.Tiles.default_center.lon', None)
+        
+        # Only recenter if default has been explicitly set (not None)
+        if default_zoom is None or default_center_lat is None or default_center_lon is None:
+            logger.info("Default center/zoom not yet marked - nothing to recenter to")
+            return
+        
+        self.zoom_level = default_zoom
         self.center_lat = default_center_lat
         self.center_lon = default_center_lon
         
-        # Update recent center in config
+        # Also update recent center/zoom since we're navigating
+        self.update_recent_state()
+        
+        self.render_map()
+        logger.info(f"Recentered to marked default: Z{self.zoom_level}, ({self.center_lat}, {self.center_lon})")
+    
+    def on_mark_center_clicked(self):
+        """
+        Mark current map center and zoom as the default.
+        
+        Called when user clicks the "Mark Center" button.
+        Saves current center_lat, center_lon, and zoom_level to config as defaults.
+        """
+        self.mark_center()
+    
+    def mark_center(self):
+        """
+        Save current center position and zoom level as the default.
+        
+        This allows the user to have a "home" position they can jump back to
+        with the Recenter button.
+        """
+        # Save current center and zoom as default
+        self.config.set('Appearance.Tiles.default_zoom', self.zoom_level)
+        self.config.set('Appearance.Tiles.default_center.lat', self.center_lat)
+        self.config.set('Appearance.Tiles.default_center.lon', self.center_lon)
+        self.config.save_to_file()
+        
+        logger.info(f"Marked center: Z{self.zoom_level}, ({self.center_lat:.4f}, {self.center_lon:.4f})")
+    
+    def update_recent_state(self):
+        """
+        Update recent center and zoom in config file.
+        
+        Called automatically after navigation to persist map state.
+        This ensures that if the app closes, the user returns to their last viewed location.
+        """
+        self.config.set('Appearance.Tiles.recent_zoom', self.zoom_level)
         self.config.set('Appearance.Tiles.recent_center.lat', self.center_lat)
         self.config.set('Appearance.Tiles.recent_center.lon', self.center_lon)
         self.config.save_to_file()
-        
-        self.render_map()
     
     def reset_to_recent_center(self):
         """Reset map to the recent center position (same as startup)."""
@@ -504,15 +546,22 @@ class MapWidget(QWidget):
         self.render_map()
     
     def save_center_position(self):
-        """Save current map center to recent_center in config."""
-        self.config.set('Appearance.Tiles.recent_center.lat', self.center_lat)
-        self.config.set('Appearance.Tiles.recent_center.lon', self.center_lon)
-        self.config.save_to_file()
+        """
+        Save current map center to recent_center in config.
+        
+        DEPRECATED: Use update_recent_state() instead, which saves both center and zoom.
+        Kept for backwards compatibility.
+        """
+        self.update_recent_state()
     
     def save_zoom_level(self):
-        """Save current zoom level to recent_zoom in config."""
-        self.config.set('Appearance.Tiles.recent_zoom', self.zoom_level)
-        self.config.save_to_file()
+        """
+        Save current zoom level to recent_zoom in config.
+        
+        DEPRECATED: Use update_recent_state() instead, which saves both center and zoom.
+        Kept for backwards compatibility.
+        """
+        self.update_recent_state()
     
     def set_zoom_with_compatibility(self, new_zoom):
         """
@@ -564,6 +613,27 @@ class MapWidget(QWidget):
         logger.debug("Map settings reloaded from config")
     
     def mousePressEvent(self, event):
+        """Handle mouse clicks on buttons."""
+        x = event.x()
+        y = event.y()
+        
+        # Check which button was clicked
+        if self.button_rects.get('zoom_in') and self._point_in_rect(x, y, self.button_rects['zoom_in']):
+            self.zoom_in()
+        elif self.button_rects.get('zoom_out') and self._point_in_rect(x, y, self.button_rects['zoom_out']):
+            self.zoom_out()
+        elif self.button_rects.get('mark_center') and self._point_in_rect(x, y, self.button_rects['mark_center']):
+            self.on_mark_center_clicked()
+        elif self.button_rects.get('recenter') and self._point_in_rect(x, y, self.button_rects['recenter']):
+            self.recenter_on_default()
+        else:
+            # Not a button click, handle as map pan
+            self.pan_start_x = x
+            self.pan_start_y = y
+    
+    def _point_in_rect(self, x, y, rect):
+        """Check if point (x, y) is inside rectangle (x1, y1, x2, y2)."""
+        return rect[0] <= x <= rect[2] and rect[1] <= y <= rect[3]
         """
         Handle mouse button press - implements trackpoint dragging and map panning.
         
@@ -1065,33 +1135,16 @@ class MapWidget(QWidget):
         """Handle window resize."""
         super().resizeEvent(event)
         self.render_map()
-        self._reposition_controls()
     
-    def _reposition_controls(self):
-        """Reposition invisible button hitboxes."""
-        x_pos = self.CONTROLS_PADDING_LEFT
-        y_pos = self.CONTROLS_PADDING_TOP
-        
-        self.zoom_in_button.move(x_pos, y_pos)
-        
-        y_pos += self.ZOOM_BUTTON_SIZE + self.ZOOM_BUTTON_SPACING
-        self.zoom_out_button.move(x_pos, y_pos)
-        
-        y_pos += self.ZOOM_BUTTON_SIZE + self.ZOOM_BUTTON_SPACING
-        self.zoom_level_label.move(x_pos, y_pos)
-        
-        y_pos += self.zoom_level_label.height() + self.ZOOM_BUTTON_SPACING
-        self.recenter_button.move(x_pos, y_pos)
     
     def draw_ui_controls(self, pil_image):
-        """Draw UI control buttons on PIL image with transparency."""
+        """Draw UI control buttons on PIL image with transparency. Returns button hit areas."""
         # Create a transparent overlay for buttons
         overlay = Image.new('RGBA', pil_image.size, (0, 0, 0, 0))
         overlay_draw = ImageDraw.Draw(overlay)
         
         # Button colors with alpha channel (transparency)
-        # RGBA: (R, G, B, Alpha) where 255 is opaque, 0 is fully transparent
-        button_bg = (52, 144, 220, 200)  # Blue with 200/255 opacity (~78% opaque)
+        button_bg = (52, 144, 220, 200)  # Blue with 200/255 opacity
         button_text = (255, 255, 255, 255)  # White, fully opaque
         
         x_pos = self.CONTROLS_PADDING_LEFT
@@ -1099,43 +1152,105 @@ class MapWidget(QWidget):
         button_size = self.ZOOM_BUTTON_SIZE
         corner_radius = 8
         
-        # Draw zoom in button - simple rounded rectangle
+        button_rects = {}
+        
+        # Draw zoom in button
         bbox = [x_pos, y_pos, x_pos + button_size, y_pos + button_size]
+        button_rects['zoom_in'] = (x_pos, y_pos, x_pos + button_size, y_pos + button_size)
         overlay_draw.rounded_rectangle(bbox, radius=corner_radius, fill=button_bg)
         center = button_size // 2
-        # Draw + icon
         overlay_draw.line([(x_pos + center - 6, y_pos + center), (x_pos + center + 6, y_pos + center)], fill=button_text, width=2)
         overlay_draw.line([(x_pos + center, y_pos + center - 6), (x_pos + center, y_pos + center + 6)], fill=button_text, width=2)
         
         # Draw zoom out button
         y_pos += button_size + self.ZOOM_BUTTON_SPACING
         bbox = [x_pos, y_pos, x_pos + button_size, y_pos + button_size]
+        button_rects['zoom_out'] = (x_pos, y_pos, x_pos + button_size, y_pos + button_size)
         overlay_draw.rounded_rectangle(bbox, radius=corner_radius, fill=button_bg)
         center = button_size // 2
-        # Draw - icon
         overlay_draw.line([(x_pos + center - 6, y_pos + center), (x_pos + center + 6, y_pos + center)], fill=button_text, width=2)
         
         # Draw zoom level label
         y_pos += button_size + self.ZOOM_BUTTON_SPACING
         zoom_text = f"Z:{self.zoom_level}"
         bbox = [x_pos, y_pos, x_pos + button_size, y_pos + button_size]
+        button_rects['zoom_level'] = (x_pos, y_pos, x_pos + button_size, y_pos + button_size)
         overlay_draw.rounded_rectangle(bbox, radius=corner_radius, fill=button_bg)
         overlay_draw.text((x_pos + 8, y_pos + 12), zoom_text, fill=button_text)
         
-        # Draw recenter button
+        # Draw mark center button (4th button)
         y_pos += button_size + self.ZOOM_BUTTON_SPACING
         bbox = [x_pos, y_pos, x_pos + button_size, y_pos + button_size]
+        button_rects['mark_center'] = (x_pos, y_pos, x_pos + button_size, y_pos + button_size)
         overlay_draw.rounded_rectangle(bbox, radius=corner_radius, fill=button_bg)
         center_x = x_pos + button_size // 2
         center_y = y_pos + button_size // 2
-        # Draw circle target icon
+        overlay_draw.line([(center_x - 10, center_y), (center_x + 10, center_y)], fill=button_text, width=2)
+        overlay_draw.line([(center_x, center_y - 10), (center_x, center_y + 10)], fill=button_text, width=2)
+        overlay_draw.ellipse((center_x - 4, center_y - 4, center_x + 4, center_y + 4), outline=button_text, width=1)
+        
+        # Draw recenter button (5th button)
+        y_pos += button_size + self.ZOOM_BUTTON_SPACING
+        bbox = [x_pos, y_pos, x_pos + button_size, y_pos + button_size]
+        button_rects['recenter'] = (x_pos, y_pos, x_pos + button_size, y_pos + button_size)
+        overlay_draw.rounded_rectangle(bbox, radius=corner_radius, fill=button_bg)
+        center_x = x_pos + button_size // 2
+        center_y = y_pos + button_size // 2
         overlay_draw.ellipse((center_x - 12, center_y - 12, center_x + 12, center_y + 12), outline=button_text, width=2)
         overlay_draw.ellipse((center_x - 7, center_y - 7, center_x + 7, center_y + 7), outline=button_text, width=1)
         overlay_draw.ellipse((center_x - 3, center_y - 3, center_x + 3, center_y + 3), fill=button_text)
         
+        # Draw center crosshair if enabled
+        if self.show_crosshair:
+            map_center_x = pil_image.width // 2
+            map_center_y = pil_image.height // 2
+            crosshair_size = self.crosshair_size
+            
+            # Horizontal line with outline
+            overlay_draw.line(
+                [(map_center_x - crosshair_size, map_center_y), (map_center_x + crosshair_size, map_center_y)],
+                fill=self.crosshair_outline_color,
+                width=2 + 2 * self.crosshair_outline_width
+            )
+            overlay_draw.line(
+                [(map_center_x - crosshair_size, map_center_y), (map_center_x + crosshair_size, map_center_y)],
+                fill=self.crosshair_color,
+                width=2
+            )
+            
+            # Vertical line with outline
+            overlay_draw.line(
+                [(map_center_x, map_center_y - crosshair_size), (map_center_x, map_center_y + crosshair_size)],
+                fill=self.crosshair_outline_color,
+                width=2 + 2 * self.crosshair_outline_width
+            )
+            overlay_draw.line(
+                [(map_center_x, map_center_y - crosshair_size), (map_center_x, map_center_y + crosshair_size)],
+                fill=self.crosshair_color,
+                width=2
+            )
+            
+            # Small center circle with outline
+            circle_radius = 4
+            # Outline circle
+            overlay_draw.ellipse(
+                (map_center_x - circle_radius - self.crosshair_outline_width, 
+                 map_center_y - circle_radius - self.crosshair_outline_width,
+                 map_center_x + circle_radius + self.crosshair_outline_width, 
+                 map_center_y + circle_radius + self.crosshair_outline_width),
+                outline=self.crosshair_outline_color,
+                width=self.crosshair_outline_width
+            )
+            # Inner circle
+            overlay_draw.ellipse(
+                (map_center_x - circle_radius, map_center_y - circle_radius, map_center_x + circle_radius, map_center_y + circle_radius),
+                outline=self.crosshair_color,
+                width=1
+            )
+        
         # Composite the overlay onto the image
         pil_image = Image.alpha_composite(pil_image, overlay)
-        return pil_image
+        return pil_image, button_rects
     
     def _show_context_menu(self, pos):
         """Show context menu on right-click."""

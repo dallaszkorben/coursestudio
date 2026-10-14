@@ -170,41 +170,12 @@ class MBTilesProvider:
     
     def load_default_mbtiles(self) -> bool:
         """
-        Load default mbtiles file from configuration.
-        
-        Attempts to load the default file specified in config[Appearance.Tiles.default_mbtiles].
-        If that fails, tries fallback files from config[Appearance.Tiles.fallback_files].
+        Not used anymore - fallback files removed.
         
         Returns:
-            True if a file was successfully loaded, False if all attempts failed
-            
-        Raises:
-            sqlite3.Error: If database connection fails
+            False - no fallback available
         """
-        # Get default filename from config
-        default_file = self.config.get_str("Appearance.Tiles.default_mbtiles", None)
-        
-        if not default_file:
-            self.logger.error("No default_mbtiles configured in settings.yaml")
-            return False
-        
-        # Try loading default file
-        if self._load_file(default_file):
-            self.logger.info(f"Successfully loaded default mbtiles: {default_file}")
-            return True
-        
-        self.logger.warning(f"Failed to load default mbtiles: {default_file}")
-        
-        # Try fallback files
-        fallback_files = self.config.get_list("Appearance.Tiles.fallback_files", [])
-        if fallback_files:
-            for fallback_file in fallback_files:
-                if self._load_file(fallback_file):
-                    self.logger.info(f"Successfully loaded fallback mbtiles: {fallback_file}")
-                    return True
-                self.logger.debug(f"Fallback mbtiles not found: {fallback_file}")
-        
-        self.logger.error("Could not load any mbtiles files (default or fallback)")
+        self.logger.error("No mbtiles file loaded")
         return False
     
     def load_recent_mbtiles(self) -> bool:
@@ -394,6 +365,58 @@ class MBTilesProvider:
             Path object if file is loaded, None otherwise
         """
         return self._loaded_path if self.is_loaded() else None
+    
+    def get_geometric_center(self) -> Optional[Tuple[float, float]]:
+        """
+        Get geographic center point of the mbtiles file.
+        
+        Uses the 'center' metadata field if available. If not available,
+        calculates center from 'bounds' field. If neither is available,
+        returns None.
+        
+        Returns:
+            Tuple of (latitude, longitude) representing geographic center,
+            or None if center cannot be determined.
+            
+        Example:
+            >>> provider.load_default_mbtiles()
+            >>> center = provider.get_geometric_center()
+            >>> if center:
+            ...     lat, lon = center
+            ...     print(f"Map center: {lat}, {lon}")
+        """
+        if not self.is_loaded() or not self._metadata:
+            return None
+        
+        # Try to use center from metadata (longitude, latitude, zoom)
+        if self._metadata.center:
+            lon, lat, _ = self._metadata.center
+            return (lat, lon)
+        
+        # Fall back to calculating center from bounds (west, south, east, north)
+        if self._metadata.bounds:
+            west, south, east, north = self._metadata.bounds
+            center_lat = (north + south) / 2.0
+            center_lon = (east + west) / 2.0
+            self.logger.debug(f"Calculated geometric center from bounds: ({center_lat}, {center_lon})")
+            return (center_lat, center_lon)
+        
+        self.logger.warning("Could not determine geometric center - no center or bounds in metadata")
+        return None
+    
+    def get_lowest_zoom_level(self) -> Optional[int]:
+        """
+        Get the lowest (least detailed) zoom level available in mbtiles.
+        
+        This is useful for showing the entire map at once.
+        
+        Returns:
+            Minimum zoom level available, or None if file not loaded.
+        """
+        if not self.is_loaded() or not self._metadata:
+            return None
+        
+        return self._metadata.min_zoom
     
     def validate_zoom_level(self, zoom: int) -> bool:
         """

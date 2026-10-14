@@ -189,8 +189,31 @@ class MainWindow(QMainWindow):
         
         menubar = self.menuBar()
         
+        # Apply stylesheet to make separators more visible
+        menubar.setStyleSheet("""
+            QMenuBar::separator {
+                background-color: #cccccc;
+                height: 1px;
+                margin: 2px 0px;
+            }
+            QMenu::separator {
+                background-color: #666666;
+                height: 1px;
+                margin: 4px 0px;
+            }
+        """)
+        
         # File Menu
         file_menu = menubar.addMenu('&File')
+        
+        # File > Load MBTiles File (moved from View > Map menu)
+        load_mbtiles_action = QAction('&Load MBTiles File...', self)
+        load_mbtiles_action.setStatusTip('Load a different mbtiles file for map display')
+        load_mbtiles_action.triggered.connect(self.action_load_mbtiles)
+        file_menu.addAction(load_mbtiles_action)
+        self.load_mbtiles_action = load_mbtiles_action
+        
+        file_menu.addSeparator()
         
         # File > Open
         open_action = QAction('&Open GPX File...', self)
@@ -322,29 +345,6 @@ class MainWindow(QMainWindow):
         zoom_out_action.setStatusTip('Zoom out')
         zoom_out_action.triggered.connect(self.action_zoom_out)
         view_menu.addAction(zoom_out_action)
-        
-        # View > Map submenu
-        map_menu = view_menu.addMenu('&Map')
-        
-        # View > Map > Load MBTiles File
-        load_mbtiles_action = QAction('&Load MBTiles File...', self)
-        load_mbtiles_action.setStatusTip('Load a different mbtiles file')
-        load_mbtiles_action.triggered.connect(self.action_load_mbtiles)
-        map_menu.addAction(load_mbtiles_action)
-        
-        # View > Map > Load Default MBTiles
-        load_default_mbtiles_action = QAction('Load &Default MBTiles', self)
-        load_default_mbtiles_action.setStatusTip('Load the default configured mbtiles')
-        load_default_mbtiles_action.triggered.connect(self.action_load_default_mbtiles)
-        map_menu.addAction(load_default_mbtiles_action)
-        
-        map_menu.addSeparator()
-        
-        # View > Map > Reset to Default Center
-        reset_center_action = QAction('Reset to &Default Center', self)
-        reset_center_action.setStatusTip('Reset map to default center position')
-        reset_center_action.triggered.connect(self.action_reset_center)
-        map_menu.addAction(reset_center_action)
         
         # Help Menu
         help_menu = menubar.addMenu('&Help')
@@ -1010,36 +1010,6 @@ class MainWindow(QMainWindow):
                 else:
                     QMessageBox.warning(self, "Error", "Failed to load mbtiles file. Check the log for details.")
                     self.statusBar().showMessage("Failed to load mbtiles file")
-    
-    def action_load_default_mbtiles(self):
-        """Load the default configured mbtiles file."""
-        logger.info("Loading default mbtiles file")
-        
-        if self.mbtiles_provider.load_default_mbtiles():
-            # Update recent_mbtiles in config
-            filename = self.mbtiles_provider.get_loaded_filename()
-            self.config.set('Appearance.Tiles.recent_mbtiles', filename)
-            self.config.save_to_file()
-            
-            # Check if recent zoom is available in new mbtiles, adjust if needed
-            recent_zoom = self.config.get_int('Appearance.Tiles.recent_zoom', None)
-            if recent_zoom:
-                self.map_widget.set_zoom_with_compatibility(recent_zoom)
-            
-            # Re-render map with new tiles
-            self.map_widget.render_map()
-            
-            self.statusBar().showMessage(f"Loaded default mbtiles: {filename}")
-            logger.info(f"Successfully loaded default mbtiles: {filename}")
-        else:
-            QMessageBox.warning(self, "Error", "Failed to load default mbtiles file. Check the log for details.")
-            self.statusBar().showMessage("Failed to load default mbtiles file")
-    
-    def action_reset_center(self):
-        """Reset map to default center position."""
-        logger.info("Resetting map center to default")
-        self.map_widget.recenter_on_default()
-        self.statusBar().showMessage("Map reset to default center")
     
     # ========================================================================
     # Application Operations

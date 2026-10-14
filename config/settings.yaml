@@ -75,19 +75,24 @@ Appearance:
         Navy: 000080
     TurningPoints:
       show: false
+    Crosshair:
+      show: true
+      body:
+        color: FF0000
+      outline:
+        color: FFFFFF
+        width: 1
+      size: 20
   Tiles:
-    default_mbtiles: Sweden-Raster-Z10-Z16.mbtiles
-    recent_mbtiles: Sweden-Raster-Z10-Z16.mbtiles
-    fallback_files:
-    - Sweden-Raster-Z10-Z16.mbtiles
-    default_zoom: 9
-    recent_zoom: 15
-    default_center:
-      lat: 56.16735279922952
-      lon: 15.591300721620287
+    recent_mbtiles: Sweeden-Z6-Z15.mbtiles
+    recent_zoom: 13
     recent_center:
-      lat: 56.15953750343409
-      lon: 15.597455662007064
+      lat: 56.18098623196589
+      lon: 15.604432816957171
+    default_zoom: 15
+    default_center:
+      lat: 56.16968551233624
+      lon: 15.60520529315346
 CoordinatesDisplay:
   Format:
     coordinate_format: dms
