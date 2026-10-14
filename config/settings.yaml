@@ -85,10 +85,10 @@ appearance:
       size: 20
   tiles:
     recent_mbtiles: Sweeden-Z6-Z15.mbtiles
-    recent_zoom: 11
+    recent_zoom: 13
     recent_center:
-      lat: 56.16818152469822
-      lon: 15.588682885621722
+      lat: 56.14301767927239
+      lon: 15.569456811402972
     default_zoom: 14
     default_center:
       lat: 56.16818152469822

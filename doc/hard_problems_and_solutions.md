@@ -1445,3 +1445,161 @@ This problem revealed several important lessons:
 - Consider using Qt signals/slots instead of direct event handling when possible (cleaner abstraction)
 
 ---
+## Problem 5: Mouse Wheel Zoom Not Keeping Cursor Position - View Drifts When Zooming In/Out
+
+### Problem Description
+
+**Symptom**: When zooming in/out with mouse wheel, the map view drifts unexpectedly:
+- Zoom out (Z:15 → Z:8 → Z:6)
+- Move cursor to a specific point
+- Zoom in (Z:6 → Z:8 → Z:15)
+- **Result**: End up at a different location than where you started (often drifted north)
+
+**Expected**: Zooming in/out should keep the **GPS point under the cursor at the same screen position**.
+
+### What I Did Wrong (Failed Attempts)
+
+**Attempt 1**: Create new MapRenderer and use its screen_to_gps method
+```python
+current_renderer = MapRenderer(width, height, provider, center_lat, center_lon, zoom)
+cursor_lat, cursor_lon = current_renderer.screen_to_gps(mouse_x, mouse_y)
+# Then complex offset calculations with another renderer...
+```
+- **Result**: ❌ View still drifted, especially north
+- **Why**: Was mixing two different coordinate systems and calculating offsets wrong
+
+**Attempt 2**: Try to fix by recalculating center with MapRenderer methods
+```python
+new_renderer = MapRenderer(...new_zoom...)
+offset_x = mouse_x - width / 2
+offset_y = mouse_y - height / 2
+screen_center_lat = new_renderer.screen_to_gps(width/2, height/2)
+mouse_pos_lat = new_renderer.screen_to_gps(mouse_x, mouse_y)
+self.center_lat = cursor_lat + (screen_center_lat - mouse_pos_lat)
+```
+- **Result**: ❌ Still drifted unpredictably
+- **Why**: Mixing screen coordinates, GPS coordinates, and offsets in confusing way
+
+**Attempt 3**: Even simpler - just change zoom, keep center same
+```python
+self.zoom_level += 1
+# Don't recalculate center
+```
+- **Result**: ❌ View jumps completely - same GPS point now appears at different screen position
+- **Why**: Web Mercator projection changes how pixels map to degrees at different zoom levels
+
+### Root Cause
+
+**The fundamental issue**: Web Mercator projection is **zoom-dependent**. The same GPS point occupies:
+- Different tile coordinates at different zoom levels
+- Different screen pixel positions when rendered
+
+When you zoom without recalculating the center:
+- The GPS point under the cursor was at screen position (500, 300)
+- After zoom, that same GPS point moves to (600, 250)
+- The view has "drifted"
+
+**My mistake**: Trying to calculate this with complex offset math instead of using pure **Web Mercator tile mathematics**.
+
+### Solution
+
+**Copy the exact implementation from MapLoom** (which already solved this):
+
+```python
+def wheelEvent(self, event):
+    """Handle mouse wheel - zoom at cursor position."""
+    import math
+    
+    # Helper functions for Web Mercator conversion
+    def latlon_to_tile(lat, lon, zoom):
+        """Convert GPS to tile coordinates."""
+        n = 2.0 ** zoom
+        tile_x = (lon + 180.0) / 360.0 * n
+        lat_rad = math.radians(lat)
+        tile_y = (1.0 - math.asinh(math.tan(lat_rad)) / math.pi) / 2.0 * n
+        return tile_x, tile_y
+    
+    def tile_to_latlon(tile_x, tile_y, zoom):
+        """Convert tile coordinates to GPS."""
+        n = 2.0 ** zoom
+        lon = tile_x / n * 360.0 - 180.0
+        lat_rad = math.atan(math.sinh(math.pi * (1.0 - 2.0 * tile_y / n)))
+        lat = math.degrees(lat_rad)
+        return lat, lon
+    
+    # Get cursor position
+    cursor_x = event.x()
+    cursor_y = event.y()
+    
+    # Step 1: Convert cursor screen position to GPS tile coordinates in CURRENT zoom
+    tile_x, tile_y = latlon_to_tile(self.center_lat, self.center_lon, self.zoom_level)
+    cursor_tile_x = (cursor_x - self.width() / 2) / 256.0 + tile_x
+    cursor_tile_y = (cursor_y - self.height() / 2) / 256.0 + tile_y
+    cursor_lat, cursor_lon = tile_to_latlon(cursor_tile_x, cursor_tile_y, self.zoom_level)
+    
+    # Step 2: Change zoom level
+    old_zoom = self.zoom_level
+    if event.angleDelta().y() > 0:
+        self.zoom_level += 1
+    else:
+        self.zoom_level -= 1
+    
+    # Step 3: If zoom changed, recalculate center to keep cursor at same GPS location
+    if self.zoom_level != old_zoom:
+        # Convert the GPS point to tile coordinates in NEW zoom level
+        new_tile_x, new_tile_y = latlon_to_tile(cursor_lat, cursor_lon, self.zoom_level)
+        
+        # Calculate center that keeps cursor at same screen position
+        # center_tile = cursor_tile - screen_offset_in_tiles
+        center_tile_x = new_tile_x - (cursor_x - self.width() / 2) / 256.0
+        center_tile_y = new_tile_y - (cursor_y - self.height() / 2) / 256.0
+        
+        # Convert back to GPS
+        self.center_lat, self.center_lon = tile_to_latlon(center_tile_x, center_tile_y, self.zoom_level)
+        self.needs_render = True
+```
+
+### How It Works
+
+**The key insight**: Use **Web Mercator tile mathematics** directly, not screen offsets:
+
+1. **Before zoom**: Convert cursor position to GPS *tile coordinates* (not screen pixels, not GPS degrees)
+2. **After zoom**: Convert the same GPS point to new tile coordinates at new zoom level
+3. **Recalculate center**: Using the tile offset formula
+
+**The critical formula**:
+```
+center_tile = cursor_tile - (cursor_screen_offset / 256)
+```
+
+Where:
+- `cursor_tile` = GPS point in tile coordinates
+- `cursor_screen_offset` = How far cursor is from screen center in pixels
+- `256` = Pixels per tile in Web Mercator
+
+### Key Learning
+
+**When implementing map zoom with cursor-centering:**
+
+1. **Use tile mathematics, not screen offset math** - Screen offsets are error-prone
+2. **Work in tile coordinates, not GPS degrees** - Web Mercator tile system is the bridge
+3. **The math is simple, not complex** - Just three formulas:
+   - GPS → tile (using Web Mercator forward transform)
+   - Tile → GPS (using Web Mercator inverse transform)
+   - Center recalc (simple tile offset)
+
+4. **Copy working implementations** - MapLoom had this solved. Rather than reinvent with offset calculations, copying the tile-based approach was:
+   - Simpler (fewer operations)
+   - Correct (no drift)
+   - Faster to implement (5 minutes vs hours of debugging offsets)
+
+5. **The mistake pattern**: "I'll calculate offsets" usually fails; "I'll use the coordinate system designed for this" always works
+
+**Why my attempts failed:**
+- ❌ Attempt 1-2: Mixing screen coordinates, GPS degrees, and offsets
+- ❌ Attempt 3: Ignoring that Web Mercator is zoom-dependent
+- ✅ Solution: Pure tile math, which is zoom-agnostic
+
+**Lesson for next time**: When a geometric problem seems hard, check if there's a **coordinate system specifically designed** for that problem. Web Mercator tile math was designed for exactly this - no need to reinvent with offsets.
+
+---
