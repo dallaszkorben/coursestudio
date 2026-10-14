@@ -130,7 +130,8 @@ class MapWidget(QWidget):
         self.drag_original_lat = None
         self.drag_original_lon = None
         
-        # Map display label
+        # Button hit areas (populated during render)
+        self.button_rects = {}
         self.map_label = QLabel()
         self.map_label.setStyleSheet("background-color: #c0c0c0;")
         self.map_label.setAlignment(Qt.AlignCenter)
@@ -171,16 +172,28 @@ class MapWidget(QWidget):
         self.pan_start_y = None
         self.setMouseTracking(True)
         
+        # Also enable mouse tracking on the label so we can intercept events
+        self.map_label.setMouseTracking(True)
+        
         # Enable keyboard events (for ESC to deselect)
         self.setFocusPolicy(Qt.StrongFocus)
         
+        # Install event filter on map_label to intercept mouse events
+        self.map_label.installEventFilter(self)
+        
+        # Dirty flag to avoid unnecessary renders
+        self.needs_render = True
+        
+        # Hover state for button effects
+        self.hovered_button = None  # Which button is currently hovered
+        
         # Render timer
         self.render_timer = QTimer()
-        self.render_timer.timeout.connect(self.render_map)
-        self.render_timer.start(100)  # Update every 100ms
+        self.render_timer.timeout.connect(self._on_render_timer)
+        self.render_timer.start(100)  # Check every 100ms if render needed
         
-        # Initial render
-        self.render_map()
+        # Mark for initial render
+        self.needs_render = True
         self.map_ready.emit()
     
     @staticmethod
@@ -265,29 +278,46 @@ class MapWidget(QWidget):
     def set_show_turning_points(self, show: bool):
         """Set whether to show turning points on the map."""
         self.show_turning_points = show
-        self.render_map()
+        self.needs_render = True
     
     def set_track_manager(self, track_manager):
         """Set the track manager for accessing track data."""
         self.track_manager = track_manager
-        self.render_map()
+        self.needs_render = True
     
     def on_track_list_selection_changed(self, track_id):
         """Handle track selection."""
         self.selected_track_id = track_id
         self.selected_trackpoint_index = None
         self.selected_trackpoint_range = None  # Clear range selection when track changes
-        self.render_map()
+        self.needs_render = True
     
     def on_trackpoint_selected(self, track_id, trackpoint_index):
         """Handle trackpoint selection."""
         self.selected_track_id = track_id
         self.selected_trackpoint_index = trackpoint_index
-        self.render_map()
+        self.needs_render = True
     
     def on_point_selected(self, track_index, point_index):
         """Alias for on_trackpoint_selected for compatibility."""
         self.on_trackpoint_selected(track_index, point_index)
+    
+    def eventFilter(self, obj, event):
+        """
+        Intercept events from child widgets (map_label).
+        Forward mouse move events to our handler so we can detect button hovers.
+        """
+        if obj == self.map_label:
+            if event.type() == 5:  # QEvent::MouseMove
+                self.mouseMoveEvent(event)
+                return True
+        return super().eventFilter(obj, event)
+    
+    def _on_render_timer(self):
+        """Timer callback: only render if dirty flag is set."""
+        if self.needs_render:
+            self.needs_render = False
+            self.render_map()
     
     def render_map(self):
         """Render the current map view."""
@@ -454,7 +484,7 @@ class MapWidget(QWidget):
                 self.zoom_level = new_zoom
                 self.zoom_level_label.setText(f"Z:{new_zoom}")
                 self.update_recent_state()  # Save zoom + center
-                self.render_map()
+                self.needs_render = True
     
     def zoom_out(self):
         """Zoom out by one level."""
@@ -466,7 +496,7 @@ class MapWidget(QWidget):
                 self.zoom_level = new_zoom
                 self.zoom_level_label.setText(f"Z:{new_zoom}")
                 self.update_recent_state()  # Save zoom + center
-                self.render_map()
+                self.needs_render = True
     
     def recenter_on_default(self):
         """
@@ -491,7 +521,7 @@ class MapWidget(QWidget):
         # Also update recent center/zoom since we're navigating
         self.update_recent_state()
         
-        self.render_map()
+        self.needs_render = True
         logger.info(f"Recentered to marked default: Z{self.zoom_level}, ({self.center_lat}, {self.center_lon})")
     
     def on_mark_center_clicked(self):
@@ -543,7 +573,7 @@ class MapWidget(QWidget):
             self.center_lat = self.config.get_float('appearance.tiles.default_center.lat', 56.168)
             self.center_lon = self.config.get_float('appearance.tiles.default_center.lon', 15.586)
         
-        self.render_map()
+        self.needs_render = True
     
     def save_center_position(self):
         """
@@ -608,8 +638,8 @@ class MapWidget(QWidget):
         self.double_selected_turning_point_color = self._hex_to_rgb(config.get_str('appearance.map_display.TurningPoints.doubleSelected.color', 'FFA500'))
         self.double_selected_turning_point_size = config.get_int('appearance.map_display.TurningPoints.doubleSelected.size', 8)
         
-        # Re-render the map with new settings
-        self.render_map()
+        # Mark for re-render with new settings
+        self.needs_render = True
         logger.debug("Map settings reloaded from config")
     
     def mousePressEvent(self, event):
@@ -708,7 +738,7 @@ class MapWidget(QWidget):
                                 self.selected_trackpoint_range = (min_idx, max_idx)
                                 self.selected_trackpoint_index = None  # Clear single selection
                                 self.range_selection_changed.emit(True)  # Signal range change
-                                self.render_map()
+                                self.needs_render = True
                                 return
                         elif self.selected_trackpoint_range is not None:
                             # We have a range - try to extend or modify it
@@ -719,7 +749,7 @@ class MapWidget(QWidget):
                             # Only allow selecting consecutive neighbors
                             if max_idx - min_idx == 1:
                                 self.selected_trackpoint_range = (min_idx, max_idx)
-                                self.render_map()
+                                self.needs_render = True
                         # For Shift+click on point, don't fall through
                         return
                     
@@ -744,7 +774,7 @@ class MapWidget(QWidget):
                             self.drag_original_lat = tp.latitude
                             self.drag_original_lon = tp.longitude
                     
-                    self.render_map()
+                    self.needs_render = True
                     return
                 
                 # If range selected but no point clicked, insert new point at cursor and start dragging
@@ -794,7 +824,7 @@ class MapWidget(QWidget):
                             # NOW emit signal to sync selection with updated trackpoints list
                             self.point_clicked.emit(str(self.selected_track_id), insert_position)
                             
-                            self.render_map()
+                            self.needs_render = True
                             return
             
             # Shift+click on empty space - insert point at end of current track (or create new track if none selected)
@@ -853,7 +883,7 @@ class MapWidget(QWidget):
                         # NOW emit signal to sync selection with updated trackpoints list
                         self.point_clicked.emit(str(self.selected_track_id), insert_position)
                         
-                        self.render_map()
+                        self.needs_render = True
                         return
                 return  # Don't pan if Shift+click, even if insert failed
             
@@ -864,13 +894,13 @@ class MapWidget(QWidget):
                 self.selected_trackpoint_range = None
                 # Emit signal to deselect in list as well
                 self.point_clicked.emit(str(self.selected_track_id), -1)
-                self.render_map()
+                self.needs_render = True
             
             self.pan_start_x = x
             self.pan_start_y = y
     
     def mouseMoveEvent(self, event):
-        """Handle mouse movement for panning or dragging trackpoint."""
+        """Handle mouse movement for panning, dragging trackpoint, and button hover effects."""
         
         # Handle trackpoint dragging
         if self.dragging_trackpoint and self.dragged_trackpoint_index is not None:
@@ -893,8 +923,52 @@ class MapWidget(QWidget):
                     self.trackpoint_dragging.emit(self.dragged_trackpoint_index, lat, lon)
                     
                     # Re-render to show the point at new position
-                    self.render_map()
+                    self.needs_render = True
             return
+        
+        # Check for button hover
+        x, y = event.x(), event.y()
+        
+        # Transform screen coordinates to map coordinates (accounting for scaling)
+        # The QLabel may scale the pixmap, so we need to convert back to original map size
+        label_width = self.map_label.width()
+        label_height = self.map_label.height()
+        
+        if label_width > 0 and label_height > 0:
+            # Get the actual pixmap size (original map render size)
+            if self.map_label.pixmap():
+                pixmap_width = self.map_label.pixmap().width()
+                pixmap_height = self.map_label.pixmap().height()
+                
+                # Calculate scale factors
+                scale_x = pixmap_width / label_width if label_width > 0 else 1
+                scale_y = pixmap_height / label_height if label_height > 0 else 1
+                
+                # Transform mouse coordinates from label space to pixmap space
+                map_x = int(x * scale_x)
+                map_y = int(y * scale_y)
+            else:
+                map_x, map_y = x, y
+        else:
+            map_x, map_y = x, y
+        
+        old_hovered = self.hovered_button
+        self.hovered_button = None
+        
+        # Check which button (if any) is being hovered (using map coordinates)
+        for button_name, rect in self.button_rects.items():
+            x1, y1, x2, y2 = rect
+            if x1 <= map_x <= x2 and y1 <= map_y <= y2:
+                self.hovered_button = button_name
+                break
+        
+        # Only re-render if hover state changed
+        if old_hovered != self.hovered_button:
+            if self.hovered_button:
+                logger.info(f"Button hovered: {self.hovered_button}")
+            else:
+                logger.info(f"Button unhovered")
+            self.needs_render = True
         
         # Handle map panning
         if self.pan_start_x is not None and self.pan_start_y is not None:
@@ -961,7 +1035,7 @@ class MapWidget(QWidget):
                 # Convert back to lat/lon
                 self.center_lat, self.center_lon = tile_to_latlon(new_tile_x, new_tile_y, self.zoom_level)
                 
-                self.render_map()
+                self.needs_render = True
             
             self.pan_start_x = event.x()
             self.pan_start_y = event.y()
@@ -1115,7 +1189,7 @@ class MapWidget(QWidget):
                 self.center_lat = cursor_lat + (screen_center_lat - mouse_pos_lat)
                 self.center_lon = cursor_lon + (screen_center_lon - mouse_pos_lon)
                 
-                self.render_map()
+                self.needs_render = True
     
     def keyPressEvent(self, event):
         """Handle keyboard events."""
@@ -1126,7 +1200,7 @@ class MapWidget(QWidget):
                 self.selected_trackpoint_range = None
                 # Emit signal to deselect in list as well
                 self.point_clicked.emit(str(self.selected_track_id), -1)
-                self.render_map()
+                self.needs_render = True
             return
         
         super().keyPressEvent(event)
@@ -1134,17 +1208,18 @@ class MapWidget(QWidget):
     def resizeEvent(self, event):
         """Handle window resize."""
         super().resizeEvent(event)
-        self.render_map()
+        self.needs_render = True
     
     
     def draw_ui_controls(self, pil_image):
-        """Draw UI control buttons on PIL image with transparency. Returns button hit areas."""
+        """Draw UI control buttons on PIL image. Returns button hit areas."""
         # Create a transparent overlay for buttons
         overlay = Image.new('RGBA', pil_image.size, (0, 0, 0, 0))
         overlay_draw = ImageDraw.Draw(overlay)
         
-        # Button colors with alpha channel (transparency)
-        button_bg = (52, 144, 220, 200)  # Blue with 200/255 opacity
+        # Button colors - use full opacity on hover, semi-transparent otherwise
+        button_opacity_normal = 200   # 78% opaque
+        button_opacity_hover = 255    # 100% opaque (fully opaque on hover)
         button_text = (255, 255, 255, 255)  # White, fully opaque
         
         x_pos = self.CONTROLS_PADDING_LEFT
@@ -1154,7 +1229,16 @@ class MapWidget(QWidget):
         
         button_rects = {}
         
+        # Helper function to get button color based on hover state
+        def get_button_color(button_name):
+            if self.hovered_button == button_name:
+                opacity = button_opacity_hover
+            else:
+                opacity = button_opacity_normal
+            return (52, 144, 220, opacity)  # Blue with variable opacity
+        
         # Draw zoom in button
+        button_bg = get_button_color('zoom_in')
         bbox = [x_pos, y_pos, x_pos + button_size, y_pos + button_size]
         button_rects['zoom_in'] = (x_pos, y_pos, x_pos + button_size, y_pos + button_size)
         overlay_draw.rounded_rectangle(bbox, radius=corner_radius, fill=button_bg)
@@ -1164,6 +1248,7 @@ class MapWidget(QWidget):
         
         # Draw zoom out button
         y_pos += button_size + self.ZOOM_BUTTON_SPACING
+        button_bg = get_button_color('zoom_out')
         bbox = [x_pos, y_pos, x_pos + button_size, y_pos + button_size]
         button_rects['zoom_out'] = (x_pos, y_pos, x_pos + button_size, y_pos + button_size)
         overlay_draw.rounded_rectangle(bbox, radius=corner_radius, fill=button_bg)
@@ -1173,6 +1258,7 @@ class MapWidget(QWidget):
         # Draw zoom level label
         y_pos += button_size + self.ZOOM_BUTTON_SPACING
         zoom_text = f"Z:{self.zoom_level}"
+        button_bg = get_button_color('zoom_level')
         bbox = [x_pos, y_pos, x_pos + button_size, y_pos + button_size]
         button_rects['zoom_level'] = (x_pos, y_pos, x_pos + button_size, y_pos + button_size)
         overlay_draw.rounded_rectangle(bbox, radius=corner_radius, fill=button_bg)
@@ -1180,6 +1266,7 @@ class MapWidget(QWidget):
         
         # Draw mark center button (4th button)
         y_pos += button_size + self.ZOOM_BUTTON_SPACING
+        button_bg = get_button_color('mark_center')
         bbox = [x_pos, y_pos, x_pos + button_size, y_pos + button_size]
         button_rects['mark_center'] = (x_pos, y_pos, x_pos + button_size, y_pos + button_size)
         overlay_draw.rounded_rectangle(bbox, radius=corner_radius, fill=button_bg)
@@ -1191,6 +1278,7 @@ class MapWidget(QWidget):
         
         # Draw recenter button (5th button)
         y_pos += button_size + self.ZOOM_BUTTON_SPACING
+        button_bg = get_button_color('recenter')
         bbox = [x_pos, y_pos, x_pos + button_size, y_pos + button_size]
         button_rects['recenter'] = (x_pos, y_pos, x_pos + button_size, y_pos + button_size)
         overlay_draw.rounded_rectangle(bbox, radius=corner_radius, fill=button_bg)

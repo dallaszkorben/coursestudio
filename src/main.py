@@ -109,6 +109,9 @@ def main():
     
     logger = setup_logging(args.debug)
     
+    # Suppress PIL debug logging (it spams with PNG chunk details during tile rendering)
+    logging.getLogger('PIL').setLevel(logging.WARNING)
+    
     # Print startup banner
     print("\n" + "="*70)
     print("Starting CourseStudio - GPX File Manipulator")

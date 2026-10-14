@@ -87,9 +87,9 @@ appearance:
     recent_mbtiles: Sweeden-Z6-Z15.mbtiles
     recent_zoom: 15
     recent_center:
-      lat: 56.16615053041428
-      lon: 15.59546351001137
-    default_zoom: 15
+      lat: 56.16818152469822
+      lon: 15.588682885621722
+    default_zoom: 14
     default_center:
       lat: 56.16818152469822
       lon: 15.588682885621722

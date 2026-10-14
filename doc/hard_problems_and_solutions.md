@@ -1271,3 +1271,177 @@ A proper implementation that provides "ready-to-use images" enables:
 ---
 
 
+## Problem 4: Button Hover Effects Not Detecting Mouse Movement
+
+### Problem Description
+
+**Goal**: Add hover effects to map control buttons (zoom in/out, recenter, mark center) so they become fully opaque when hovered over, semi-transparent otherwise.
+
+**Expected**: Buttons should brighten when mouse hovers over them, darken when moving away
+
+**Actual**: 
+- Buttons were drawn correctly with coordinates stored in `self.button_rects`
+- Mouse movement logging showed no `mouseMoveEvent()` calls at all
+- Hover detection code existed but never executed
+- No error messages - silent failure
+
+### What I Did Wrong (Failed Attempts)
+
+**Attempt 1**: Added hover detection directly in `mouseMoveEvent()`
+```python
+def mouseMoveEvent(self, event):
+    x, y = event.x(), event.y()
+    for button_name, rect in self.button_rects.items():
+        if self._point_in_rect(x, y, rect):
+            self.hovered_button = button_name
+            self.render_map()
+            break
+```
+- **Result**: ❌ Failed - Debug messages never printed, no hover detected
+- **Why**: `mouseMoveEvent()` was never being called at all
+
+**Attempt 2**: Checked if mouse tracking was enabled
+```python
+self.setMouseTracking(True)  # Already present in __init__
+```
+- **Result**: ❌ Failed - Still no events
+- **Why**: Mouse tracking works on the widget, but QLabel (child widget) was consuming events
+
+**Attempt 3**: Added opacity change in render based on hover state
+```python
+if self.hovered_button == 'zoom_in':
+    button_opacity = 255  # Full opacity
+else:
+    button_opacity = 200  # Semi-transparent
+```
+- **Result**: ❌ Failed - Code was correct, but never executed (hover state never changed)
+- **Why**: Root cause not yet identified
+
+### Root Cause
+
+**The QLabel widget was consuming all mouse events:**
+
+1. Map is rendered as a PIL image → converted to QPixmap → set on QLabel via `self.map_label.setPixmap(pixmap)`
+2. QLabel is a child widget that displays the pixmap
+3. **Mouse events arrive at the QLabel, not the MapWidget**
+4. By default, QLabel doesn't forward mouse events up to parent
+5. Result: `MapWidget.mouseMoveEvent()` never called
+
+**Additional complication - Coordinate transformation:**
+- Buttons were drawn on PIL image with original size (e.g., 800x600)
+- Button coordinates stored relative to this original size
+- QLabel has `setScaledContents(True)` - pixmap is scaled to fit label
+- Label might be 1024x768 (different from pixmap size)
+- **Mouse coordinates from label are in label's space, not pixmap space**
+- Simple boundary checks would fail due to coordinate mismatch
+
+### Solution
+
+**Three-part fix:**
+
+#### Part 1: Intercept Mouse Events from QLabel
+
+Install an event filter on the label to forward its mouse events:
+
+```python
+# In __init__:
+self.map_label.setMouseTracking(True)  # Enable on label too
+self.map_label.installEventFilter(self)  # Forward events to MapWidget
+
+# In MapWidget:
+def eventFilter(self, obj, event):
+    """Intercept mouse move events from child widgets."""
+    if obj == self.map_label:
+        if event.type() == 5:  # QEvent::MouseMove
+            self.mouseMoveEvent(event)  # Forward to handler
+            return True
+    return super().eventFilter(obj, event)
+```
+
+**Why this works**: Event filters are designed to intercept child widget events before they're processed. This gives the parent a chance to handle events that would otherwise be consumed.
+
+#### Part 2: Transform Coordinates
+
+Mouse coordinates come in label space, but button rectangles are in pixmap space. Transform them:
+
+```python
+def mouseMoveEvent(self, event):
+    x, y = event.x(), event.y()  # Screen coordinates (label space)
+    
+    # Get label dimensions and pixmap dimensions
+    label_width = self.map_label.width()
+    label_height = self.map_label.height()
+    
+    if self.map_label.pixmap():
+        pixmap_width = self.map_label.pixmap().width()
+        pixmap_height = self.map_label.pixmap().height()
+        
+        # Calculate scale factors (how much is pixmap stretched/shrunk)
+        scale_x = pixmap_width / label_width
+        scale_y = pixmap_height / label_height
+        
+        # Transform from label space to pixmap space
+        map_x = int(x * scale_x)
+        map_y = int(y * scale_y)
+    else:
+        map_x, map_y = x, y
+    
+    # Now check buttons using map_x, map_y
+    for button_name, rect in self.button_rects.items():
+        x1, y1, x2, y2 = rect
+        if x1 <= map_x <= x2 and y1 <= map_y <= y2:
+            self.hovered_button = button_name
+            break
+```
+
+**Why this works**: The scale factors account for any difference between how the pixmap was rendered and how it's displayed. This works whether the label is showing the pixmap at 100%, 50%, or 200% scale.
+
+#### Part 3: Draw Buttons with Variable Opacity
+
+Modify `draw_ui_controls()` to check hover state:
+
+```python
+def get_button_color(button_name):
+    """Return button color based on hover state."""
+    if self.hovered_button == button_name:
+        opacity = 255  # Fully opaque on hover
+    else:
+        opacity = 200  # 78% opaque normally
+    return (52, 144, 220, opacity)  # Blue with variable opacity
+
+# Then for each button:
+button_bg = get_button_color('zoom_in')
+overlay_draw.rounded_rectangle(bbox, radius=corner_radius, fill=button_bg)
+```
+
+### Key Learning
+
+**GUI event routing is not always obvious - child widgets can silently consume events.**
+
+This problem revealed several important lessons:
+
+1. **Event consumption is hierarchical** - In PyQt5, events flow through a hierarchy. A child widget can consume an event and prevent parent from seeing it. Documentation isn't always clear about which widgets consume which events.
+
+2. **Mouse tracking needs to be on the actual receiving widget** - Setting `setMouseTracking(True)` on the MapWidget doesn't help if QLabel is getting the events. You need to set it on the widget that will actually receive the events.
+
+3. **Event filters are the solution for child widget interception** - When you have a widget hierarchy and need to handle events from child widgets, event filters are the correct mechanism. This is cleaner than subclassing the child.
+
+4. **Coordinate spaces matter in scaled/transformed UIs** - When GUI elements are scaled, rotated, or transformed, coordinates don't map 1:1. You need to understand the transformation and reverse it. This is easy to miss and causes hover detection to work at wrong positions.
+
+5. **Silent failures are dangerous** - The code was architecturally correct (hover detection logic was sound), but executed in an event that never fired. No error, no warning - just silent non-execution. This required instrumentation to discover.
+
+**Debugging strategy that worked:**
+1. Added logging to verify render_map() was called
+2. Added logging to verify button_rects were populated
+3. Added logging to verify mouseMoveEvent() was called
+4. **Discovered**: mouseMoveEvent() was never called
+5. **Investigated**: Why not? (led to discovering QLabel consumption)
+6. **Solution**: Event filter + coordinate transformation
+
+**Prevention for future**:
+- Always verify event handlers are being called before assuming logic is wrong
+- Be aware of widget hierarchies and event consumption
+- When widgets scale/transform, always account for coordinate space changes
+- Consider using Qt signals/slots instead of direct event handling when possible (cleaner abstraction)
+
+---
