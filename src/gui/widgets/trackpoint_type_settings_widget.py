@@ -41,19 +41,19 @@ class TrackpointTypeSettingsWidget(QWidget):
         
         # Load current values from config
         self.body_color = self.config.get_str(
-            f'Appearance.MapDisplay.Trackpoints.{point_type}.body.color', 
+            f'appearance.map_display.trackpoints.{point_type}.body.color', 
             'FFFF00'
         )
         self.body_size = self.config.get_int(
-            f'Appearance.MapDisplay.Trackpoints.{point_type}.body.size', 
+            f'appearance.map_display.trackpoints.{point_type}.body.size', 
             4
         )
         self.outline_color = self.config.get_str(
-            f'Appearance.MapDisplay.Trackpoints.{point_type}.outline.color', 
+            f'appearance.map_display.trackpoints.{point_type}.outline.color', 
             'FFFFFF'
         )
         self.outline_size = self.config.get_int(
-            f'Appearance.MapDisplay.Trackpoints.{point_type}.outline.size', 
+            f'appearance.map_display.trackpoints.{point_type}.outline.size', 
             1
         )
         
@@ -158,7 +158,7 @@ class TrackpointTypeSettingsWidget(QWidget):
         outline_color = self.outline_color_picker.get_color_hex()
         outline_size = self.outline_size_slider.get_value()
         
-        self.config.set_str(f'Appearance.MapDisplay.Trackpoints.{self.point_type}.body.color', body_color)
-        self.config.set_int(f'Appearance.MapDisplay.Trackpoints.{self.point_type}.body.size', body_size)
-        self.config.set_str(f'Appearance.MapDisplay.Trackpoints.{self.point_type}.outline.color', outline_color)
-        self.config.set_int(f'Appearance.MapDisplay.Trackpoints.{self.point_type}.outline.size', outline_size)
+        self.config.set_str(f'appearance.map_display.trackpoints.{self.point_type}.body.color', body_color)
+        self.config.set_int(f'appearance.map_display.trackpoints.{self.point_type}.body.size', body_size)
+        self.config.set_str(f'appearance.map_display.trackpoints.{self.point_type}.outline.color', outline_color)
+        self.config.set_int(f'appearance.map_display.trackpoints.{self.point_type}.outline.size', outline_size)

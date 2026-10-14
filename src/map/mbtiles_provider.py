@@ -160,7 +160,7 @@ class MBTilesProvider:
             Path object if file exists, None otherwise
         """
         # Get project root from config
-        project_root = Path(self.config.get_str("Application.project_root", "./"))
+        project_root = Path(self.config.get_str("application.project_root", "./"))
         mbtiles_path = project_root / "mbtiles" / filename
         
         if mbtiles_path.exists() and mbtiles_path.is_file():
@@ -182,14 +182,14 @@ class MBTilesProvider:
         """
         Load recent mbtiles file from configuration.
         
-        Attempts to load the file specified in config[Appearance.Tiles.recent_mbtiles].
+        Attempts to load the file specified in config[Appearance.tiles.recent_mbtiles].
         If that fails, falls back to loading the default file.
         
         Returns:
             True if a file was successfully loaded, False otherwise
         """
         # Get recent filename from config
-        recent_file = self.config.get_str("Appearance.Tiles.recent_mbtiles", None)
+        recent_file = self.config.get_str("appearance.tiles.recent_mbtiles", None)
         
         if recent_file and self._load_file(recent_file):
             self.logger.info(f"Successfully loaded recent mbtiles: {recent_file}")

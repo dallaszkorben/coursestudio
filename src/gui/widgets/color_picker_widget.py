@@ -84,8 +84,8 @@ class ColorPickerWidget(QWidget):
         Args:
             initial_color: Initial hex color without '#' (e.g., 'FF0000')
             config: AppConfig instance (optional, loads from file if None)
-            config_path: Custom path to load colors from (e.g., 'Appearance.MapDisplay.TurningPoints.colors')
-                        If None, defaults to 'Appearance.MapDisplay.TrackPath.colors'
+            config_path: Custom path to load colors from (e.g., 'appearance.map_display.TurningPoints.colors')
+                        If None, defaults to 'appearance.map_display.track_path.colors'
         """
         super().__init__()
         
@@ -95,7 +95,7 @@ class ColorPickerWidget(QWidget):
         
         # Load color palette from settings.yaml (not hardcoded!)
         if config_path is None:
-            config_path = 'Appearance.MapDisplay.TrackPath.colors'
+            config_path = 'appearance.map_display.track_path.colors'
         
         self.preset_colors = self.config.get_dict(config_path, {})
         

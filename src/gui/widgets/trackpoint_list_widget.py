@@ -213,8 +213,8 @@ class TrackpointListWidget(QWidget):
         # Load saved settings or use defaults (new structure)
         from config.app_config_yaml import AppConfig
         config = AppConfig()
-        self.coordinate_format = config.get_str('CoordinatesDisplay.Format.coordinate_format', 'dms')
-        self.show_points = config.get_bool('Appearance.MapDisplay.Trackpoints.show', True)
+        self.coordinate_format = config.get_str('coordinates_display.Format.coordinate_format', 'dms')
+        self.show_points = config.get_bool('appearance.map_display.trackpoints.show', True)
         
         # Setup UI
         self._setup_ui()
@@ -734,7 +734,7 @@ class TrackpointListWidget(QWidget):
         # Save to config file
         from config.app_config_yaml import AppConfig
         config = AppConfig()
-        config.set('Appearance.MapDisplay.Trackpoints.show', show_points)
+        config.set('appearance.map_display.trackpoints.show', show_points)
         config.save_to_file()
         
         # Update map widget if available
@@ -866,7 +866,7 @@ class TrackpointListWidget(QWidget):
         
         # Check if confirmation is required
         config = AppConfig()
-        require_confirmation = config.get_bool('FileHandling.DeleteConfirmation.require_delete_confirmation', True)
+        require_confirmation = config.get_bool('file_handling.DeleteConfirmation.require_delete_confirmation', True)
         
         if require_confirmation:
             if is_last_point:
@@ -1035,7 +1035,7 @@ class TrackpointListWidget(QWidget):
         
         # Check if confirmation is required
         config = AppConfig()
-        require_confirmation = config.get_bool('FileHandling.DeleteConfirmation.require_delete_confirmation', True)
+        require_confirmation = config.get_bool('file_handling.DeleteConfirmation.require_delete_confirmation', True)
         
         if require_confirmation:
             # Show confirmation
@@ -1097,7 +1097,7 @@ class TrackpointListWidget(QWidget):
         
         # Check if confirmation is required
         config = AppConfig()
-        require_confirmation = config.get_bool('FileHandling.DeleteConfirmation.require_delete_confirmation', True)
+        require_confirmation = config.get_bool('file_handling.DeleteConfirmation.require_delete_confirmation', True)
         
         if require_confirmation:
             # Show confirmation

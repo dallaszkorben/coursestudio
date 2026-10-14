@@ -38,10 +38,10 @@ class TrackPathSettingsWidget(QWidget):
         self.config = config or AppConfig()
         
         # Load current values from config
-        self.body_color = self.config.get_str('Appearance.MapDisplay.TrackPath.body.color', 'FF0000')
-        self.body_width = self.config.get_int('Appearance.MapDisplay.TrackPath.body.width', 3)
-        self.outline_color = self.config.get_str('Appearance.MapDisplay.TrackPath.outline.color', 'FFFFFF')
-        self.outline_width = self.config.get_int('Appearance.MapDisplay.TrackPath.outline.width', 1)
+        self.body_color = self.config.get_str('appearance.map_display.track_path.body.color', 'FF0000')
+        self.body_width = self.config.get_int('appearance.map_display.track_path.body.width', 3)
+        self.outline_color = self.config.get_str('appearance.map_display.track_path.outline.color', 'FFFFFF')
+        self.outline_width = self.config.get_int('appearance.map_display.track_path.outline.width', 1)
         self._updating = False  # Flag to prevent recursive updates
         
         self._init_ui()
@@ -167,10 +167,10 @@ class TrackPathSettingsWidget(QWidget):
         outline_color = self.outline_color_picker.get_color_hex()
         outline_width = self.outline_width_slider.get_value()
         
-        self.config.set_str('Appearance.MapDisplay.TrackPath.body.color', body_color)
-        self.config.set_int('Appearance.MapDisplay.TrackPath.body.width', body_width)
-        self.config.set_str('Appearance.MapDisplay.TrackPath.outline.color', outline_color)
-        self.config.set_int('Appearance.MapDisplay.TrackPath.outline.width', outline_width)
+        self.config.set_str('appearance.map_display.track_path.body.color', body_color)
+        self.config.set_int('appearance.map_display.track_path.body.width', body_width)
+        self.config.set_str('appearance.map_display.track_path.outline.color', outline_color)
+        self.config.set_int('appearance.map_display.track_path.outline.width', outline_width)
     
     def save_to_file(self) -> bool:
         """Save settings to file."""

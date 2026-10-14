@@ -115,7 +115,7 @@ class SettingsWidget(QWidget):
         show_toggle_layout.addWidget(show_label, 0, Qt.AlignLeft)
         
         # Load show state from config
-        self.show_trackpoints = self.config.get_bool('Appearance.MapDisplay.Trackpoints.show', True)
+        self.show_trackpoints = self.config.get_bool('appearance.map_display.trackpoints.show', True)
         self.show_toggle = ToggleSwitchWidget(title="", initial_state=self.show_trackpoints)
         self.show_toggle.toggled.connect(self._on_show_trackpoints_toggled)
         show_toggle_layout.addWidget(self.show_toggle, 0, Qt.AlignLeft)
@@ -194,7 +194,7 @@ class SettingsWidget(QWidget):
     def _on_show_trackpoints_toggled(self, state: bool):
         """Handle show trackpoints toggle."""
         logger.debug(f"Show trackpoints toggled to: {state}")
-        self.config.set_bool('Appearance.MapDisplay.Trackpoints.show', state)
+        self.config.set_bool('appearance.map_display.trackpoints.show', state)
         self.config.save_to_file()
         self.turning_points_settings_applied.emit()
     

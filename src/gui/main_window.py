@@ -139,11 +139,11 @@ class MainWindow(QMainWindow):
         """Configure window properties and geometry."""
         
         # Get configuration values
-        app_name = self.config.get_str('Application.name', 'CourseStudio')
-        version = self.config.get_str('Application.version', '1.0.0')
-        window_title = self.config.get_str('Application.window_title', '{app_name} - GPX File Manipulator v{version}')
-        window_width = self.config.get_int('Application.window_width', 1400)
-        window_height = self.config.get_int('Application.window_height', 900)
+        app_name = self.config.get_str('application.name', 'CourseStudio')
+        version = self.config.get_str('application.version', '1.0.0')
+        window_title = self.config.get_str('application.window_title', '{app_name} - GPX File Manipulator v{version}')
+        window_width = self.config.get_int('application.window_width', 1400)
+        window_height = self.config.get_int('application.window_height', 900)
         
         # Format window title with substitutions
         window_title = window_title.format(name=app_name, version=version)
@@ -167,7 +167,7 @@ class MainWindow(QMainWindow):
         
         # Enable window state saving
         window_state = Qt.WindowState.WindowMaximized if self.config.get_bool(
-            'Application.start_maximized', False
+            'application.start_maximized', False
         ) else Qt.WindowState.WindowNoState
         self.setWindowState(window_state)
     
@@ -382,14 +382,14 @@ class MainWindow(QMainWindow):
         self.toolbar.setIconSize(QSize(24, 24))
         
         # Open file button
-        open_action = QAction('Open', self)
+        open_action = QAction('Open GPX', self)
         open_action.setStatusTip('Open a GPX file')
         open_action.triggered.connect(self.action_open_file)
         self.toolbar.addAction(open_action)
         
         # Save file button
-        save_action = QAction('Save', self)
-        save_action.setStatusTip('Save current file')
+        save_action = QAction('Save GPX', self)
+        save_action.setStatusTip('Save current GPX file')
         save_action.triggered.connect(self.action_save_file)
         save_action.setEnabled(False)  # Disabled until file is opened
         self.toolbar.addAction(save_action)
@@ -994,11 +994,11 @@ class MainWindow(QMainWindow):
                 if self.mbtiles_provider.load_mbtiles_from_path(mbtiles_path):
                     # Update recent_mbtiles in config
                     filename = self.mbtiles_provider.get_loaded_filename()
-                    self.config.set('Appearance.Tiles.recent_mbtiles', filename)
+                    self.config.set('appearance.tiles.recent_mbtiles', filename)
                     self.config.save_to_file()
                     
                     # Check if recent zoom is available in new mbtiles, adjust if needed
-                    recent_zoom = self.config.get_int('Appearance.Tiles.recent_zoom', None)
+                    recent_zoom = self.config.get_int('appearance.tiles.recent_zoom', None)
                     if recent_zoom:
                         self.map_widget.set_zoom_with_compatibility(recent_zoom)
                     
@@ -1028,8 +1028,8 @@ class MainWindow(QMainWindow):
     def action_about(self):
         """Show about dialog."""
         
-        app_name = self.config.get_str('Application.name', 'CourseStudio')
-        version = self.config.get_str('Application.version', '1.0.0')
+        app_name = self.config.get_str('application.name', 'CourseStudio')
+        version = self.config.get_str('application.version', '1.0.0')
         
         about_text = f"""
 <b>{app_name}</b> v{version}
@@ -1411,12 +1411,12 @@ A PyQt5 application for reading, editing, and exporting GPX navigation tracks.
             config = AppConfig()
             
             # Body
-            self.map_widget.track_color = self.map_widget._hex_to_rgb(config.get_str('Appearance.MapDisplay.TrackPath.body.color', 'FF0000'))
-            self.map_widget.track_path_width = config.get_int('Appearance.MapDisplay.TrackPath.body.width', 3)
+            self.map_widget.track_color = self.map_widget._hex_to_rgb(config.get_str('appearance.map_display.track_path.body.color', 'FF0000'))
+            self.map_widget.track_path_width = config.get_int('appearance.map_display.track_path.body.width', 3)
             
             # Outline
-            self.map_widget.track_path_outline_color = self.map_widget._hex_to_rgb(config.get_str('Appearance.MapDisplay.TrackPath.outline.color', 'FFFFFF'))
-            self.map_widget.track_path_outline_width = config.get_int('Appearance.MapDisplay.TrackPath.outline.width', 1)
+            self.map_widget.track_path_outline_color = self.map_widget._hex_to_rgb(config.get_str('appearance.map_display.track_path.outline.color', 'FFFFFF'))
+            self.map_widget.track_path_outline_width = config.get_int('appearance.map_display.track_path.outline.width', 1)
             
             # Trigger redraw
             self.map_widget.render_map()
@@ -1454,22 +1454,22 @@ A PyQt5 application for reading, editing, and exporting GPX navigation tracks.
             config = AppConfig()
             
             # General Points
-            self.map_widget.turning_point_color = self.map_widget._hex_to_rgb(config.get_str('Appearance.MapDisplay.Trackpoints.GeneralPoints.body.color', 'FFFF00'))
-            self.map_widget.turning_point_size = config.get_int('Appearance.MapDisplay.Trackpoints.GeneralPoints.body.size', 4)
-            self.map_widget.turning_point_outline_color = self.map_widget._hex_to_rgb(config.get_str('Appearance.MapDisplay.Trackpoints.GeneralPoints.outline.color', 'FFFFFF'))
-            self.map_widget.turning_point_outline_width = config.get_int('Appearance.MapDisplay.Trackpoints.GeneralPoints.outline.size', 1)
+            self.map_widget.turning_point_color = self.map_widget._hex_to_rgb(config.get_str('appearance.map_display.trackpoints.GeneralPoints.body.color', 'FFFF00'))
+            self.map_widget.turning_point_size = config.get_int('appearance.map_display.trackpoints.GeneralPoints.body.size', 4)
+            self.map_widget.turning_point_outline_color = self.map_widget._hex_to_rgb(config.get_str('appearance.map_display.trackpoints.GeneralPoints.outline.color', 'FFFFFF'))
+            self.map_widget.turning_point_outline_width = config.get_int('appearance.map_display.trackpoints.GeneralPoints.outline.size', 1)
             
             # Selected Points
-            self.map_widget.selected_turning_point_color = self.map_widget._hex_to_rgb(config.get_str('Appearance.MapDisplay.Trackpoints.SelectedPoints.body.color', '0000FF'))
-            self.map_widget.selected_turning_point_size = config.get_int('Appearance.MapDisplay.Trackpoints.SelectedPoints.body.size', 7)
-            self.map_widget.selected_turning_point_outline_color = self.map_widget._hex_to_rgb(config.get_str('Appearance.MapDisplay.Trackpoints.SelectedPoints.outline.color', 'FFFFFF'))
-            self.map_widget.selected_turning_point_outline_width = config.get_int('Appearance.MapDisplay.Trackpoints.SelectedPoints.outline.size', 2)
+            self.map_widget.selected_turning_point_color = self.map_widget._hex_to_rgb(config.get_str('appearance.map_display.trackpoints.SelectedPoints.body.color', '0000FF'))
+            self.map_widget.selected_turning_point_size = config.get_int('appearance.map_display.trackpoints.SelectedPoints.body.size', 7)
+            self.map_widget.selected_turning_point_outline_color = self.map_widget._hex_to_rgb(config.get_str('appearance.map_display.trackpoints.SelectedPoints.outline.color', 'FFFFFF'))
+            self.map_widget.selected_turning_point_outline_width = config.get_int('appearance.map_display.trackpoints.SelectedPoints.outline.size', 2)
             
             # Double Selected Points
-            self.map_widget.double_selected_turning_point_color = self.map_widget._hex_to_rgb(config.get_str('Appearance.MapDisplay.Trackpoints.DoubleSelectedPoints.body.color', 'FFA500'))
-            self.map_widget.double_selected_turning_point_size = config.get_int('Appearance.MapDisplay.Trackpoints.DoubleSelectedPoints.body.size', 8)
-            self.map_widget.double_selected_turning_point_outline_color = self.map_widget._hex_to_rgb(config.get_str('Appearance.MapDisplay.Trackpoints.DoubleSelectedPoints.outline.color', 'FFFFFF'))
-            self.map_widget.double_selected_turning_point_outline_width = config.get_int('Appearance.MapDisplay.Trackpoints.DoubleSelectedPoints.outline.size', 2)
+            self.map_widget.double_selected_turning_point_color = self.map_widget._hex_to_rgb(config.get_str('appearance.map_display.trackpoints.DoubleSelectedPoints.body.color', 'FFA500'))
+            self.map_widget.double_selected_turning_point_size = config.get_int('appearance.map_display.trackpoints.DoubleSelectedPoints.body.size', 8)
+            self.map_widget.double_selected_turning_point_outline_color = self.map_widget._hex_to_rgb(config.get_str('appearance.map_display.trackpoints.DoubleSelectedPoints.outline.color', 'FFFFFF'))
+            self.map_widget.double_selected_turning_point_outline_width = config.get_int('appearance.map_display.trackpoints.DoubleSelectedPoints.outline.size', 2)
             
             # Trigger redraw
             self.map_widget.render_map()

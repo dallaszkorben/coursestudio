@@ -1,4 +1,4 @@
-Application:
+application:
   name: CourseStudio
   version: 1.0.0
   window_title: '{name} - GPX File Manipulator v{version}'
@@ -7,9 +7,9 @@ Application:
   start_maximized: false
   debug: false
   project_root: ./
-Appearance:
-  MapDisplay:
-    TrackPath:
+appearance:
+  map_display:
+    track_path:
       body:
         color: E97F49
         width: 5
@@ -33,23 +33,23 @@ Appearance:
         Medium Blue: 0000CD
         Dark Blue: 00008B
         Navy: 000080
-    Trackpoints:
+    trackpoints:
       show: true
-      GeneralPoints:
+      general_points:
         body:
           color: FF0000
           size: 6
         outline:
           color: 000082
           size: 2
-      SelectedPoints:
+      selected_points:
         body:
           color: 00008B
           size: 8
         outline:
           color: 00FF00
           size: 3
-      DoubleSelectedPoints:
+      double_selected_points:
         body:
           color: 1E90FF
           size: 8
@@ -73,9 +73,9 @@ Appearance:
         Medium Blue: 0000CD
         Dark Blue: 00008B
         Navy: 000080
-    TurningPoints:
+    turning_points:
       show: false
-    Crosshair:
+    crosshair:
       show: true
       body:
         color: FF0000
@@ -83,65 +83,65 @@ Appearance:
         color: FFFFFF
         width: 1
       size: 20
-  Tiles:
+  tiles:
     recent_mbtiles: Sweeden-Z6-Z15.mbtiles
-    recent_zoom: 13
+    recent_zoom: 15
     recent_center:
-      lat: 56.18098623196589
-      lon: 15.604432816957171
+      lat: 56.16615053041428
+      lon: 15.59546351001137
     default_zoom: 15
     default_center:
-      lat: 56.16968551233624
-      lon: 15.60520529315346
-CoordinatesDisplay:
-  Format:
+      lat: 56.16818152469822
+      lon: 15.588682885621722
+coordinates_display:
+  format:
     coordinate_format: dms
     decimal_places: 4
     dms_seconds_decimals: 1
-  TableDisplay:
+  table_display:
     row_height: 25
     show_keyboard_shortcuts: true
-FileHandling:
-  Backup:
+file_handling:
+  backup:
     create: true
     extension: bak
-  RecentFiles:
+  recent_files:
     remember_last_directory: true
     max_recent_files: 10
-  GpxExport:
+  gpx_export:
     gpx_version: '1.1'
     validate_before_save: true
-  DeleteConfirmation:
+  delete_confirmation:
     require_delete_confirmation: false
-Performance:
-  TrackLoading:
+performance:
+  track_loading:
     max_trackpoints_no_warning: 5000
     max_file_size_warning_mb: 25
     max_file_size_error_mb: 100
-  UndoRedo:
+  undo_redo:
     max_undo_redo_stack: 50
     max_history_memory_mb: 500
-  Rendering:
+  rendering:
     map_render_timer_ms: 100
-Advanced:
-  Debugging:
+advanced:
+  debugging:
     log_level: INFO
     log_file: ./CourseStudio.log
     log_file_max_size_mb: 10
     log_backup_count: 5
     debug_mode: false
-  Technical:
+  technical:
     file_operation_timeout_s: 30
     map_render_timeout_s: 10
     max_threads: 4
     experimental_features: false
-  GarminDevice:
+  garmin_device:
     show_import_guide: false
-InternalState:
-  Map:
+internal_state:
+  map:
     last_show_turning_points: false
-  Coordinates:
+  coordinates:
     last_format: decimal
-Map:
+map:
   last_state:
     show_turning_points: true

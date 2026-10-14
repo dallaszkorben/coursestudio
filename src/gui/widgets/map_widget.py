@@ -64,57 +64,57 @@ class MapWidget(QWidget):
         
         # Parse colors from config (hex format: RRGGBB)
         # TrackPath - body and outline
-        self.track_color = self._hex_to_rgb(config.get_str('Appearance.MapDisplay.TrackPath.body.color', 'FF0000'))
-        self.track_path_width = config.get_int('Appearance.MapDisplay.TrackPath.body.width', 3)
-        self.track_path_outline_color = self._hex_to_rgb(config.get_str('Appearance.MapDisplay.TrackPath.outline.color', 'FFFFFF'))
-        self.track_path_outline_width = config.get_int('Appearance.MapDisplay.TrackPath.outline.width', 1)
+        self.track_color = self._hex_to_rgb(config.get_str('appearance.map_display.track_path.body.color', 'FF0000'))
+        self.track_path_width = config.get_int('appearance.map_display.track_path.body.width', 3)
+        self.track_path_outline_color = self._hex_to_rgb(config.get_str('appearance.map_display.track_path.outline.color', 'FFFFFF'))
+        self.track_path_outline_width = config.get_int('appearance.map_display.track_path.outline.width', 1)
         
         # Trackpoints settings
-        self.show_turning_points = config.get_bool('Appearance.MapDisplay.Trackpoints.show', True)
+        self.show_turning_points = config.get_bool('appearance.map_display.trackpoints.show', True)
         
         # General trackpoints (body and outline)
-        self.turning_point_color = self._hex_to_rgb(config.get_str('Appearance.MapDisplay.Trackpoints.GeneralPoints.body.color', 'FFFF00'))
-        self.turning_point_size = config.get_int('Appearance.MapDisplay.Trackpoints.GeneralPoints.body.size', 4)
-        self.turning_point_outline_color = self._hex_to_rgb(config.get_str('Appearance.MapDisplay.Trackpoints.GeneralPoints.outline.color', 'FFFFFF'))
-        self.turning_point_outline_width = config.get_int('Appearance.MapDisplay.Trackpoints.GeneralPoints.outline.size', 1)
+        self.turning_point_color = self._hex_to_rgb(config.get_str('appearance.map_display.trackpoints.GeneralPoints.body.color', 'FFFF00'))
+        self.turning_point_size = config.get_int('appearance.map_display.trackpoints.GeneralPoints.body.size', 4)
+        self.turning_point_outline_color = self._hex_to_rgb(config.get_str('appearance.map_display.trackpoints.GeneralPoints.outline.color', 'FFFFFF'))
+        self.turning_point_outline_width = config.get_int('appearance.map_display.trackpoints.GeneralPoints.outline.size', 1)
         
         # Selected trackpoints (body and outline)
-        self.selected_turning_point_color = self._hex_to_rgb(config.get_str('Appearance.MapDisplay.Trackpoints.SelectedPoints.body.color', '0000FF'))
-        self.selected_turning_point_size = config.get_int('Appearance.MapDisplay.Trackpoints.SelectedPoints.body.size', 7)
-        self.selected_turning_point_outline_color = self._hex_to_rgb(config.get_str('Appearance.MapDisplay.Trackpoints.SelectedPoints.outline.color', 'FFFFFF'))
-        self.selected_turning_point_outline_width = config.get_int('Appearance.MapDisplay.Trackpoints.SelectedPoints.outline.size', 2)
+        self.selected_turning_point_color = self._hex_to_rgb(config.get_str('appearance.map_display.trackpoints.SelectedPoints.body.color', '0000FF'))
+        self.selected_turning_point_size = config.get_int('appearance.map_display.trackpoints.SelectedPoints.body.size', 7)
+        self.selected_turning_point_outline_color = self._hex_to_rgb(config.get_str('appearance.map_display.trackpoints.SelectedPoints.outline.color', 'FFFFFF'))
+        self.selected_turning_point_outline_width = config.get_int('appearance.map_display.trackpoints.SelectedPoints.outline.size', 2)
         
         # Double selected trackpoints (body and outline)
-        self.double_selected_turning_point_color = self._hex_to_rgb(config.get_str('Appearance.MapDisplay.Trackpoints.DoubleSelectedPoints.body.color', 'FFA500'))
-        self.double_selected_turning_point_size = config.get_int('Appearance.MapDisplay.Trackpoints.DoubleSelectedPoints.body.size', 8)
-        self.double_selected_turning_point_outline_color = self._hex_to_rgb(config.get_str('Appearance.MapDisplay.Trackpoints.DoubleSelectedPoints.outline.color', 'FFFFFF'))
-        self.double_selected_turning_point_outline_width = config.get_int('Appearance.MapDisplay.Trackpoints.DoubleSelectedPoints.outline.size', 2)
+        self.double_selected_turning_point_color = self._hex_to_rgb(config.get_str('appearance.map_display.trackpoints.DoubleSelectedPoints.body.color', 'FFA500'))
+        self.double_selected_turning_point_size = config.get_int('appearance.map_display.trackpoints.DoubleSelectedPoints.body.size', 8)
+        self.double_selected_turning_point_outline_color = self._hex_to_rgb(config.get_str('appearance.map_display.trackpoints.DoubleSelectedPoints.outline.color', 'FFFFFF'))
+        self.double_selected_turning_point_outline_width = config.get_int('appearance.map_display.trackpoints.DoubleSelectedPoints.outline.size', 2)
         
         # Crosshair settings
-        self.show_crosshair = config.get_bool('Appearance.MapDisplay.Crosshair.show', True)
-        self.crosshair_color = self._hex_to_rgb(config.get_str('Appearance.MapDisplay.Crosshair.body.color', 'FF0000'))
-        self.crosshair_outline_color = self._hex_to_rgb(config.get_str('Appearance.MapDisplay.Crosshair.outline.color', 'FFFFFF'))
-        self.crosshair_outline_width = config.get_int('Appearance.MapDisplay.Crosshair.outline.width', 1)
-        self.crosshair_size = config.get_int('Appearance.MapDisplay.Crosshair.size', 20)
+        self.show_crosshair = config.get_bool('appearance.map_display.Crosshair.show', True)
+        self.crosshair_color = self._hex_to_rgb(config.get_str('appearance.map_display.Crosshair.body.color', 'FF0000'))
+        self.crosshair_outline_color = self._hex_to_rgb(config.get_str('appearance.map_display.Crosshair.outline.color', 'FFFFFF'))
+        self.crosshair_outline_width = config.get_int('appearance.map_display.Crosshair.outline.width', 1)
+        self.crosshair_size = config.get_int('appearance.map_display.Crosshair.size', 20)
         
         # Map state - load from recent_center, fall back to default_center
-        recent_center_lat = config.get_float('Appearance.Tiles.recent_center.lat', None)
-        recent_center_lon = config.get_float('Appearance.Tiles.recent_center.lon', None)
+        recent_center_lat = config.get_float('appearance.tiles.recent_center.lat', None)
+        recent_center_lon = config.get_float('appearance.tiles.recent_center.lon', None)
         
         if recent_center_lat is not None and recent_center_lon is not None:
             self.center_lat = recent_center_lat
             self.center_lon = recent_center_lon
         else:
             # Fall back to default center
-            self.center_lat = config.get_float('Appearance.Tiles.default_center.lat', 56.168)
-            self.center_lon = config.get_float('Appearance.Tiles.default_center.lon', 15.586)
+            self.center_lat = config.get_float('appearance.tiles.default_center.lat', 56.168)
+            self.center_lon = config.get_float('appearance.tiles.default_center.lon', 15.586)
         
         # Map zoom - load from recent_zoom, fall back to default_zoom, then ZOOM_LEVEL_DEFAULT
-        recent_zoom = config.get_int('Appearance.Tiles.recent_zoom', None)
+        recent_zoom = config.get_int('appearance.tiles.recent_zoom', None)
         if recent_zoom is not None:
             self.zoom_level = recent_zoom
         else:
-            default_zoom = config.get_int('Appearance.Tiles.default_zoom', None)
+            default_zoom = config.get_int('appearance.tiles.default_zoom', None)
             if default_zoom is not None:
                 self.zoom_level = default_zoom
             else:
@@ -475,9 +475,9 @@ class MapWidget(QWidget):
         If default_center and default_zoom are set (user marked them), navigate to that location.
         If not set, do nothing (user hasn't marked a default yet).
         """
-        default_zoom = self.config.get_int('Appearance.Tiles.default_zoom', None)
-        default_center_lat = self.config.get_float('Appearance.Tiles.default_center.lat', None)
-        default_center_lon = self.config.get_float('Appearance.Tiles.default_center.lon', None)
+        default_zoom = self.config.get_int('appearance.tiles.default_zoom', None)
+        default_center_lat = self.config.get_float('appearance.tiles.default_center.lat', None)
+        default_center_lon = self.config.get_float('appearance.tiles.default_center.lon', None)
         
         # Only recenter if default has been explicitly set (not None)
         if default_zoom is None or default_center_lat is None or default_center_lon is None:
@@ -511,9 +511,9 @@ class MapWidget(QWidget):
         with the Recenter button.
         """
         # Save current center and zoom as default
-        self.config.set('Appearance.Tiles.default_zoom', self.zoom_level)
-        self.config.set('Appearance.Tiles.default_center.lat', self.center_lat)
-        self.config.set('Appearance.Tiles.default_center.lon', self.center_lon)
+        self.config.set('appearance.tiles.default_zoom', self.zoom_level)
+        self.config.set('appearance.tiles.default_center.lat', self.center_lat)
+        self.config.set('appearance.tiles.default_center.lon', self.center_lon)
         self.config.save_to_file()
         
         logger.info(f"Marked center: Z{self.zoom_level}, ({self.center_lat:.4f}, {self.center_lon:.4f})")
@@ -525,23 +525,23 @@ class MapWidget(QWidget):
         Called automatically after navigation to persist map state.
         This ensures that if the app closes, the user returns to their last viewed location.
         """
-        self.config.set('Appearance.Tiles.recent_zoom', self.zoom_level)
-        self.config.set('Appearance.Tiles.recent_center.lat', self.center_lat)
-        self.config.set('Appearance.Tiles.recent_center.lon', self.center_lon)
+        self.config.set('appearance.tiles.recent_zoom', self.zoom_level)
+        self.config.set('appearance.tiles.recent_center.lat', self.center_lat)
+        self.config.set('appearance.tiles.recent_center.lon', self.center_lon)
         self.config.save_to_file()
     
     def reset_to_recent_center(self):
         """Reset map to the recent center position (same as startup)."""
-        recent_center_lat = self.config.get_float('Appearance.Tiles.recent_center.lat', None)
-        recent_center_lon = self.config.get_float('Appearance.Tiles.recent_center.lon', None)
+        recent_center_lat = self.config.get_float('appearance.tiles.recent_center.lat', None)
+        recent_center_lon = self.config.get_float('appearance.tiles.recent_center.lon', None)
         
         if recent_center_lat is not None and recent_center_lon is not None:
             self.center_lat = recent_center_lat
             self.center_lon = recent_center_lon
         else:
             # Fall back to default if recent not available
-            self.center_lat = self.config.get_float('Appearance.Tiles.default_center.lat', 56.168)
-            self.center_lon = self.config.get_float('Appearance.Tiles.default_center.lon', 15.586)
+            self.center_lat = self.config.get_float('appearance.tiles.default_center.lat', 56.168)
+            self.center_lon = self.config.get_float('appearance.tiles.default_center.lon', 15.586)
         
         self.render_map()
     
@@ -598,15 +598,15 @@ class MapWidget(QWidget):
         config = AppConfig()
         
         # Reload all turning points settings
-        self.show_turning_points = config.get_bool('Appearance.MapDisplay.TurningPoints.show', True)
-        self.turning_point_color = self._hex_to_rgb(config.get_str('Appearance.MapDisplay.TurningPoints.color', 'FFFF00'))
-        self.selected_turning_point_color = self._hex_to_rgb(config.get_str('Appearance.MapDisplay.TurningPoints.selected.color', '0000FF'))
-        self.turning_point_size = config.get_int('Appearance.MapDisplay.TurningPoints.size', 4)
-        self.selected_turning_point_size = config.get_int('Appearance.MapDisplay.TurningPoints.selected.size', 7)
+        self.show_turning_points = config.get_bool('appearance.map_display.TurningPoints.show', True)
+        self.turning_point_color = self._hex_to_rgb(config.get_str('appearance.map_display.TurningPoints.color', 'FFFF00'))
+        self.selected_turning_point_color = self._hex_to_rgb(config.get_str('appearance.map_display.TurningPoints.selected.color', '0000FF'))
+        self.turning_point_size = config.get_int('appearance.map_display.TurningPoints.size', 4)
+        self.selected_turning_point_size = config.get_int('appearance.map_display.TurningPoints.selected.size', 7)
         
         # Reload double selected (range) turning points settings
-        self.double_selected_turning_point_color = self._hex_to_rgb(config.get_str('Appearance.MapDisplay.TurningPoints.doubleSelected.color', 'FFA500'))
-        self.double_selected_turning_point_size = config.get_int('Appearance.MapDisplay.TurningPoints.doubleSelected.size', 8)
+        self.double_selected_turning_point_color = self._hex_to_rgb(config.get_str('appearance.map_display.TurningPoints.doubleSelected.color', 'FFA500'))
+        self.double_selected_turning_point_size = config.get_int('appearance.map_display.TurningPoints.doubleSelected.size', 8)
         
         # Re-render the map with new settings
         self.render_map()

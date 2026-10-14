@@ -122,8 +122,8 @@ def main():
     
     try:
         config = AppConfig(args.config)
-        app_name = config.get_str('Application.name', 'CourseStudio')
-        version = config.get_str('Application.version', '1.0.0')
+        app_name = config.get_str('application.name', 'CourseStudio')
+        version = config.get_str('application.version', '1.0.0')
         logger.info(f"Configuration loaded: {app_name} v{version}")
         print(f"✅ Application: {app_name} v{version}")
     except FileNotFoundError as e:

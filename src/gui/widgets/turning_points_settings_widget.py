@@ -43,25 +43,25 @@ class TurningPointsSettingsWidget(QGroupBox):
         self.config = config or AppConfig()
         
         # Load current values from config
-        self.show = self.config.get_bool('Appearance.MapDisplay.Trackpoints.show', True)
+        self.show = self.config.get_bool('appearance.map_display.trackpoints.show', True)
         
         # General Points
-        self.general_body_color = self.config.get_str('Appearance.MapDisplay.Trackpoints.GeneralPoints.body.color', 'FFFF00')
-        self.general_body_size = self.config.get_int('Appearance.MapDisplay.Trackpoints.GeneralPoints.body.size', 4)
-        self.general_outline_color = self.config.get_str('Appearance.MapDisplay.Trackpoints.GeneralPoints.outline.color', 'FFFFFF')
-        self.general_outline_size = self.config.get_int('Appearance.MapDisplay.Trackpoints.GeneralPoints.outline.size', 1)
+        self.general_body_color = self.config.get_str('appearance.map_display.trackpoints.GeneralPoints.body.color', 'FFFF00')
+        self.general_body_size = self.config.get_int('appearance.map_display.trackpoints.GeneralPoints.body.size', 4)
+        self.general_outline_color = self.config.get_str('appearance.map_display.trackpoints.GeneralPoints.outline.color', 'FFFFFF')
+        self.general_outline_size = self.config.get_int('appearance.map_display.trackpoints.GeneralPoints.outline.size', 1)
         
         # Selected Points
-        self.selected_body_color = self.config.get_str('Appearance.MapDisplay.Trackpoints.SelectedPoints.body.color', '0000FF')
-        self.selected_body_size = self.config.get_int('Appearance.MapDisplay.Trackpoints.SelectedPoints.body.size', 7)
-        self.selected_outline_color = self.config.get_str('Appearance.MapDisplay.Trackpoints.SelectedPoints.outline.color', 'FFFFFF')
-        self.selected_outline_size = self.config.get_int('Appearance.MapDisplay.Trackpoints.SelectedPoints.outline.size', 2)
+        self.selected_body_color = self.config.get_str('appearance.map_display.trackpoints.SelectedPoints.body.color', '0000FF')
+        self.selected_body_size = self.config.get_int('appearance.map_display.trackpoints.SelectedPoints.body.size', 7)
+        self.selected_outline_color = self.config.get_str('appearance.map_display.trackpoints.SelectedPoints.outline.color', 'FFFFFF')
+        self.selected_outline_size = self.config.get_int('appearance.map_display.trackpoints.SelectedPoints.outline.size', 2)
         
         # Double Selected Points
-        self.double_selected_body_color = self.config.get_str('Appearance.MapDisplay.Trackpoints.DoubleSelectedPoints.body.color', 'FFA500')
-        self.double_selected_body_size = self.config.get_int('Appearance.MapDisplay.Trackpoints.DoubleSelectedPoints.body.size', 8)
-        self.double_selected_outline_color = self.config.get_str('Appearance.MapDisplay.Trackpoints.DoubleSelectedPoints.outline.color', 'FFFFFF')
-        self.double_selected_outline_size = self.config.get_int('Appearance.MapDisplay.Trackpoints.DoubleSelectedPoints.outline.size', 2)
+        self.double_selected_body_color = self.config.get_str('appearance.map_display.trackpoints.DoubleSelectedPoints.body.color', 'FFA500')
+        self.double_selected_body_size = self.config.get_int('appearance.map_display.trackpoints.DoubleSelectedPoints.body.size', 8)
+        self.double_selected_outline_color = self.config.get_str('appearance.map_display.trackpoints.DoubleSelectedPoints.outline.color', 'FFFFFF')
+        self.double_selected_outline_size = self.config.get_int('appearance.map_display.trackpoints.DoubleSelectedPoints.outline.size', 2)
         
         # Apply white frame styling (main section)
         self.setStyleSheet("""
