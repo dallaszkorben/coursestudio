@@ -20,9 +20,230 @@ logger = logging.getLogger(__name__)
 
 class MapWidget(QWidget):
     """
-    Custom widget that displays the map.
+    Interactive map widget for displaying GPS tracks with pan, zoom, and trackpoint editing.
     
-    Handles map rendering and user interactions like panning and zooming.
+    ARCHITECTURE OVERVIEW
+    =====================
+    MapWidget is the visual anchor of the application. It displays:
+    1. Map tiles (MBTiles format) as background
+    2. Selected track as a colored path
+    3. Trackpoints (turning points) as interactive circles
+    4. UI controls (zoom +/-, recenter button, zoom level display)
+    5. Crosshair at center (optional)
+    
+    CRITICAL: THREE COORDINATE SYSTEMS
+    ==================================
+    Conversions between systems happen constantly. Mistakes here cause visual errors.
+    
+    1. GPS Coordinates (Decimal Degrees)
+       - What: Latitude/Longitude as decimal numbers
+       - Example: (57.5126°N, 12.2584°E)
+       - Range: Lat [-90, 90], Lon [-180, 180]
+       - Source: GPX files, business logic
+       - Used for: Storing data, calculations
+    
+    2. Web Mercator (Projected)
+       - What: GPS converted to screen-like coordinate system
+       - Reason: Maps are flat, Earth is spherical
+       - Formula: x = lon * R, y = log(tan(π/4 + lat/2)) * R (where R = radius)
+       - Tiles: Organized as grid in Web Mercator space
+       - Problem: Y-axis inverts at equator (confusing!)
+       - Used for: Tile indexing, pan/zoom calculations
+    
+    3. Screen Pixels
+       - What: Actual display coordinates (0,0 at top-left)
+       - Range: (0, 0) to (width-1, height-1)
+       - Used for: Mouse events, drawing, button hit detection
+       - Problem: Must convert GPS → Screen for rendering AND Screen → GPS for click detection
+    
+    Conversion Chain:
+    GPS (57.5126°, 12.2584°)
+        ↓
+    [gps_to_mercator] ← MapRenderer handles this
+        ↓
+    Mercator (x=1403.9km, y=7473.2km)
+        ↓
+    [mercator_to_screen] ← MapRenderer handles this
+        ↓
+    Screen (x=423px, y=187px)
+    
+    For click detection, reverse the chain:
+    Screen (x=423px, y=187px)
+        ↓
+    [screen_to_mercator] ← Calculate from screen size & map bounds
+        ↓
+    Mercator (x=1403.9km, y=7473.2km)
+        ↓
+    [mercator_to_gps] ← Reverse Mercator projection
+        ↓
+    GPS (57.5126°, 12.2584°)
+    
+    RENDERING PIPELINE
+    ==================
+    Order matters! Render sequence determines what appears on top.
+    
+    Step 1: RENDER BASE TILES
+            - MapRenderer.render() fetches tiles from MBTiles
+            - Returns PIL Image with tile grid
+            - Tiles rendered in Web Mercator space
+    
+    Step 2: DRAW TRACK PATH
+            - For selected track only
+            - Render ALL trackpoints as a line
+            - Uses outline effect (thicker outline color first, then thin line on top)
+            - Always rendered (regardless of show_turning_points setting)
+    
+    Step 3: DRAW TURNING POINTS (Trackpoints)
+            - Yellow dots for unselected points
+            - Blue dot for selected single point
+            - Orange dots for range-selected points (2 points marked for insertion)
+            - Order: Unselected first (bottom), range second, single last (top layer)
+            - Why: Selected points appear on top visually
+    
+    Step 4: DRAW UI CONTROLS
+            - Zoom +/- buttons
+            - Recenter button
+            - Zoom level display
+            - Crosshair at center (optional)
+            - Also calculates button hit areas (for click detection)
+    
+    Z-ORDER (Top to Bottom):
+    1. UI Controls (buttons, labels)
+    2. Selected trackpoint (single selection, blue)
+    3. Range-selected trackpoints (orange)
+    4. Unselected trackpoints (yellow)
+    5. Track path (red line with outline)
+    6. Map tiles (background)
+    
+    TRACKPOINT INTERACTION STATE MACHINE
+    ====================================
+    Trackpoints can be modified by dragging. State flow:
+    
+    State 1: IDLE (no mouse action)
+             - Variables: dragging_trackpoint = False
+             - User can see trackpoints, clicking prepares for drag
+    
+    State 2: MOUSE PRESSED (user clicked on trackpoint)
+             - Event: mousePressEvent() called
+             - Actions:
+               a. Detect which trackpoint under cursor (hit detection with radius)
+               b. If trackpoint found:
+                  - Store: dragged_trackpoint_index = i
+                  - Store: drag_start_x, drag_start_y (cursor position)
+                  - Store: drag_original_lat, drag_original_lon (point's original position)
+                  - Set: dragging_trackpoint = True
+               c. If button clicked: Handle zoom/recenter/show buttons
+    
+    State 3: MOUSE MOVE (user dragging with button held)
+             - Event: mouseMoveEvent() called while mouse button held
+             - Condition: dragging_trackpoint == True
+             - Actions:
+               a. Calculate new cursor position
+               b. Convert screen coordinates to GPS coordinates
+               c. Update trackpoint position in business logic
+               d. Emit signal: trackpoint_dragging(index, new_lat, new_lon)
+               e. Render map (visual feedback of moving point)
+             - Visual: Point follows cursor in real-time
+    
+    State 4: MOUSE RELEASED (user released button)
+             - Event: mouseReleaseEvent() called
+             - Actions:
+               a. If was dragging (dragging_trackpoint == True):
+                  - Create command for undo/redo
+                  - Call track_manager with final coordinates
+                  - Set: dragging_trackpoint = False
+               b. Clean up drag state variables
+             - Result: Point locked at final position, undo available
+    
+    Edge Cases in State Machine:
+    - User presses outside any trackpoint: No drag state entered
+    - User presses on button: Button action, not drag
+    - User presses on trackpoint, drags outside map: Still updates while outside
+    - User rapidly presses/releases: State properly resets each time
+    
+    HIT DETECTION (Click Detection Algorithm)
+    ==========================================
+    When user clicks, we need to determine:
+    1. Is it a button click? (zoom +/-, recenter, etc.)
+    2. Is it a trackpoint click? (for editing)
+    3. Is it empty space? (for panning)
+    
+    Algorithm for Trackpoint Click Detection:
+    
+    For each trackpoint in selected track:
+        1. Convert GPS (lat, lon) to screen pixels using map_renderer
+        2. Calculate distance from cursor to point
+        3. If distance <= click_radius (e.g., 10 pixels):
+            - Point is under cursor
+            - Use smallest distance if multiple points close
+            - Enter drag state
+    
+    Why radius check? GPS points are tiny (1 pixel), hard to click. Radius makes it easy.
+    
+    SIGNAL EMISSIONS (Communication with MainWindow)
+    ================================================
+    MapWidget emits signals when important events happen:
+    
+    - map_ready: When map finishes initial render
+    - track_clicked(track_id): When user clicks track path
+    - point_clicked(track_id, point_id): When user clicks trackpoint
+    - range_selection_changed(bool): When user selects/deselects 2 points (for insertion)
+    - trackpoint_dragging(index, lat, lon): During drag, for real-time feedback
+    
+    MainWindow receives these and coordinates with other widgets.
+    
+    CONFIG INTEGRATION
+    ==================
+    MapWidget reads appearance settings from config:
+    - track_color: Track path color (hex RRGGBB)
+    - track_path_width: Line width in pixels
+    - turning_point_color: Default trackpoint color
+    - turning_point_size: Trackpoint radius
+    - selected_turning_point_color: Blue color when selected
+    - Coordinate limits: Default center, zoom levels
+    
+    Settings can be changed in real-time:
+    - Apply button in Settings widget → emits signal
+    - MainWindow receives → calls widget refresh methods
+    - MapWidget re-renders with new colors/sizes
+    
+    STATE VARIABLES (Track Application State)
+    ==========================================
+    selected_track_id: Which track visible (-1 = none)
+    selected_trackpoint_index: Single point highlighted (-1 = none)
+    selected_trackpoint_range: Two points marked (tuple or None)
+    show_turning_points: Display trackpoints? (True/False toggle)
+    
+    Dragging State:
+    dragging_trackpoint: Currently dragging? (T/F)
+    dragged_trackpoint_index: Which point? (index or None)
+    drag_start_x, drag_start_y: Initial cursor position
+    drag_original_lat, drag_original_lon: Point's original position (for visualization)
+    
+    PERFORMANCE CONSIDERATIONS
+    ==========================
+    Large tracks (1000+ points) can cause slowness:
+    
+    Problem Areas:
+    1. Tile rendering: ~500ms for full screen
+    2. Track path drawing: O(n) where n = trackpoints
+    3. Trackpoint rendering: O(n)
+    4. Hit detection: O(n) for each click
+    
+    Optimizations (not currently implemented):
+    - Cache rendered tiles
+    - Cull points outside screen bounds
+    - Use spatial hash for hit detection
+    - Batch render operations
+    
+    Current approach: Works fine for typical tracks (100-1000 points).
+    
+    Signals:
+        map_ready: Emitted when map finishes rendering
+        track_clicked: Emitted when track path clicked
+        point_clicked: Emitted when trackpoint clicked
+        range_selection_changed: Emitted when point range changes
+        trackpoint_dragging: Emitted during trackpoint drag (real-time feedback)
     """
     
     # Signals
@@ -644,84 +865,24 @@ class MapWidget(QWidget):
         logger.debug("Map settings reloaded from config")
     
     def mousePressEvent(self, event):
-        """Handle mouse clicks on buttons and map."""
-        x = event.x()
-        y = event.y()
-        
-        # Transform coordinates to map space (same as hover detection)
-        label_width = self.map_label.width()
-        label_height = self.map_label.height()
-        
-        if label_width > 0 and label_height > 0 and self.map_label.pixmap():
-            pixmap_width = self.map_label.pixmap().width()
-            pixmap_height = self.map_label.pixmap().height()
-            scale_x = pixmap_width / label_width
-            scale_y = pixmap_height / label_height
-            map_x = int(x * scale_x)
-            map_y = int(y * scale_y)
-        else:
-            map_x, map_y = x, y
-        
-        # Check which button was clicked
-        button_clicked = None
-        for button_name, rect in self.button_rects.items():
-            x1, y1, x2, y2 = rect
-            if x1 <= map_x <= x2 and y1 <= map_y <= y2:
-                button_clicked = button_name
-                break
-        
-        if button_clicked:
-            # Button was clicked - set pressed state and execute action
-            # Note: zoom_level button is display-only, not clickable
-            if button_clicked == 'zoom_level':
-                return  # Ignore clicks on zoom level display
-            
-            self.pressed_button = button_clicked
-            self.needs_render = True
-            logger.info(f"Button pressed: {button_clicked}")
-            
-            # Execute button action
-            if button_clicked == 'zoom_in':
-                self.zoom_in()
-            elif button_clicked == 'zoom_out':
-                self.zoom_out()
-            elif button_clicked == 'mark_center':
-                self.on_mark_center_clicked()
-            elif button_clicked == 'recenter':
-                self.recenter_on_default()
-        else:
-            # Not a button click, handle as map pan
-            self.pan_start_x = x
-            self.pan_start_y = y
-    
-    def _point_in_rect(self, x, y, rect):
-        """Check if point (x, y) is inside rectangle (x1, y1, x2, y2)."""
-        return rect[0] <= x <= rect[2] and rect[1] <= y <= rect[3]
         """
-        Handle mouse button press - implements trackpoint dragging and map panning.
+        Handle mouse button press - implements trackpoint dragging, map panning, and button interaction.
         
-        State Machine (two mutually exclusive behaviors):
+        State Machine (mutually exclusive behaviors):
         
-        1. DRAGGING STATE (if point was clicked):
-           - Save original point position
-           - Set dragging_trackpoint=True, dragged_trackpoint_index=index
-           - mouseMoveEvent() will update point position in real-time
-           - mouseReleaseEvent() will save move as undoable command
+        1. BUTTON CLICK: User clicks zoom/recenter buttons
+           - Execute button action
         
-        2. PANNING STATE (if map was clicked):
-           - Save pan start coordinates (pan_start_x, pan_start_y)
-           - mouseMoveEvent() will pan the map
-           - mouseReleaseEvent() will clear pan state
+        2. TRACKPOINT CLICK: User clicks on a trackpoint marker
+           - Single click: Select point, start drag mode
+           - Shift+click: Select range (2 consecutive points)
+           - Insert point between selected range on Shift+click
         
-        Preconditions:
-        - A track must be selected (self.selected_track_id != None)
-        - For dragging: point must exist and have valid coordinates
-        - For panning: mbtiles provider must exist
+        3. EMPTY SPACE CLICK: User clicks on map background
+           - Normal click: Pan the map
+           - Shift+click: Insert new trackpoint (create track if needed)
         
-        Signals emitted:
-        - trackpoint_dragging: During drag (real-time coordinate updates)
-        - point_clicked: When dragging completes
-        - range_selection_changed: When range is modified
+        4. RIGHT-CLICK: Show context menu
         """
         if event.button() == Qt.RightButton:
             # Right-click: show context menu
@@ -931,6 +1092,10 @@ class MapWidget(QWidget):
             
             self.pan_start_x = x
             self.pan_start_y = y
+    
+    def _point_in_rect(self, x, y, rect):
+        """Check if point (x, y) is inside rectangle (x1, y1, x2, y2)."""
+        return rect[0] <= x <= rect[2] and rect[1] <= y <= rect[3]
     
     def mouseMoveEvent(self, event):
         """Handle mouse movement for panning, dragging trackpoint, and button hover effects."""

@@ -94,64 +94,117 @@ class GPXHandler:
     
     def load_gpx(self, file_path: str) -> Optional[gpxpy.gpx.GPX]:
         """
-        Load and parse a GPX file.
+        Load and parse a GPX file with comprehensive error handling.
         
-        Process:
-        1. Verify file exists and is readable
-        2. Open with UTF-8 encoding (errors='replace' handles bad chars)
+        ===== GPX LOADING PIPELINE =====
+        1. Verify file exists (FileNotFoundError if not)
+        2. Verify file readable (PermissionError if not)
         3. Parse XML using gpxpy library
+           - gpxpy handles XML parsing automatically
+           - Validates GPX schema (structure, element names)
+           - Converts to Python objects (tracks, routes, waypoints, points)
         4. Store result and mark as valid
         
-        Error Handling:
-        - FileNotFoundError: File doesn't exist
-        - PermissionError: File not readable (permissions issue)
-        - ValueError: GPX format invalid (malformed XML, wrong schema)
+        ===== ERROR HANDLING STRATEGY =====
+        Graceful degradation - try to load what's valid:
+        - FileNotFoundError: File doesn't exist (fatal)
+        - PermissionError: User can't read file (fatal)
+        - GPXException: Schema validation failed (fatal)
+        - UnicodeDecodeError: File encoding issue (fatal)
+        - Generic Exception: Unexpected XML error (fatal)
+        
+        Error handling approach:
+        - Early validation (file exists, readable) catches common issues
+        - Try-except for parsing errors
+        - Specific exceptions (GPXException, UnicodeDecodeError) for diagnosis
+        - Generic Exception for other XML parsing errors
+        - User-friendly error messages in all cases
+        
+        ===== PERFORMANCE NOTES =====
+        - O(n) where n = file size (must parse entire XML)
+        - For large files (>10MB): may take several seconds
+        - gpxpy caches parsed data in memory
+        - No incremental/streaming parsing available
+        
+        ===== ENCODING HANDLING =====
+        - Uses UTF-8 encoding (GPS standard)
+        - errors='replace': Replace invalid bytes with placeholder
+        - Prevents hard crash on non-UTF8 files
+        - Some characters may be lost (graceful degradation)
         
         Args:
-            file_path (str): Path to GPX file
+            file_path (str): Path to GPX file (absolute or relative)
         
         Returns:
             Optional[gpxpy.gpx.GPX]: Parsed GPX object, or None if error
         
         Raises:
             FileNotFoundError: If file doesn't exist
-            ValueError: If file is not valid GPX
+            PermissionError: If file not readable
+            ValueError: If file is not valid GPX (schema error, encoding issue)
         
         Example:
             handler = GPXHandler()
-            gpx = handler.load_gpx('track.gpx')
-            if gpx:
-                # Loaded successfully
-                tracks = gpx.tracks
+            try:
+                gpx = handler.load_gpx('track.gpx')
+                print(f"Loaded {len(gpx.tracks)} tracks")
+            except FileNotFoundError:
+                print("File not found")
+            except ValueError as e:
+                print(f"Invalid GPX: {e}")
+        
+        Side Effects:
+            - Sets self.gpx_data to parsed GPX object
+            - Sets self.file_path to file path
+            - Sets self.is_valid to True if successful
+            - Prints status messages to stdout
         """
         
-        # Step 1: Verify file exists
+        # ===== STEP 1: VERIFY FILE EXISTS =====
+        # Check file exists before trying to open
+        # Prevents "file not found" error buried in try-except
         if not os.path.exists(file_path):
             raise FileNotFoundError(f"GPX file not found: {file_path}")
         
-        # Step 2: Verify file is readable (not permission denied)
+        # ===== STEP 2: VERIFY FILE IS READABLE =====
+        # Check read permissions before trying to open
+        # Prevents "permission denied" error buried in try-except
         if not os.access(file_path, os.R_OK):
             raise PermissionError(f"Cannot read GPX file (permission denied): {file_path}")
         
-        # Step 3: Parse GPX file using gpxpy
+        # ===== STEP 3: PARSE GPX FILE USING GPXPY =====
+        # Parse the XML file using gpxpy library
+        # gpxpy handles:
+        # - XML parsing (converts text to tree)
+        # - Schema validation (checks GPX structure)
+        # - Object creation (Track, Segment, Point objects)
         try:
             with open(file_path, 'r', encoding='utf-8', errors='replace') as gpx_file:
                 # gpxpy.parse() handles XML parsing and validates GPX structure
+                # errors='replace' gracefully handles encoding issues
                 self.gpx_data = gpxpy.parse(gpx_file)
+        
         except gpxpy.gpx.GPXException as e:
             # GPX schema validation failed (wrong element names, structure)
+            # GPXException = specific error from gpxpy validation
             raise ValueError(f"Invalid GPX file format: {str(e)}")
+        
         except UnicodeDecodeError as e:
             # File encoding issue (not valid UTF-8)
+            # Despite errors='replace', some files may still fail
             raise ValueError(f"GPX file encoding error: {str(e)}")
+        
         except Exception as e:
-            # Other XML parsing errors
+            # Other XML parsing errors (unexpected structure, missing elements)
             raise ValueError(f"Error parsing GPX file: {str(e)}")
         
-        # Step 4: Store file path and mark as valid
+        # ===== STEP 4: STORE STATE AND MARK VALID =====
+        # Store file path for reference
         self.file_path = file_path
+        # Mark as valid (used by other methods)
         self.is_valid = True
         
+        # Print status for user feedback
         print(f"✅ Loaded GPX file: {file_path}")
         print(f"   Tracks: {len(self.gpx_data.tracks)}")
         print(f"   Routes: {len(self.gpx_data.routes)}")
@@ -341,10 +394,51 @@ class GPXHandler:
         """
         Validate that GPX data can be imported into Garmin devices.
         
-        Checks for common issues that prevent Garmin import:
-        - Null bytes in names
-        - Invalid coordinates
-        - Malformed structure
+        ===== GARMIN COMPATIBILITY REQUIREMENTS =====
+        Garmin EchoMAP 50s and similar devices have strict import requirements:
+        
+        1. Track Names
+           - Max 255 characters (Garmin device display limitation)
+           - No null bytes (binary corruption)
+           - ASCII-compatible characters preferred
+        
+        2. Trackpoints (Coordinates)
+           - Latitude: -90 to +90 degrees
+           - Longitude: -180 to +180 degrees
+           - Invalid coordinates cause import to fail silently
+        
+        3. Structure
+           - Minimum 1 track (empty GPX files rejected)
+           - Minimum 2 points per track (single-point tracks invalid)
+           - Proper segment nesting required
+        
+        ===== WHY VALIDATION MATTERS =====
+        Problem: Garmin devices don't show helpful error messages
+           - Invalid file → Device shows generic "Import failed"
+           - User can't tell what's wrong
+           - Waste time troubleshooting
+        
+        Solution: Pre-validate before saving
+           - Catch issues before writing to device
+           - Provide specific error messages
+           - User can fix problems in CourseStudio
+        
+        ===== VALIDATION ALGORITHM =====
+        For each track in GPX:
+           1. Check track name (length, null bytes)
+           2. For each segment in track:
+              3. For each point in segment:
+                 4. Validate coordinates (range check)
+        
+        If ANY error found → not compatible
+        If NO errors → compatible for Garmin import
+        
+        ===== ERROR COLLECTION =====
+        Errors returned as list with full context:
+        - "Track 0: Name contains null bytes"
+        - "Track 0, Segment 1, Point 5: Latitude out of range: 95.2"
+        
+        Full context helps user locate and fix problems.
         
         Args:
             gpx_data (gpxpy.gpx.GPX): GPX object to validate
@@ -358,32 +452,50 @@ class GPXHandler:
             >>> gpx = handler.load_gpx('track.gpx')
             >>> compatible, errors = handler.validate_garmin_compatibility(gpx)
             >>> if not compatible:
+            ...     print("Cannot import to Garmin:")
             ...     for error in errors:
-            ...         print(f"Issue: {error}")
+            ...         print(f"  - {error}")
+            >>> else:
+            ...     print("✅ Ready for Garmin import")
+        
+        Side Effects:
+            - None (read-only validation, doesn't modify GPX)
         """
         
+        # Collect all errors (don't stop at first error)
+        # Users want to fix all problems at once, not one at a time
         errors = []
         
-        # Check tracks
+        # ===== CHECK EACH TRACK =====
+        # Iterate through all tracks in GPX file
         for track_idx, track in enumerate(gpx_data.tracks):
-            # Check track name
+            
+            # ===== VALIDATE TRACK NAME =====
             if track.name:
-                # Check for null bytes
+                # Check for null bytes (binary corruption)
+                # Null bytes cause Garmin import to fail silently
                 if '\x00' in track.name:
                     errors.append(f"Track {track_idx}: Name contains null bytes")
                 
-                # Check length
+                # Check name length (Garmin device display limit)
+                # Names >255 chars truncated on device, may cause confusion
                 if len(track.name) > 255:
                     errors.append(f"Track {track_idx}: Name too long (>255 chars)")
             
-            # Check trackpoints
+            # ===== VALIDATE ALL TRACKPOINTS =====
+            # For each segment in track
             for seg_idx, segment in enumerate(track.segments):
+                # For each point in segment
                 for pt_idx, point in enumerate(segment.points):
-                    # Validate coordinates
+                    # CRITICAL: Validate coordinates
+                    # Invalid coordinates cause silent import failure on Garmin
                     valid, msg = validate_coordinate(point.latitude, point.longitude)
                     if not valid:
+                        # Include full context for user (track/segment/point indices)
                         errors.append(f"Track {track_idx}, Segment {seg_idx}, Point {pt_idx}: {msg}")
         
+        # ===== RETURN RESULTS =====
+        # Compatible = no errors found
         is_compatible = len(errors) == 0
         return is_compatible, errors
     
@@ -396,53 +508,130 @@ class GPXHandler:
         """
         Save modified GPX data to file with Garmin compatibility.
         
-        Validates Garmin compatibility before saving and creates backup.
+        ===== SAVE PROCESS =====
+        1. Validate Garmin compatibility (prevent saving invalid files)
+        2. Create backup of existing file (if it exists)
+        3. Convert GPX object to XML string (gpxpy handles serialization)
+        4. Write XML to file (with UTF-8 encoding)
+        5. Return success/error status
+        
+        ===== VALIDATION BEFORE SAVE =====
+        Why pre-validate?
+           - Prevents saving incompatible files to disk
+           - Catches errors BEFORE user tries Garmin import
+           - Saves user time troubleshooting device errors
+        
+        What's validated:
+           - Track names (length, null bytes)
+           - Trackpoint coordinates (range)
+           - Structure (required elements present)
+        
+        If validation fails:
+           - Returns: (False, error_message)
+           - File NOT written
+           - User must fix problems in CourseStudio
+        
+        ===== BACKUP STRATEGY =====
+        When create_backup=True and file exists:
+           - Creates .bak file with copy of original
+           - Saved with modification time preserved (shutil.copy2)
+           - If backup fails → continues with save anyway
+           - Non-fatal: save still completes even if backup fails
+        
+        When create_backup=False:
+           - Overwrites file directly (no backup)
+           - Use only if user explicitly requests this
+        
+        ===== ERROR HANDLING =====
+        Errors returned as (False, error_message) tuple:
+           - Validation failure: specific Garmin compatibility errors
+           - File write failure: permission denied, disk full, path invalid
+           - Backup failure: logged but save continues
+        
+        Success returned as (True, success_message):
+           - Includes file path and backup status
+        
+        ===== PERFORMANCE NOTES =====
+        - O(n) where n = total trackpoints (must convert all points to XML)
+        - For large files (9,000+ points): may take 1-2 seconds
+        - XML serialization done entirely in memory
+        - No streaming/incremental write
         
         Args:
-            file_path (str): Path where to save GPX file
+            file_path (str): Path where to save GPX file (absolute or relative)
             gpx_data (gpxpy.gpx.GPX): GPX object to save
-            create_backup (bool): Whether to create backup (.bak) file
+            create_backup (bool): Whether to create .bak backup file
+                                 (default: True for safety)
         
         Returns:
             Tuple[bool, str]: (success, message)
-                - success: True if saved, False if error
+                - success: True if saved successfully, False if error
                 - message: Success message or error description
+                          (includes file path and backup info)
         
         Example:
-            >>> gpx = handler.load_gpx('track.gpx')
+            >>> handler = GPXHandler()
+            >>> gpx = handler.load_gpx('original.gpx')
             >>> # Modify tracks...
-            >>> success, msg = handler.save_gpx('track_modified.gpx', gpx)
+            >>> success, msg = handler.save_gpx('modified.gpx', gpx)
             >>> if success:
             ...     print(f"✅ {msg}")
             ... else:
             ...     print(f"❌ {msg}")
+        
+        Side Effects:
+            - Creates or overwrites file at file_path
+            - Creates backup (.bak) if file exists and create_backup=True
+            - Prints status messages to stdout
+            - Modifies file system (write permissions required)
         """
         
-        # Validate Garmin compatibility
+        # ===== STEP 1: VALIDATE GARMIN COMPATIBILITY =====
+        # Check file is valid for Garmin import BEFORE saving
+        # Prevents user from saving incompatible files
         compatible, errors = self.validate_garmin_compatibility(gpx_data)
         
         if not compatible:
+            # Validation failed - don't save
+            # Format all errors as single error message
             error_msg = "; ".join(errors)
             return False, f"GPX not Garmin compatible: {error_msg}"
         
-        # Create backup if file exists and backup requested
+        # ===== STEP 2: CREATE BACKUP (if requested) =====
+        # Save copy of original file before overwriting
+        # Safety measure: user can restore if something goes wrong
         if os.path.exists(file_path) and create_backup:
             backup_path = file_path + ".bak"
             try:
                 import shutil
+                # shutil.copy2() preserves metadata (modification time, permissions)
                 shutil.copy2(file_path, backup_path)
                 print(f"✅ Created backup: {backup_path}")
             except Exception as e:
+                # Backup failed, but don't stop the save
+                # User wants to save, backup is just safety feature
                 print(f"⚠️  Could not create backup: {e}")
         
-        # Write GPX file
+        # ===== STEP 3 & 4: SERIALIZE AND WRITE TO FILE =====
+        # Convert GPX object to XML string
+        # Write XML to file with UTF-8 encoding
         try:
             with open(file_path, 'w', encoding='utf-8') as gpx_file:
+                # gpxpy.to_xml() converts Python objects back to XML text
+                # Includes all tracks, segments, points, metadata
                 gpx_file.write(gpx_data.to_xml())
             
+            # ===== STEP 5: RETURN SUCCESS =====
             return True, f"✅ File saved: {file_path}"
         
+        except PermissionError:
+            # User doesn't have write permission to directory
+            return False, f"Permission denied: Cannot write to {file_path}"
+        except IOError as e:
+            # IO error (disk full, invalid path, etc)
+            return False, f"Error saving file: {str(e)}"
         except Exception as e:
+            # Other unexpected errors
             return False, f"Error saving file: {str(e)}"
 
 

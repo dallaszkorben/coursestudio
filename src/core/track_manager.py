@@ -228,8 +228,28 @@ class TrackManager:
         """
         Load tracks from GPX data.
         
-        Converts all tracks in a GPX object into TrackData objects.
-        Automatically selects the first track after loading.
+        ===== GPX LOADING PIPELINE =====
+        1. Validate input (GPX object exists)
+        2. Clear old state (fresh start)
+        3. For each track in GPX:
+           a. Extract all trackpoints
+           b. Validate coordinates
+           c. Calculate total distance
+           d. Detect elevation and time data
+           e. Create TrackData object
+        4. Auto-select first track
+        5. Return count of loaded tracks
+        
+        ===== ERROR HANDLING =====
+        - Invalid coordinates: Logged as warning, point skipped
+        - Tracks with no valid points: Logged as warning, track skipped
+        - Parsing errors: Logged as error, continues with next track
+        - Result: Graceful degradation - loads what's valid, skips bad data
+        
+        ===== PERFORMANCE NOTES =====
+        - O(n) where n = total trackpoints across all tracks
+        - For 9,000+ point files: may take 1-2 seconds
+        - Consider progress bar for large files (>10MB)
         
         Args:
             gpx_data (gpxpy.gpx.GPX): Loaded GPX object from GPXHandler
@@ -246,7 +266,12 @@ class TrackManager:
             handler = GPXHandler()
             gpx = handler.load_gpx('track.gpx')
             num_tracks = manager.load_from_gpx(gpx, 'track.gpx')
-            # Loaded N tracks
+            print(f"Loaded {num_tracks} tracks")
+        
+        Side Effects:
+            - Clears all existing tracks (fresh state)
+            - Auto-selects first track if any loaded
+            - Stores GPX file path for reference
         """
         
         if not gpx_data:
@@ -255,12 +280,15 @@ class TrackManager:
         # Import calculator for distance calculation
         from src.core.calculator import calculate_track_distance, validate_coordinate
         
-        # Reset state
+        # ===== RESET STATE =====
+        # Clear previous tracks (fresh start for new file)
         self.tracks.clear()
         self.selected_track_index = -1
         self.gpx_file_path = gpx_file_path
+        logger.debug(f"Loading GPX from: {gpx_file_path}")
         
-        # Load each track
+        # ===== LOAD EACH TRACK =====
+        # Load each track from the GPX file
         for track in gpx_data.tracks:
             try:
                 # Extract trackpoints
@@ -717,14 +745,36 @@ class TrackManager:
         """
         Recalculate distance for a track (e.g., after point modifications).
         
-        CRITICAL: Must be called after:
+        ===== WHEN TO CALL THIS =====
+        This MUST be called after any trackpoint modification:
         - Adding trackpoints (distance increases)
         - Removing trackpoints (distance decreases)
         - Moving trackpoints (distance can increase or decrease)
         - Deleting range of points (distance decreases)
         
-        Why: Track distance is cached for performance (not calculated on-the-fly).
-        Cached value becomes stale after any point modification.
+        ===== WHY CACHE INVALIDATION IS CRITICAL =====
+        Performance Strategy:
+        - Track distance is cached in track.distance_km for performance
+        - UI constantly queries distance (track list display)
+        - Calculating on-the-fly for 9,000+ point tracks would be slow
+        
+        Problem When Not Called:
+        - Cached value becomes STALE after any modification
+        - UI displays WRONG distance to user
+        - Saves GPX file with INCORRECT distance metadata
+        - This is a data integrity issue
+        
+        Solution:
+        - EVERY edit operation must call this method
+        - Updates cached distance_km with fresh value
+        - Marks track dirty (triggers save warning)
+        
+        ===== ALGORITHM =====
+        1. Extract all trackpoints as (lat, lon) tuples
+        2. Pass to calculator which sums consecutive point distances
+        3. Calculator uses Haversine formula (great-circle distance on sphere)
+        4. Update cached distance_km value
+        5. Mark track as dirty (unsaved changes)
         
         Args:
             track_index (int): Track index (0-based)
@@ -733,13 +783,13 @@ class TrackManager:
             Optional[float]: New distance in km, or None if invalid index
         
         Example:
-        distance = manager.recalculate_distance(0)
-        print(f"New distance: {distance:.2f} km")
+            distance = manager.recalculate_distance(0)
+            print(f"New distance: {distance:.2f} km")
         
         Side Effects:
             - Updates track.distance_km with new value
             - Marks track as dirty (unsaved changes)
-            - Logs distance change
+            - Logs distance change for debugging
         """
         
         from src.core.calculator import calculate_track_distance
@@ -750,28 +800,23 @@ class TrackManager:
             logger.warning(f"Cannot recalculate: invalid track index {track_index}")
             return None
         
-        # ===== DISTANCE RECALCULATION PROCESS =====
-        # 1. Extract all trackpoints as (lat, lon) tuples
-        # 2. Pass to calculator which sums all consecutive point distances
-        # 3. Calculator uses Haversine formula (great-circle distance)
-        # 4. Update cached distance_km value
-        # 5. Mark track as dirty (needs saving)
-        
         # Step 1: Convert trackpoints to tuples for calculator
         # (Calculator expects list of (latitude, longitude) tuples)
         distance_tuples = [(tp.latitude, tp.longitude) for tp in track.trackpoints]
         
-        # Step 2: Save old distance for logging comparison
+        # Step 2: Save old distance for logging comparison (helps detect problems)
         old_distance = track.distance_km
         
         # Step 3: Recalculate using Haversine formula (via calculator)
         # This sums: distance(p0→p1) + distance(p1→p2) + ... + distance(pn-1→pn)
+        # Haversine accounts for Earth's spherical shape (better accuracy than linear)
         track.distance_km = calculate_track_distance(distance_tuples)
         
         # Step 4: Mark track as having unsaved changes
+        # This triggers "Save?" prompt when user closes file
         track.mark_dirty()
         
-        # Step 5: Log the change for debugging
+        # Step 5: Log the change for debugging cache invalidation
         logger.info(f"Recalculated distance for '{track.name}': "
                   f"{old_distance:.2f} km → {track.distance_km:.2f} km")
         
@@ -911,8 +956,28 @@ class TrackManager:
         """
         Remove a single trackpoint from a track.
         
-        Removes the trackpoint at the specified index, recalculates track
-        distance, and marks track as dirty for saving.
+        ===== DELETION CASCADES =====
+        Deleting a trackpoint affects THREE things:
+        1. track.trackpoints list → removed from sequence
+        2. track.distance_km → becomes STALE (must recalculate)
+        3. track.is_dirty → marks unsaved changes
+        
+        Deletion Safety:
+        - Won't delete last point in track (need minimum 1 point)
+        - If user deletes last point, UI should delete entire track
+        - See: hard_problems_and_solutions.md Problem 3
+        
+        State Update Order (CRITICAL):
+        1. Validate indices FIRST
+        2. Remove point from list
+        3. Recalculate distance (cache invalidation)
+        4. Mark dirty (save detection)
+        5. Return removed point
+        
+        If step 3 (recalculate) is skipped:
+        - Track displays WRONG distance (data integrity problem)
+        - User sees distance that doesn't match actual trackpoints
+        - File saves with incorrect metadata
         
         Args:
             track_index (int): Index of track to modify
@@ -925,16 +990,23 @@ class TrackManager:
             ValueError: If indices are invalid or out of range
         
         Example:
-        manager = TrackManager()
-        # ... load tracks ...
-        manager.select_track(0)
-        removed = manager.remove_trackpoint(0, 5)
-        if removed:
+            manager = TrackManager()
+            # ... load tracks ...
+            manager.select_track(0)
+            removed = manager.remove_trackpoint(0, 5)
+            if removed:
                 print(f"Removed point at ({removed.latitude}, {removed.longitude})")
-        else:
+            else:
                 print("Failed to remove trackpoint")
+        
+        Signals/Effects:
+            - Track marked dirty (unsaved changes)
+            - Distance recalculated (fresh value cached)
+            - UI should refresh distance display
+            - Undo/redo should capture this operation
         """
         
+        # ===== INPUT VALIDATION =====
         # Validate track index
         if not isinstance(track_index, int) or track_index < 0 or track_index >= len(self.tracks):
             logger.error(f"Invalid track index: {track_index}")
@@ -947,19 +1019,24 @@ class TrackManager:
             logger.error(f"Invalid trackpoint index {point_index} for track with {len(track.trackpoints)} points")
             return None
         
-        # Cannot remove if only one point left
+        # Safety check: Cannot remove if only one point left
+        # (Tracks must have at least one point to be valid)
         if len(track.trackpoints) <= 1:
             logger.warning(f"Cannot remove trackpoint: Track '{track.name}' would be empty")
             return None
         
-        # Remove the trackpoint
+        # ===== DELETION =====
+        # Step 1: Remove the trackpoint from list
         removed_point = track.trackpoints.pop(point_index)
-        logger.info(f"Removed trackpoint {point_index} from track '{track.name}' at ({removed_point.latitude:.4f}, {removed_point.longitude:.4f})")
+        logger.info(f"Removed trackpoint {point_index} from track '{track.name}' "
+                   f"at ({removed_point.latitude:.4f}, {removed_point.longitude:.4f})")
         
-        # Recalculate distance
+        # Step 2: CRITICAL - Recalculate distance (cache invalidation)
+        # Removed point changed track distance, so cached value is now STALE
+        # Must call this or UI will show wrong distance
         self.recalculate_distance(track_index)
         
-        # Mark as dirty
+        # Step 3: Mark as dirty (triggers save detection in UI)
         track.is_dirty = True
         
         return removed_point

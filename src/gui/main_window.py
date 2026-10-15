@@ -24,7 +24,7 @@ import gpxpy.gpx
 
 from PyQt5.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
-    QStatusBar, QMenu, QAction, QFileDialog, QMessageBox, QDialog, QSplitter
+    QStatusBar, QMenu, QAction, QFileDialog, QMessageBox, QDialog, QSplitter, QLabel
 )
 from PyQt5.QtGui import QIcon, QKeySequence
 from PyQt5.QtCore import Qt, QSize, pyqtSignal
@@ -39,6 +39,9 @@ from src.gui.widgets.map_widget import MapWidget
 from src.gui.widgets.settings_widget import SettingsWidget
 from src.gui.dialogs.help_dialog import HelpDialog
 from src.map.mbtiles_provider import MBTilesProvider
+from src.gui.tab_handler_track_editor import TrackEditorTabHandler
+from src.gui.tab_handler_map_editor import MapEditorTabHandler
+from src.gui.tab_handler_settings import SettingsTabHandler
 
 
 # ============================================================================
@@ -54,20 +57,76 @@ logger = logging.getLogger(__name__)
 
 class MainWindow(QMainWindow):
     """
-    Main application window for CourseStudio.
+    Main application window and central signal hub for CourseStudio.
     
-    Provides the primary interface for GPX file manipulation with:
+    ARCHITECTURE: Signal Orchestration Hub
+    =====================================
+    MainWindow acts as the central coordinator for all UI signal flow. It receives
+    signals from multiple child widgets, processes them, and emits coordinated
+    updates to keep all views in sync.
+    
+    Signal Flow Model:
+    ┌─────────────────────────────────────────────────────────────┐
+    │ TrackListWidget ─┐                          ┌─→ MapWidget  │
+    │ MapWidget ────────→ MainWindow (Hub) ───────┤               │
+    │ TrackpointListWidget ┘                      └─→ Track/Point│
+    │ SettingsWidget ────────────┘                   List Widgets │
+    └─────────────────────────────────────────────────────────────┘
+    
+    Key Responsibility: THREE-VIEW SYNCHRONIZATION
+    ==============================================
+    When user performs action (e.g., clicks track in list):
+    1. TrackListWidget emits track_selected(track_index)
+    2. MainWindow receives, updates internal state
+    3. MainWindow emits signals to update OTHER widgets:
+       - Send track data to MapWidget (re-render track)
+       - Send trackpoints to TrackpointListWidget (update table)
+       - Update menu states (enable/disable actions)
+    
+    CRITICAL GOTCHA: Signal Circular Loops
+    =====================================
+    Must prevent infinite loops:
+    - If MapWidget emits signal on track click
+    - MainWindow receives it and updates TrackListWidget
+    - TrackListWidget emits signal back
+    - MUST NOT re-trigger MapWidget (already updated!)
+    
+    Prevention: Guard variables track current state
+    if self.current_track_index == new_index:
+        return  # Already in this state, skip update
+    
+    Menu State Management
+    =====================
+    MainWindow maintains a complex state machine for menu items:
+    - "No file open" state: Only File > Open, Help available
+    - "File open, no track" state: Most actions disabled
+    - "Track selected" state: All operations available
+    
+    State guards prevent invalid operations (e.g., Delete Point without selection)
+    
+    UI Architecture:
     - Menu bar (File, Edit, View, Help)
-    - Toolbar with quick actions
-    - Status bar for feedback
-    - Central widget area for content
-    - Document management (open, save, recent files)
-    - Application state management
+    - Toolbar (quick actions with icons)
+    - Status bar (feedback messages)
+    - Central widget area:
+      - Left: TrackListWidget (track selection)
+      - Center-top: TrackpointListWidget (point table)
+      - Center-bottom: MapWidget (interactive map)
+      - Overlays: SettingsWidget (tabbed preferences)
     
-    Signals:
-        file_opened: Emitted when a GPX file is successfully opened
-        file_saved: Emitted when a GPX file is successfully saved
-        track_selected: Emitted when a track is selected
+    Signals (Emitted by this window):
+        file_opened: Emitted when GPX file successfully loaded
+                     Payload: file_path (str) - Path to opened file
+        file_saved: Emitted when GPX file successfully saved
+                    Payload: file_path (str) - Path to saved file
+        track_selected: Emitted when track selection changes
+                        Payload: track_index (int) - Index of selected track
+    
+    State Variables:
+        current_file_path: Path to currently open file (None if no file)
+        is_modified: Whether current file has unsaved changes
+        current_track_index: Index of currently selected track (-1 if none)
+        current_point_index: Index of currently selected trackpoint (-1 if none)
     
     Example:
         >>> app = QApplication([])
@@ -418,16 +477,20 @@ class MainWindow(QMainWindow):
     # ========================================================================
     
     def _create_central_widget(self):
-        """Create central widget with two main tabs: Editor (Tracks/Trackpoints/Map) and Settings."""
+        """
+        Create central widget with three main tabs using dedicated tab handlers.
+        
+        Tabs:
+        - Track Editor: Track list, trackpoint list, and map display
+        - Map Editor: Map editing features (placeholder for future development)
+        - Settings: Appearance and configuration options
+        """
         
         # Central widget
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
         
-        # Import size policy for widget resizing
-        from PyQt5.QtWidgets import QSizePolicy
-        
-        # Main tab widget (top level - Editor vs Settings)
+        # Main tab widget (top level - three main tabs)
         self.main_tab_widget = QTabWidget()
         
         main_layout = QHBoxLayout()
@@ -437,107 +500,61 @@ class MainWindow(QMainWindow):
         main_layout.addWidget(self.main_tab_widget)
         
         # ====================================================================
-        # Tab 1: Editor (Tracks + Trackpoints/Map layout)
+        # Tab 1: Track Editor (using TrackEditorTabHandler)
         # ====================================================================
         
-        editor_widget = QWidget()
-        editor_layout = QVBoxLayout()
-        editor_widget.setLayout(editor_layout)
-        editor_layout.setContentsMargins(0, 0, 0, 0)
-        editor_layout.setSpacing(0)
+        track_editor_handler = TrackEditorTabHandler(
+            self.track_manager,
+            self.mbtiles_provider,
+            self.config
+        )
+        track_editor_widget = track_editor_handler.create_tab()
         
-        # ====================================================================
-        # Main Horizontal Splitter: Track List (left) vs Trackpoints+Map (right)
-        # ====================================================================
-        
-        main_splitter = QSplitter(Qt.Horizontal)
-        
-        # Left Panel: Track List Widget
-        self.track_list_widget = TrackListWidget(self.track_manager)
-        self.track_list_widget.setMinimumWidth(80)
-        self.track_list_widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        # Get widget references for signal connections
+        self.track_list_widget = track_editor_handler.get_track_list_widget()
+        self.trackpoint_list_widget = track_editor_handler.get_trackpoint_list_widget()
+        self.map_widget = track_editor_handler.get_map_widget()
         
         # Connect track list signals to main window
         self.track_list_widget.track_selected.connect(self._on_track_list_selection_changed)
         self.track_list_widget.track_double_clicked.connect(self._on_track_list_double_clicked)
-        
-        main_splitter.addWidget(self.track_list_widget)
-        
-        # Right Panel: Vertical splitter with Trackpoints and Map
-        right_splitter = QSplitter(Qt.Vertical)
-        
-        # Trackpoint List Widget (top)
-        self.trackpoint_list_widget = TrackpointListWidget(self.track_manager, None)
-        self.trackpoint_list_widget.setMinimumHeight(50)  # Reduced from 100
-        self.trackpoint_list_widget.setMinimumWidth(1)  # Allow horizontal shrinking
-        
-        # Allow to shrink horizontally
-        self.trackpoint_list_widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         
         # Connect trackpoint list signals
         self.trackpoint_list_widget.point_selected.connect(self._on_trackpoint_selected)
         self.trackpoint_list_widget.point_double_clicked.connect(self._on_trackpoint_double_clicked)
         self.trackpoint_list_widget.coordinate_format_changed.connect(self._on_coordinate_format_changed)
         self.trackpoint_list_widget.history_changed.connect(self._update_undo_redo_menu_states)
-        
-        # NEW: Connect show points combo to update settings toggle
         self.trackpoint_list_widget.show_points_combo.currentIndexChanged.connect(
             self._on_show_points_dropdown_changed
         )
-        
-        right_splitter.addWidget(self.trackpoint_list_widget)
-        
-        # Map Widget (bottom)
-        self.map_widget = MapWidget(mbtiles_provider=self.mbtiles_provider, config=self.config)
-        self.map_widget.setMinimumHeight(150)  # Reduced from 300
-        self.map_widget.setMinimumWidth(1)  # Allow horizontal shrinking
-        
-        # Allow map to shrink horizontally too
-        self.map_widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        
-        self.map_widget.set_track_manager(self.track_manager)
         
         # Connect map signals
         self.map_widget.map_ready.connect(self._on_map_ready)
         self.map_widget.track_clicked.connect(self._on_map_track_clicked)
         self.map_widget.point_clicked.connect(self._on_map_point_clicked)
-        self.map_widget.range_selection_changed.connect(self._update_insert_menu_state)  # NEW: Connect range signal
-        self.map_widget.trackpoint_dragging.connect(self._on_trackpoint_dragging)  # NEW: Real-time drag updates
+        self.map_widget.range_selection_changed.connect(self._update_insert_menu_state)
+        self.map_widget.trackpoint_dragging.connect(self._on_trackpoint_dragging)
         
-        # Connect track list to map widget to update highlighted track
+        # Connect track list to map widget
         self.track_list_widget.track_selected.connect(self.map_widget.on_track_list_selection_changed)
         
-        # Update trackpoint list widget with map widget reference
-        self.trackpoint_list_widget.map_widget = self.map_widget
-        
-        right_splitter.addWidget(self.map_widget)
-        
-        # Set initial sizes (40% trackpoints, 60% map)
-        right_splitter.setSizes([400, 600])
-        
-        # Make splitter draggable - neither side can collapse
-        right_splitter.setCollapsible(0, False)  # Trackpoint list can't collapse
-        right_splitter.setCollapsible(1, False)  # Map can't collapse
-        
-        # Add right splitter to main horizontal splitter
-        main_splitter.addWidget(right_splitter)
-        
-        # Set initial sizes for main splitter (30% tracks, 70% trackpoints+map)
-        main_splitter.setSizes([300, 700])
-        
-        # Make main splitter draggable - neither side can collapse
-        main_splitter.setCollapsible(0, False)  # Track list can't collapse
-        main_splitter.setCollapsible(1, False)  # Trackpoints+Map can't collapse
-        
-        editor_layout.addWidget(main_splitter)
-        
-        self.main_tab_widget.addTab(editor_widget, "Editor")
+        self.main_tab_widget.addTab(track_editor_widget, "Track Editor")
         
         # ====================================================================
-        # Tab 2: Settings (full-width)
+        # Tab 2: Map Editor (using MapEditorTabHandler)
         # ====================================================================
         
-        self.settings_widget = SettingsWidget()
+        map_editor_handler = MapEditorTabHandler()
+        map_editor_widget = map_editor_handler.create_tab()
+        
+        self.main_tab_widget.addTab(map_editor_widget, "Map Editor")
+        
+        # ====================================================================
+        # Tab 3: Settings (using SettingsTabHandler)
+        # ====================================================================
+        
+        settings_handler = SettingsTabHandler()
+        self.settings_widget = settings_handler.create_tab()
         
         # Connect settings changes to map widget for live preview
         self.settings_widget.track_path_widget.body_color_picker.color_changed.connect(
@@ -573,7 +590,7 @@ class MainWindow(QMainWindow):
         
         self.main_tab_widget.addTab(self.settings_widget, "Settings")
         
-        logger.info("Central widget created with Editor (Tracks/Trackpoints/Map) and Settings tabs")
+        logger.info("Central widget created with Track Editor, Map Editor, and Settings tabs")
     
     # ========================================================================
     # Status Bar
@@ -595,18 +612,78 @@ class MainWindow(QMainWindow):
     # ========================================================================
     
     def _connect_signals(self):
-        """Connect internal signals."""
+        """
+        Connect internal signals for widget coordination.
         
-        # Connect file opened signal to status update
+        SIGNAL ORCHESTRATION GRAPH
+        ==========================
+        This method establishes all the signal connections that keep the 3 main
+        views synchronized. The signal flow is carefully orchestrated to prevent
+        circular updates (infinite loops).
+        
+        Signal Paths (in order of connection):
+        
+        1. FILE OPERATIONS
+           - self.file_opened → _on_file_opened() (update UI after load)
+           - self.file_saved → _on_file_saved() (update UI after save)
+        
+        2. TRACK SELECTION
+           - self.track_selected → _on_track_selected() (update dependent widgets)
+        
+        3. MAP WIDGET FEEDBACK
+           - map_widget.range_selection_changed → _update_insert_menu_state()
+             (enables "Insert Point Between" when range selected on map)
+        
+        4. TRACK LIST WIDGET SIGNALS
+           - track_list_widget.track_selected → _on_track_list_selection_changed()
+           - track_list_widget.track_double_clicked → _on_track_list_double_clicked()
+           
+        5. TRACKPOINT LIST SIGNALS
+           - trackpoint_list_widget.point_selected → _on_trackpoint_selected()
+           - trackpoint_list_widget.point_double_clicked → _on_trackpoint_double_clicked()
+           - trackpoint_list_widget.coordinate_format_changed → _on_coordinate_format_changed()
+        
+        6. MAP WIDGET SIGNALS
+           - map_widget.map_ready → _on_map_ready()
+           - map_widget.track_clicked → _on_map_track_clicked()
+           - map_widget.point_clicked → _on_map_point_clicked()
+           - map_widget.point_dragging → _on_trackpoint_dragging()
+        
+        7. SETTINGS WIDGET SIGNALS
+           - settings_widget.track_path_settings_changed → _on_track_path_settings_changed()
+           - settings_widget.turning_points_show_toggled → _on_turning_points_show_toggled()
+           - settings_widget.turning_points_settings_changed → _on_turning_points_settings_changed()
+           - settings_widget.turning_points_settings_applied → _on_turning_points_settings_applied()
+           - settings_widget.show_points_dropdown_changed → _on_show_points_dropdown_changed()
+        
+        CRITICAL: Signal Circular Prevention
+        ===================================
+        Because widgets can trigger each other's signals, we must prevent infinite loops.
+        
+        Example of dangerous circular path:
+        1. User clicks map point → map_widget emits point_clicked
+        2. MainWindow receives, updates TrackpointListWidget selection
+        3. TrackpointListWidget emits point_selected
+        4. MainWindow receives, updates map widget AGAIN (now we're looping!)
+        
+        Prevention Strategy:
+        - Store current_selection state before updates
+        - Skip updates if already in that state
+        - Use one-way signal flow where possible
+        - Connect to specific handlers (not generic refresh methods)
+        
+        Order of connection matters:
+        - Connect internal signals first (file_opened, track_selected, etc.)
+        - Then connect widget signals
+        - This ensures MainWindow is ready before widgets start signaling
+        """
+        
+        # Connect internal signals
         self.file_opened.connect(self._on_file_opened)
-        
-        # Connect file saved signal to status update
         self.file_saved.connect(self._on_file_saved)
-        
-        # Connect track selected signal
         self.track_selected.connect(self._on_track_selected)
         
-        # Connect map range selection signal to update insert menu
+        # Map widget signals (range selection for insert point feature)
         if hasattr(self, 'map_widget') and hasattr(self.map_widget, 'range_selection_changed'):
             self.map_widget.range_selection_changed.connect(self._update_insert_menu_state)
     
@@ -649,53 +726,121 @@ class MainWindow(QMainWindow):
     
     def open_file(self, file_path: str) -> bool:
         """
-        Open and load a GPX file.
+        Open and load a GPX file with complete UI synchronization.
+        
+        FILE LOAD ORCHESTRATION PIPELINE
+        =================================
+        This method performs a carefully orchestrated sequence of steps to load a GPX file
+        and synchronize all 3 views. The order is CRITICAL - if steps are reordered,
+        views can go out of sync.
+        
+        ORCHESTRATION STEPS:
+        
+        1. PARSE & VALIDATE GPX
+           - Call gpx_handler.load_gpx(file_path)
+           - Returns gpxpy.GPX object or None
+           - Validates: XML structure, track objects, trackpoints
+           - Error: Show dialog, return False
+        
+        2. LOAD INTO BUSINESS LOGIC
+           - Call track_manager.load_from_gpx(gpx, file_path)
+           - Populates internal track/trackpoint data
+           - Calculates distances, creates state
+           - Returns track count
+           - Result: Business logic knows about tracks, UI doesn't yet
+        
+        3. CLEAR ALL UI SELECTIONS EXPLICITLY
+           - CRITICAL: Set all widgets to "no selection" state
+           - track_list_widget.clear_selection() → No track highlighted
+           - trackpoint_list_widget.set_track(-1) → Empty table
+           - map_widget.on_track_list_selection_changed(None) → No track rendered
+           - Why: If previous file had track 5 selected, and new file has only 2 tracks,
+             leaving track 5 "selected" would cause index-out-of-bounds errors
+        
+        4. REFRESH DISPLAY
+           - track_list_widget.refresh_tracks() → Populate list with new tracks
+           - map_widget.render_map() → Re-render with cleared selection, new tracks
+           - Result: All views showing new file, but nothing selected
+        
+        5. UPDATE APPLICATION STATE
+           - current_file_path = file_path
+           - is_modified = False (file just loaded, no changes yet)
+           - _update_window_title() → Show filename in title bar
+           - Result: Window title shows loaded filename
+        
+        6. ENABLE FILE OPERATIONS
+           - save_action.setEnabled(True)
+           - save_as_action.setEnabled(True)
+           - close_file_action.setEnabled(True)
+           - merge_action.setEnabled(True)
+           - toolbar_save_action.setEnabled(True)
+           - Why: These are invalid with no file open, now valid
+        
+        7. EMIT SIGNAL FOR OBSERVERS
+           - self.file_opened.emit(file_path)
+           - Observers (other components) notified file opened
+           - Allows extensibility (e.g., plugins could listen)
+        
+        GOTCHA: State Guard Variables
+        =============================
+        Note how we explicitly set to cleared state before refresh. Don't rely on
+        signals to do this - be explicit:
+        - track_list_widget.clear_selection() ← Explicit clear
+        - Not: connect select_changed signals (might trigger during refresh)
+        
+        Why explicit is better:
+        - Predictable: Exactly what state we're in
+        - Debuggable: Can log each step
+        - Safe: No accidental signal cascades during load
+        
+        Performance Note:
+        - GPX parsing: O(n) where n = number of trackpoints
+        - For 10,000+ points, may take 1-2 seconds
+        - User sees progress in status bar
         
         Args:
-            file_path (str): Path to GPX file
+            file_path (str): Path to GPX file to open
         
         Returns:
             bool: True if successful, False otherwise
         """
         
         try:
-            # Load GPX file
+            # STEP 1: Parse and validate GPX
             gpx = self.gpx_handler.load_gpx(file_path)
             if not gpx:
                 self.show_error("Failed to open file", f"Could not parse GPX file: {file_path}")
                 return False
             
-            # Store GPX object for later saving
+            # STEP 2: Load into business logic
             self.gpx_data = gpx
-            
-            # Load tracks into manager
             count = self.track_manager.load_from_gpx(gpx, file_path)
             
-            # Clear all UI selections explicitly
+            # STEP 3: Clear all UI selections explicitly (CRITICAL!)
             if hasattr(self, 'track_list_widget'):
-                self.track_list_widget.clear_selection()  # Explicit unselect
-                self.track_list_widget.refresh_tracks()
+                self.track_list_widget.clear_selection()  # No track selected
+                self.track_list_widget.refresh_tracks()   # Show all tracks
             
             if hasattr(self, 'map_widget'):
-                self.map_widget.on_track_list_selection_changed(None)
-                self.map_widget.render_map()  # Force re-render with cleared selection
+                self.map_widget.on_track_list_selection_changed(None)  # Clear track
+                self.map_widget.render_map()  # Re-render with no selection
             
             if hasattr(self, 'trackpoint_list_widget'):
-                self.trackpoint_list_widget.set_track(-1)
+                self.trackpoint_list_widget.set_track(-1)  # Empty table
             
-            # Update application state
+            # STEP 4: Update application state
             self.current_file_path = file_path
             self.is_modified = False
-            self._update_window_title()  # Update title with filename
+            self._update_window_title()  # Show filename
             
-            # Enable file operation actions
+            # STEP 5: Enable file operations
             self.save_action.setEnabled(True)
             self.save_as_action.setEnabled(True)
             self.close_file_action.setEnabled(True)
             self.merge_action.setEnabled(True)
             self.toolbar_save_action.setEnabled(True)
             
-            # Emit signal
+            # STEP 6: Emit signal for observers
             self.file_opened.emit(file_path)
             
             logger.info(f"Opened GPX file: {file_path} ({count} tracks)")
@@ -1223,9 +1368,95 @@ A PyQt5 application for reading, editing, and exporting GPX navigation tracks.
             self.statusBar().showMessage(msg, 3000)
     
     def _on_track_list_selection_changed(self, track_index: int):
-        """Handle track selection change from track list widget."""
+        """
+        Handle track selection change from TrackListWidget.
         
-        # Handle unselection (track_index == -1)
+        THREE-VIEW SYNCHRONIZATION CASCADE
+        ==================================
+        This slot is triggered when user clicks a track in the list. It orchestrates
+        updates to all 3 views to keep them synchronized.
+        
+        ORCHESTRATION SEQUENCE:
+        
+        Input: track_index (from TrackListWidget signal)
+        
+        1. GUARD CHECK - Handle Unselection
+           if track_index < 0:
+               - Clears selection in ALL widgets
+               - Business logic: selected_track_index = -1
+               - UI: TrackpointListWidget shows empty table
+               - UI: MapWidget shows no track
+               - Status bar: "No track selected"
+               - Return (no further processing)
+        
+        2. UPDATE BUSINESS LOGIC
+           - track_manager.select_track(track_index)
+           - Why: Business layer must know which track is active
+           - Used by: Add/delete trackpoint operations
+           - Dependency: Must do BEFORE updating UI
+        
+        3. RETRIEVE TRACK DATA
+           - Get track object from manager
+           - Extract: name, distance, point count
+           - Use for status message
+        
+        4. UPDATE INTERNAL STATE
+           - _current_track_index = track_index
+           - _current_point_index = None (reset point selection)
+           - Why: Prevents stale selection (e.g., deleting track)
+        
+        5. UPDATE TRACKPOINT LIST WIDGET
+           - trackpoint_list_widget.set_track(track_index)
+           - Widget populates table with trackpoints from selected track
+           - Clears previous selection
+           - Order: AFTER business logic updated (so manager has correct state)
+        
+        6. UPDATE MAP WIDGET
+           - map_widget.on_track_list_selection_changed(track_index)
+           - Widget renders selected track on map
+           - Clears previous rendering
+           - Order: LAST (depends on trackpoints being loaded in list)
+        
+        7. UPDATE STATUS BAR
+           - Display: "Track: Name - XX.XX km (YY points)"
+           - Feedback: Shows user which track selected and metadata
+           - Timeout: 5 seconds (long enough to read)
+        
+        STATE MACHINE OVERVIEW
+        ======================
+        Before signal:
+        - Track list: one track highlighted
+        - Trackpoint list: may have different track's data
+        - Map: may have different track rendered
+        
+        After signal:
+        - Track list: same track highlighted (UI triggered signal)
+        - Trackpoint list: NEW track's data (updated by this slot)
+        - Map: NEW track rendered (updated by this slot)
+        - Status: NEW track metadata shown
+        
+        CRITICAL: Order matters!
+        =======================
+        Must update business logic BEFORE UI:
+        1. track_manager.select_track() ← Business layer
+        2. trackpoint_list_widget.set_track() ← UI (uses manager's state)
+        3. map_widget.on_track_list_selection_changed() ← UI (uses trackpoint data)
+        
+        If reversed, trackpoint widget might show wrong track's data.
+        
+        GOTCHA: Index vs State
+        =====================
+        track_index < 0 means "unselect all"
+        track_index >= 0 means "select this track"
+        
+        Don't use currentRow() in track list - use the signal index instead.
+        The signal is the source of truth for which track should be selected.
+        
+        Args:
+            track_index (int): Index of selected track, or -1 to unselect
+        """
+        
+        # Guard: Handle unselection
         if track_index < 0:
             # Clear selection in all widgets
             self.track_manager.selected_track_index = -1
@@ -1245,9 +1476,10 @@ A PyQt5 application for reading, editing, and exporting GPX navigation tracks.
             logger.debug("Track unselected")
             return
         
-        # SELECT THE TRACK IN TRACK_MANAGER
+        # Step 1: Update business logic (MUST DO FIRST)
         self.track_manager.select_track(track_index)
         
+        # Step 2: Retrieve track data for status display
         track = self.track_manager.get_track_by_index(track_index)
         if track:
             msg = f"Track: {track.name} - {track.distance_km:.2f} km ({track.get_point_count()} points)"
@@ -1255,15 +1487,15 @@ A PyQt5 application for reading, editing, and exporting GPX navigation tracks.
             
             logger.debug(f"Track selected from list: index={track_index}")
         
-        # Update internal state
+        # Step 3: Update internal state
         self._current_track_index = track_index
         self._current_point_index = None
         
-        # Update trackpoint list widget with the selected track
+        # Step 4: Update trackpoint list widget (depends on manager having correct state)
         if hasattr(self, 'trackpoint_list_widget'):
             self.trackpoint_list_widget.set_track(track_index)
         
-        # Update map widget
+        # Step 5: Update map widget (last, depends on trackpoint data)
         if hasattr(self, 'map_widget'):
             self.map_widget.on_track_list_selection_changed(track_index)
     

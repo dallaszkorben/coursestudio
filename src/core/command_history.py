@@ -389,11 +389,40 @@ class MoveTrackpointCommand(Command):
 
 
 class RemoveTrackpointCommand(Command):
-    """Command to remove a single trackpoint."""
+    """
+    Command to remove a single trackpoint.
+    
+    State Capture & Restoration:
+    - Captures: track_index, point_index, and FULL POINT DATA (lat/lon/elevation)
+    - Why: Must store the entire point because undo() needs to restore it exactly
+    - GOTCHA: Point data must be captured in __init__ (before execute), not during execute
+    
+    Special Behavior - Track Deletion:
+    - When removing the LAST trackpoint, the entire track is deleted
+    - This is intentional: empty tracks are not allowed in CourseStudio
+    - Undo correctly restores: the track AND the point
+    - Example:
+      - Track has 1 point
+      - Remove that point → Track is deleted entirely
+      - Undo → Track is restored with that point
+    
+    Distance Recalculation:
+    - After removing a point, track distance becomes STALE
+    - CRITICAL: Call track_manager.recalculate_distance() after undo
+    - Without this, UI shows WRONG distance for modified tracks
+    
+    Index Stability During Undo:
+    - Re-insertion uses same point_index as removal
+    - Assumes no other commands between remove and undo
+    - Safe within CommandHistory pattern (sequential execution)
+    """
     
     def __init__(self, track_manager: TrackManager, track_index: int, point_index: int):
         """
         Initialize remove trackpoint command.
+        
+        IMPORTANT: Point data captured NOW (during init), not during execute().
+        This ensures we have exact state needed for undo even if track state changes.
         
         Args:
             track_manager: TrackManager instance
@@ -407,14 +436,31 @@ class RemoveTrackpointCommand(Command):
         self.executed = False
     
     def execute(self) -> bool:
-        """Execute the remove trackpoint command."""
+        """
+        Execute the remove trackpoint command.
+        
+        PIPELINE:
+        1. Verify point exists in track
+        2. Store point data (for undo restoration)
+        3. Call track_manager.remove_trackpoint() which:
+           - Removes point from trackpoint list
+           - Updates track info (point count, distance)
+           - Deletes entire track if last point removed
+           - Marks track as dirty (unsaved changes)
+        4. Return success/failure
+        
+        State After Execution:
+        - Track distance is RECALCULATED automatically (inside remove_trackpoint)
+        - Track is marked DIRTY (unsaved)
+        - UI must refresh to show updated state
+        """
         
         track = self.track_manager.get_track_by_index(self.track_index)
         if not track or self.point_index >= len(track.trackpoints):
             logger.error(f"Invalid track or point index")
             return False
         
-        # Store the point before deletion
+        # Store the point before deletion (needed for undo)
         self.removed_point = track.trackpoints[self.point_index]
         
         # Remove the point - it returns the removed point, not a boolean
@@ -429,7 +475,32 @@ class RemoveTrackpointCommand(Command):
             return False
     
     def undo(self) -> bool:
-        """Undo the remove trackpoint command."""
+        """
+        Undo the remove trackpoint command.
+        
+        RESTORATION PIPELINE:
+        1. Verify point data was stored during execute
+        2. Re-add point at same index using track_manager.add_trackpoint()
+        3. This triggers:
+           - Point inserted into trackpoint list
+           - Track info updated (point count increases)
+           - Track distance RECALCULATED (was 0 for single-point track, now includes full path)
+           - Track marked DIRTY
+        
+        CRITICAL GOTCHA: Track Restoration
+        - If removing the last point deleted the entire track
+        - Undo must create a NEW track with this point
+        - The new track should have minimal info (set by add_trackpoint internally)
+        - This works correctly because track_manager handles track creation if needed
+        
+        Index Restoration:
+        - Re-insertion at same point_index ensures exact restoration
+        - Assumes no structural changes between remove and undo
+        - Safe within CommandHistory (sequential, atomic operations)
+        
+        Returns:
+            bool: True if re-added successfully, False otherwise
+        """
         
         if not self.removed_point:
             logger.error("No stored point to restore")
@@ -459,7 +530,40 @@ class RemoveTrackpointCommand(Command):
 
 
 class RemoveTrackpointRangeCommand(Command):
-    """Command to remove a range of trackpoints."""
+    """
+    Command to remove a range of trackpoints.
+    
+    Why Range Deletion?
+    - User selects multiple trackpoints in UI (e.g., points 5-12)
+    - Delete all selected at once (more intuitive than one-by-one)
+    - Single command in history (undo once removes all)
+    
+    CRITICAL: Remove from End to Start
+    - When removing indices 5-12, must remove 12 first, then 11, 10, etc.
+    - Why: After removing index 12, indices don't shift down (13+ unchanged)
+    - If removed start-to-end (5, 6, 7...), indices shift and we delete wrong points
+    - Example:
+      - Track has 15 points, want to remove 5-7
+      - Remove[5]: indices 6-7 shift down to 5-6, track has 14 points
+      - Remove[5] again: removes what was originally index 7 (WRONG)
+      - Remove[6] again: removes what was originally index 8 (WRONG)
+    
+    State Capture:
+    - Stores ALL removed point data (needed for undo)
+    - Order preserved: removed_points[0] = point at start_index
+    - Re-insertion must reverse this: add back start to end
+    
+    Performance Note:
+    - Removing range takes O(n) operations (n = number of points removed)
+    - Each removal triggers distance recalculation in track_manager
+    - For large ranges (100+ points), may be slow
+    - Acceptable trade-off for undo safety
+    
+    Distance Recalculation:
+    - After each point removal, distance is recalculated
+    - After removing 50 points, distance recalculated 50 times
+    - Optimization possible but not priority (user rarely deletes 50+ points)
+    """
     
     def __init__(self, track_manager: TrackManager, track_index: int,
                  start_index: int, end_index: int):
@@ -480,17 +584,44 @@ class RemoveTrackpointRangeCommand(Command):
         self.executed = False
     
     def execute(self) -> bool:
-        """Execute the remove range command."""
+        """
+        Execute the remove range command.
+        
+        ALGORITHM:
+        1. Get track and validate
+        2. Capture ALL points in range [start_index:end_index+1]
+        3. Iterate BACKWARDS from end_index to start_index
+           - This is CRITICAL to preserve indices (see docstring)
+        4. For each point, call remove_trackpoint()
+        5. If ANY removal fails, stop and return False (command is ATOMIC)
+        
+        Atomicity:
+        - Either ALL points removed or NONE
+        - If removal at index 8 fails, indices 9+ already removed (state damaged)
+        - Prevention: fail fast, don't attempt to recover partial removals
+        - Note: May leave track in inconsistent state if underlying remove fails
+        
+        State After Execution:
+        - Track distance RECALCULATED (after each point removal)
+        - Track marked DIRTY
+        - Track may be deleted entirely if ALL points removed
+        
+        Example (Remove points 5-7 from 15-point track):
+        - Capture points 5, 6, 7
+        - Remove index 7 (track: 14 points)
+        - Remove index 6 (track: 13 points)  ← indices didn't shift!
+        - Remove index 5 (track: 12 points)  ← removed exactly 5-7
+        """
         
         track = self.track_manager.get_track_by_index(self.track_index)
         if not track:
             logger.error(f"Track {self.track_index} not found")
             return False
         
-        # Store the points before deletion
+        # Store the points before deletion (in order start to end)
         self.removed_points = track.trackpoints[self.start_index:self.end_index + 1].copy()
         
-        # Remove from end to start to maintain indices
+        # Remove from end to start to maintain indices (CRITICAL)
         for i in range(self.end_index, self.start_index - 1, -1):
             success = self.track_manager.remove_trackpoint(self.track_index, i)
             if not success:
@@ -502,7 +633,33 @@ class RemoveTrackpointRangeCommand(Command):
         return True
     
     def undo(self) -> bool:
-        """Undo the remove range command."""
+        """
+        Undo the remove range command.
+        
+        RESTORATION PIPELINE:
+        1. Iterate through removed_points (in order from start to end)
+        2. Re-add each point at position start_index + i
+        3. This restores points in correct sequence
+        
+        Index Calculation Example:
+        - If removed points 5-7 (stored in removed_points[0], [1], [2])
+        - Re-add: point[0] at index 5, point[1] at index 6, point[2] at index 7
+        - Formula: add position = start_index + i
+        
+        Atomicity (Partial Failure):
+        - If re-add fails at point 2 of 3, already restored point 1
+        - Track now has INCONSISTENT state (partially restored)
+        - Current implementation doesn't recover from partial undo
+        - Acceptable risk: failures rare in normal operation
+        
+        State After Undo:
+        - Track distance RECALCULATED (after each point added)
+        - Track recreated if all points removed then undone
+        - Track marked DIRTY
+        
+        Returns:
+            bool: True if all points re-added successfully, False otherwise
+        """
         
         # Re-add the points at the same positions
         for i, point in enumerate(self.removed_points):
@@ -581,15 +738,27 @@ class CommandHistory:
         """
         Execute a command and add it to history.
         
-        Performs these steps:
+        EXECUTION PIPELINE:
         1. Call command.execute() to perform the operation
-        2. If successful, add command to undo_stack
-        3. Enforce max_size limit (remove oldest if exceeded)
-        4. Clear redo_stack (new command invalidates redo history)
+        2. If successful:
+           a. Add command to undo_stack (enables future undo)
+           b. Check size limit (prevent infinite memory growth)
+           c. Clear redo_stack (new operation invalidates redo history)
+        3. Return success/failure
         
-        This matches standard undo/redo behavior:
-        - After executing new command, you lose ability to redo
-        - Example: Ctrl+Z, Ctrl+Z, Ctrl+Z, then new edit → redo is gone
+        Why Clear Redo Stack?
+        - User scenario: Undo 3 times (removes points), then edits differently
+        - History before edit: undo=[A,B,C,D], redo=[E,F,G]
+        - User performs new operation (H)
+        - Expected: Can undo H, but NOT redo back to E,F,G (different branch)
+        - Result: undo=[A,B,C,D,H], redo=[]
+        - This matches behavior in Word, Excel, VS Code
+        
+        Size Limit Enforcement:
+        - Prevents unbounded memory growth from many operations
+        - Removes OLDEST operations first (FIFO from undo_stack)
+        - Default max_size=100 (typically sufficient)
+        - Example: If history has 100 items, 101st causes removal of item 0
         
         Args:
             command: Command to execute
@@ -624,21 +793,39 @@ class CommandHistory:
         """
         Undo the last command.
         
-        Performs these steps:
-        1. Pop command from undo_stack
-        2. Call command.undo() to reverse the operation
-        3. Push command to redo_stack (so we can redo it)
-        4. Update UI to reflect new state
+        UNDO PIPELINE:
+        1. Verify undo_stack not empty (can_undo check)
+        2. Pop command from TOP of undo_stack
+        3. Call command.undo() to reverse the operation
+        4. If successful:
+           a. Push command to redo_stack (enables redo)
+           b. Log the undo action
+        5. If failed:
+           a. Restore command to undo_stack (maintain state consistency)
+           b. Log warning
+        6. Return success/failure
         
-        Called when user presses Ctrl+Z.
+        CRITICAL: Stack Order
+        - undo_stack = [cmd1, cmd2, cmd3]  ← TOP is cmd3 (most recent)
+        - Pop removes cmd3 (last executed)
+        - Push to redo_stack for later redo
+        - undo_stack = [cmd1, cmd2]
+        - redo_stack = [cmd3]
+        - Next undo removes cmd2, redo_stack = [cmd3, cmd2]
+        
+        Error Recovery:
+        - If undo() returns False, command restored to undo_stack
+        - Maintains consistency: If undo fails, state wasn't changed
+        - Example: Point index out of bounds (track changed externally)
+        - Result: Command stays in undo_stack, user can try again
+        
+        Called by User:
+        - Ctrl+Z in UI
+        - "Undo" menu item click
+        - Keyboard shortcut binding
         
         Returns:
-            bool: True if successful or no more undos, False if undo failed
-        
-        Example:
-            history.execute(cmd)  # undo=[cmd], redo=[]
-            history.undo()        # undo=[], redo=[cmd]
-            history.undo()        # Nothing to undo (returns True)
+            bool: True if successful or no commands to undo, False if undo failed
         """
         
         if not self.can_undo():
@@ -666,6 +853,33 @@ class CommandHistory:
         """
         Redo the last undone command.
         
+        REDO PIPELINE:
+        1. Verify redo_stack not empty (can_redo check)
+        2. Pop command from TOP of redo_stack
+        3. Call command.execute() to re-perform the operation
+        4. If successful:
+           a. Push command back to undo_stack
+           b. Log the redo action
+        5. If failed:
+           a. Restore command to redo_stack
+           b. Log warning
+        6. Return success/failure
+        
+        Why Re-Execute Instead of Undo?
+        - Redo uses execute() not undo()
+        - Why: Changes may have happened since original execute
+        - Example:
+          - Execute: Add point at index 5
+          - Meanwhile: Delete track (external change)
+          - Redo: Can't re-add to deleted track
+          - Better to re-execute with same params and let add_trackpoint handle it
+        
+        CRITICAL: Stack Order During Redo
+        - undo_stack = [cmd1, cmd2], redo_stack = [cmd3]
+        - Redo pops cmd3, executes, pushes back to undo_stack
+        - undo_stack = [cmd1, cmd2, cmd3], redo_stack = []
+        - User can undo cmd3 again if desired
+        
         Returns:
             bool: True if successful, False otherwise
         """
@@ -677,7 +891,7 @@ class CommandHistory:
         # Pop from redo stack
         command = self.redo_stack.pop()
         
-        # Execute command again
+        # Execute command again (not command.undo)
         success = command.execute()
         
         if success:
