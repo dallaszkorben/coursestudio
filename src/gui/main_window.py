@@ -268,6 +268,7 @@ class MainWindow(QMainWindow):
         # File > Load MBTiles File (moved from View > Map menu)
         load_mbtiles_action = QAction('&Load MBTiles File...', self)
         load_mbtiles_action.setStatusTip('Load a different mbtiles file for map display')
+        load_mbtiles_action.setShortcut('Ctrl+Shift+O')  # ← ADD SHORTCUT HERE
         load_mbtiles_action.triggered.connect(self.action_load_mbtiles)
         file_menu.addAction(load_mbtiles_action)
         self.load_mbtiles_action = load_mbtiles_action
@@ -544,11 +545,11 @@ class MainWindow(QMainWindow):
         # Tab 2: Map Editor (using MapEditorTabHandler)
         # ====================================================================
         
-        map_editor_handler = MapEditorTabHandler(
+        self.map_editor_handler = MapEditorTabHandler(
             self.mbtiles_provider,
             self.config
         )
-        map_editor_widget = map_editor_handler.create_tab()
+        map_editor_widget = self.map_editor_handler.create_tab()
         
         self.main_tab_widget.addTab(map_editor_widget, "Map Editor")
         
@@ -1152,6 +1153,35 @@ class MainWindow(QMainWindow):
                     
                     # Re-render map with new tiles
                     self.map_widget.render_map()
+                    
+                    # 🟢 UPDATE MAP EDITOR TAB'S CHARACTERISTICS PANEL
+                    # Load new reader and update Map Editor's characteristics panel
+                    try:
+                        from src.map_editor.core.mbtiles_reader import MBTilesReader
+                        new_reader = MBTilesReader(mbtiles_path)
+                        self.map_editor_handler.characteristics_panel.load_mbtiles(new_reader)
+                        logger.info(f"🟢 Updated Map Editor characteristics panel with: {new_reader.get_metadata().name}")
+                        
+                        # 🟢 ALSO UPDATE MAP EDITOR'S MAP VIEWER WITH NEW ZOOM RANGE
+                        # Get available zooms from new file
+                        available_zooms = new_reader.zoom_levels
+                        if available_zooms:
+                            min_zoom = min(z.zoom for z in available_zooms)
+                            max_zoom = max(z.zoom for z in available_zooms)
+                            
+                            # Adjust current zoom if it's outside the new range
+                            current_zoom = self.map_editor_handler.map_viewer.zoom_level
+                            if current_zoom < min_zoom:
+                                self.map_editor_handler.map_viewer.zoom_level = min_zoom
+                                logger.info(f"🟢 Adjusted zoom from {current_zoom} to {min_zoom} (new file min)")
+                            elif current_zoom > max_zoom:
+                                self.map_editor_handler.map_viewer.zoom_level = max_zoom
+                                logger.info(f"🟢 Adjusted zoom from {current_zoom} to {max_zoom} (new file max)")
+                            
+                            # Render with new zoom
+                            self.map_editor_handler.map_viewer.render_map()
+                    except Exception as e:
+                        logger.warning(f"Could not update Map Editor: {e}")
                     
                     self.statusBar().showMessage(f"Loaded mbtiles: {filename}")
                     logger.info(f"Successfully loaded mbtiles: {filename}")

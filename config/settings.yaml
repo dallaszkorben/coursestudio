@@ -84,15 +84,15 @@ appearance:
         width: 1
       size: 20
   tiles:
-    recent_mbtiles: Sweeden-Z6-Z15.mbtiles
-    recent_zoom: 10
+    recent_mbtiles: OSM-OpenCPN2-Baltic.mbtiles
+    recent_zoom: 16
     recent_center:
-      lat: 56.18144424562201
-      lon: 15.567139382814105
-    default_zoom: 14
+      lat: 56.14465428923008
+      lon: 15.55413007736206
+    default_zoom: 16
     default_center:
-      lat: 56.16818152469822
-      lon: 15.588682885621722
+      lat: 56.144654289230054
+      lon: 15.55413007736206
 coordinates_display:
   format:
     coordinate_format: dms

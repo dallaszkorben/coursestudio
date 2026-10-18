@@ -1813,3 +1813,140 @@ config.emit_custom_signal()  # Signal fires ONCE with complete state
 5. **Review config.set() patterns** - Look for multiple set() calls in close sequence
 
 ---
+## Problem 4: Invisible UI Elements - Dual Code Paths Out of Sync
+
+### Problem Description
+
+**Symptom**: User reports seeing only 4 buttons on the Map Editor, but code shows all 5 buttons are created and positioned.
+
+**Logs show:**
+```
+Button 1 (+) at (10, 10)      ✓ Correct position
+Button 2 (-) at (10, 55)      ✓ Correct position
+Button 3 (Z:label) at (10, 100)   ✓ Correct position
+Button 4 (⊕) at (10, 145)     ✓ Correct position
+Button 5 (⊙) at (10, 190)     ✓ Correct position
+```
+
+**But on screen**: Only 4 buttons visible, and in wrong order:
+1. + (Zoom in) ✓
+2. - (Zoom out) ✓
+3. ⊙ (Recenter) ✗ Should be 5th
+4. Z:15 (Zoom level) ✗ Should be 3rd, and mark_center (⊕) missing entirely
+
+### What I Did Wrong (Failed Attempts)
+
+**Attempt 1**: Re-checked button creation code
+- Button creation looked correct
+- All 5 buttons instantiated with correct symbols
+- **Result**: ❌ Wasted time, code was fine
+
+**Attempt 2**: Verified `_reposition_controls()` method
+- Button positioning order was correct: +, -, Z:label, ⊕, ⊙
+- `.move()` calls were in right order
+- **Result**: ❌ Wasted time, code was fine
+
+**Attempt 3**: Cleared Python cache and restarted
+- Thought old .pyc files were stale
+- Deleted all `__pycache__` and `.pyc` files
+- **Result**: ❌ Nothing changed - issue wasn't cache
+
+**What I should have checked immediately**: The RENDERING code in `_draw_ui_controls()` which draws the visual buttons on the image overlay.
+
+### Root Cause
+
+**Two parallel code paths for UI buttons:**
+
+1. **Real QPushButton widgets** (`_reposition_controls`):
+   - Creates actual clickable buttons
+   - Positioned in correct order: +, -, Z:15, ⊕, ⊙
+   - This code was correct ✓
+
+2. **Visual rendering** (`_draw_ui_controls`):
+   - Draws button graphics on the PIL image
+   - Positioned in WRONG order: +, -, ⊙, Z:15 (missing ⊕)
+   - This code was outdated ✗
+
+**Why they diverged:**
+- Buttons were originally: +, -, ⊙, Z:15
+- Added mark_center (⊕) and zoom_level_label to real buttons
+- Updated `_reposition_controls()` to match new order
+- **Forgot to update `_draw_ui_controls()`** - it still drew old order
+
+**The trap:**
+- Internal state (button positions logged correctly) ≠ Visual output (what user sees)
+- Logs showed "all 5 buttons positioned correctly" 
+- But rendering layer only drew 4 in wrong positions
+- User's visual report was the only truth
+
+### Solution
+
+Updated `_draw_ui_controls()` to match `_reposition_controls()` order:
+
+```python
+# BEFORE (wrong order):
+# 1. Draw zoom_in (+)
+# 2. Draw zoom_out (-)
+# 3. Draw recenter (⊙)        ← Wrong position
+# 4. Draw zoom_level (Z:15)   ← Wrong position
+# (Missing mark_center entirely)
+
+# AFTER (correct order):
+# 1. Draw zoom_in (+)
+# 2. Draw zoom_out (-)
+# 3. Draw zoom_level (Z:15)   ✓ Correct position
+# 4. Draw mark_center (⊕)     ✓ Added
+# 5. Draw recenter (⊙)        ✓ Correct position
+```
+
+Specifically:
+- Moved zoom_level drawing to position 3
+- Added mark_center drawing with circle + plus sign at position 4
+- Moved recenter to position 5
+
+**Result**: All 5 buttons now visible in correct order with correct visuals.
+
+### Key Learning
+
+**Pattern: Sync Multiple Code Paths That Affect the Same UI**
+
+When UI elements are managed by multiple code paths (positioning + rendering, or state + display), they can diverge silently.
+
+**❌ DON'T assume:**
+- If logs show correct state, visuals are correct
+- If one code path works, parallel paths are synced
+- If components are "tested separately," they work together
+
+**✅ DO:**
+
+1. **Identify all code paths** - List every place code affects the UI element
+   - In this case: button creation, positioning, rendering
+   
+2. **Verify each independently** - Don't assume one being right means others are
+   - Check creation code (✓)
+   - Check positioning code (✓)
+   - Check rendering code (✗ This was the bug)
+
+3. **Trust user reports over logs** - User sees the truth
+   - Logs said "5 buttons positioned correctly"
+   - User said "I see 4 buttons in wrong order"
+   - User was right
+
+4. **When code looks right but output is wrong, check rendering layers** - The gap is usually there
+   - Button creation code ≠ Button positioning code ≠ Button visual rendering code
+   - All three must stay in sync
+
+**When debugging invisible UI elements:**
+1. Verify element is created (check code)
+2. Verify element is positioned (check code)
+3. Verify element is rendered (check code) ← Easy to forget
+4. Verify styles don't hide it (check CSS/stylesheets)
+5. Trust what user sees, not what logs say
+
+**Why this pattern is important:**
+- Common in GUI frameworks (PyQt, web, game engines)
+- Easy to miss in code review (each path looks correct in isolation)
+- Hard to debug (logs mislead you)
+- Can create cascading issues if not caught early
+
+---

@@ -329,19 +329,40 @@ class CharacteristicsPanel(QWidget):
         Args:
             reader (MBTilesReader): MBTiles reader with loaded file
         """
+        logger.info(f"🔵 load_mbtiles() called with reader for: {reader.get_metadata().name}")
+        
         self.mbtiles_reader = reader
         
         # Get metadata
         metadata = reader.get_metadata()
+        logger.info(f"🔵 Metadata retrieved: name='{metadata.name}', desc='{metadata.description}'")
+        
+        # CLEAR ALL FIELDS FIRST - ensure old values are gone
+        logger.info("🔵 Clearing all fields...")
+        self.name_input.clear()
+        self.description_input.clear()
+        self.format_label.clear()
+        self.type_label.clear()
+        self.version_label.clear()
+        self.bounds_label.clear()
+        self.center_label.clear()
+        self.total_tiles_label.clear()
+        self.zoom_range_label.clear()
+        self.file_size_label.clear()
+        self.missing_zooms_label.clear()
+        self.zoom_list.clear()
+        logger.info("🔵 All fields cleared")
         
         # Update file info (populate editable fields)
         self.name_input.blockSignals(True)
         self.name_input.setText(metadata.name or "")
         self.name_input.blockSignals(False)
+        logger.info(f"🔵 name_input set to: '{self.name_input.text()}'")
         
         self.description_input.blockSignals(True)
         self.description_input.setText(metadata.description or "")
         self.description_input.blockSignals(False)
+        logger.info(f"🔵 description_input set to: '{self.description_input.text()}'")
         
         self.format_label.setText(metadata.format or "unknown")
         self.type_label.setText(metadata.type or "baselayer")
@@ -425,6 +446,10 @@ class CharacteristicsPanel(QWidget):
             self.missing_zooms_label.setText("—")
         
         logger.info(f"Loaded characteristics for: {metadata.name}")
+        
+        # Force UI refresh
+        self.update()
+        self.repaint()
     
     
     def _on_zoom_selected(self) -> None:

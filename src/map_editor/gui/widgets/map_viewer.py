@@ -10,14 +10,15 @@ import os
 import logging
 import math
 import io
-from PyQt5.QtWidgets import QWidget, QLabel, QPushButton, QVBoxLayout
+from PyQt5.QtWidgets import QWidget, QLabel, QVBoxLayout
 from PyQt5.QtGui import QPixmap
 from PyQt5.QtCore import Qt
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw
 
 from src.shared.map.map_renderer import MapRenderer
 from src.shared.map.mbtiles_provider import MBTilesProvider
 from src.shared.map.crosshair_drawer import draw_crosshair
+from src.map.map_buttons import MapButtonManager, MapButtonConfig
 
 logger = logging.getLogger(__name__)
 
@@ -31,12 +32,10 @@ class MapViewer(QWidget):
     - Zoom with +/- buttons or mouse wheel
     - Recenter button to return to map center
     - Proper Web Mercator tile coordinate system
+    
+    Uses shared MapButtonManager for consistent button appearance across map widgets.
     """
     
-    ZOOM_BUTTON_SIZE = 40
-    ZOOM_BUTTON_SPACING = 5
-    CONTROLS_PADDING_LEFT = 10
-    CONTROLS_PADDING_TOP = 10
     TILE_SIZE = 256
     
     def __init__(self, parent=None, config=None):
@@ -68,6 +67,10 @@ class MapViewer(QWidget):
             self.crosshair_outline_width = 1
             self.crosshair_size = 20
         
+        # Button state tracking
+        self.hovered_button = None  # Which button is currently hovered
+        self.pressed_button = None  # Which button is currently being pressed
+        
         # Map state
         self.mbtiles_provider = None
         self.center_lat = 0
@@ -95,30 +98,19 @@ class MapViewer(QWidget):
         self.map_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.map_label.setMinimumSize(1, 1)  # Allow to shrink to 1x1 pixel if needed
         
-        # Create control buttons - REAL QPushButton widgets
-        self.zoom_in_button = QPushButton("+", self)
-        self.zoom_in_button.setFixedSize(self.ZOOM_BUTTON_SIZE, self.ZOOM_BUTTON_SIZE)
-        self.zoom_in_button.clicked.connect(self.zoom_in)
-        self.zoom_in_button.setStyleSheet(
-            "background-color: transparent; border: none; color: transparent;"
-        )
-        self.zoom_in_button.setFocusPolicy(Qt.NoFocus)
+        # Create button manager for shared button handling
+        self.button_manager = MapButtonManager()
         
-        self.zoom_out_button = QPushButton("-", self)
-        self.zoom_out_button.setFixedSize(self.ZOOM_BUTTON_SIZE, self.ZOOM_BUTTON_SIZE)
-        self.zoom_out_button.clicked.connect(self.zoom_out)
-        self.zoom_out_button.setStyleSheet(
-            "background-color: transparent; border: none; color: transparent;"
-        )
-        self.zoom_out_button.setFocusPolicy(Qt.NoFocus)
+        # Create button callbacks
+        callbacks = {
+            'zoom_in': self.zoom_in,
+            'zoom_out': self.zoom_out,
+            'mark_center': self.mark_center,
+            'recenter': self.recenter
+        }
         
-        self.recenter_button = QPushButton("⊙", self)
-        self.recenter_button.setFixedSize(self.ZOOM_BUTTON_SIZE, self.ZOOM_BUTTON_SIZE)
-        self.recenter_button.clicked.connect(self.recenter)
-        self.recenter_button.setStyleSheet(
-            "background-color: transparent; border: none; color: transparent;"
-        )
-        self.recenter_button.setFocusPolicy(Qt.NoFocus)
+        # Create all buttons (data objects, not widgets)
+        self.button_manager.create_all_buttons(self, callbacks)
         
         # Layout
         layout = QVBoxLayout()
@@ -126,8 +118,9 @@ class MapViewer(QWidget):
         layout.addWidget(self.map_label)
         self.setLayout(layout)
         
-        # Mouse tracking for pan
+        # Mouse tracking for pan and button hover detection
         self.setMouseTracking(True)
+        self.map_label.setMouseTracking(True)  # ✅ CRITICAL: Also track on map_label!
         
         # ✅ NEW: Connect to config signals for live map synchronization
         if self.config:
@@ -288,6 +281,19 @@ class MapViewer(QWidget):
         self.render_map()
         logger.debug(f"Updated map from external signal: Z{self.zoom_level} at ({self.center_lat:.4f}, {self.center_lon:.4f})")
     
+    def mark_center(self):
+        """
+        Mark current map center and zoom as the default.
+        
+        Saves current center_lat, center_lon, and zoom_level to config as defaults.
+        This allows the user to have a "home" position they can jump back to with the Recenter button.
+        """
+        self.config.set('appearance.tiles.default_zoom', self.zoom_level)
+        self.config.set('appearance.tiles.default_center.lat', self.center_lat)
+        self.config.set('appearance.tiles.default_center.lon', self.center_lon)
+        self.config.save_to_file()
+        logger.info(f"Marked center: Z{self.zoom_level}, ({self.center_lat:.4f}, {self.center_lon:.4f})")
+    
     def recenter(self):
         """
         Recenter map to the metadata center point.
@@ -319,34 +325,56 @@ class MapViewer(QWidget):
         if event.button() == Qt.LeftButton:
             x, y = event.x(), event.y()
             
-            # Check if clicking on zoom_in button (top)
-            button_x = self.CONTROLS_PADDING_LEFT
-            button_y = self.CONTROLS_PADDING_TOP
-            if (button_x <= x <= button_x + self.ZOOM_BUTTON_SIZE and
-                button_y <= y <= button_y + self.ZOOM_BUTTON_SIZE):
-                self.zoom_in()
-                return
+            # Check if clicking on any button
+            cfg = MapButtonConfig
+            button_y = cfg.PADDING_TOP
             
-            # Check if clicking on zoom_out button (middle)
-            button_y = self.CONTROLS_PADDING_TOP + self.ZOOM_BUTTON_SIZE + self.ZOOM_BUTTON_SPACING
-            if (button_x <= x <= button_x + self.ZOOM_BUTTON_SIZE and
-                button_y <= y <= button_y + self.ZOOM_BUTTON_SIZE):
-                self.zoom_out()
-                return
-            
-            # Check if clicking on recenter button (bottom)
-            button_y = self.CONTROLS_PADDING_TOP + 2 * (self.ZOOM_BUTTON_SIZE + self.ZOOM_BUTTON_SPACING)
-            if (button_x <= x <= button_x + self.ZOOM_BUTTON_SIZE and
-                button_y <= y <= button_y + self.ZOOM_BUTTON_SIZE):
-                self.recenter()
-                return
+            for button_name in self.button_manager.BUTTON_ORDER:
+                if (cfg.PADDING_LEFT <= x <= cfg.PADDING_LEFT + cfg.BUTTON_SIZE and
+                    button_y <= y <= button_y + cfg.BUTTON_SIZE):
+                    # Clicked on a button
+                    self.pressed_button = button_name
+                    self.render_map()
+                    
+                    if button_name == 'zoom_in':
+                        self.zoom_in()
+                    elif button_name == 'zoom_out':
+                        self.zoom_out()
+                    elif button_name == 'mark_center':
+                        self.mark_center()
+                    elif button_name == 'recenter':
+                        self.recenter()
+                    return
+                
+                button_y += cfg.BUTTON_SIZE + cfg.BUTTON_SPACING
             
             # Not on a button - start pan
             self.pan_start_x = x
             self.pan_start_y = y
     
     def mouseMoveEvent(self, event):
-        """Handle mouse move - pan map."""
+        """Handle mouse move - pan map and detect button hovers."""
+        x, y = event.x(), event.y()
+        
+        # Check for button hover
+        cfg = MapButtonConfig
+        button_y = cfg.PADDING_TOP
+        old_hovered = self.hovered_button
+        self.hovered_button = None
+        
+        for button_name in self.button_manager.BUTTON_ORDER:
+            if (cfg.PADDING_LEFT <= x <= cfg.PADDING_LEFT + cfg.BUTTON_SIZE and
+                button_y <= y <= button_y + cfg.BUTTON_SIZE):
+                if button_name != 'zoom_level_label':
+                    self.hovered_button = button_name
+                break
+            button_y += cfg.BUTTON_SIZE + cfg.BUTTON_SPACING
+        
+        # Re-render only if hover state changed
+        if old_hovered != self.hovered_button:
+            self.render_map()
+        
+        # Handle panning
         if self.pan_start_x is not None and self.pan_start_y is not None:
             if self.mbtiles_provider is None:
                 return
@@ -394,9 +422,14 @@ class MapViewer(QWidget):
             self.pan_start_y = event.y()
     
     def mouseReleaseEvent(self, event):
-        """Handle mouse release - end pan."""
+        """Handle mouse release - end pan and clear pressed state."""
         if event.button() == Qt.LeftButton:
-            if self.pan_start_x is not None:  # Only save if we actually panned
+            # Clear pressed state
+            if self.pressed_button is not None:
+                self.pressed_button = None
+                self.render_map()
+            
+            if self.pan_start_x is not None:
                 self._save_position_to_config()
             self.pan_start_x = None
             self.pan_start_y = None
@@ -510,10 +543,10 @@ class MapViewer(QWidget):
             logger.error(f"Error rendering map: {e}")
         
         # Always reposition buttons on top
-        self._reposition_controls()
+        self.button_manager.position_all_buttons()
     
     def _draw_ui_controls(self, pil_image):
-        """Draw button visuals on the PIL image (visual only, real buttons handle clicks)."""
+        """Draw button visuals on the PIL image using button manager."""
         # Ensure image is RGBA
         if pil_image.mode != 'RGBA':
             pil_image = pil_image.convert('RGBA')
@@ -521,91 +554,11 @@ class MapViewer(QWidget):
         overlay = Image.new('RGBA', pil_image.size, (0, 0, 0, 0))
         draw = ImageDraw.Draw(overlay)
         
-        button_bg = (52, 144, 220, 200)
-        button_text = (255, 255, 255, 255)
-        corner_radius = 8
-        
-        x_pos = self.CONTROLS_PADDING_LEFT
-        y_pos = self.CONTROLS_PADDING_TOP
-        button_size = self.ZOOM_BUTTON_SIZE
-        spacing = self.ZOOM_BUTTON_SPACING
-        
-        # Draw zoom in button (+)
-        bbox = [x_pos, y_pos, x_pos + button_size, y_pos + button_size]
-        draw.rounded_rectangle(bbox, radius=corner_radius, fill=button_bg)
-        center = button_size // 2
-        # Horizontal line
-        draw.line([(x_pos + center - 6, y_pos + center), (x_pos + center + 6, y_pos + center)],
-                 fill=button_text, width=2)
-        # Vertical line
-        draw.line([(x_pos + center, y_pos + center - 6), (x_pos + center, y_pos + center + 6)],
-                 fill=button_text, width=2)
-        
-        # Draw zoom out button (-)
-        y_pos += button_size + spacing
-        bbox = [x_pos, y_pos, x_pos + button_size, y_pos + button_size]
-        draw.rounded_rectangle(bbox, radius=corner_radius, fill=button_bg)
-        center = button_size // 2
-        # Horizontal line only
-        draw.line([(x_pos + center - 6, y_pos + center), (x_pos + center + 6, y_pos + center)],
-                 fill=button_text, width=2)
-        
-        # Draw recenter button (⊙)
-        y_pos += button_size + spacing
-        bbox = [x_pos, y_pos, x_pos + button_size, y_pos + button_size]
-        draw.rounded_rectangle(bbox, radius=corner_radius, fill=button_bg)
-        center_x = x_pos + button_size // 2
-        center_y = y_pos + button_size // 2
-        # Outer circle
-        draw.ellipse((center_x - 12, center_y - 12, center_x + 12, center_y + 12),
-                    outline=button_text, width=2)
-        # Middle circle
-        draw.ellipse((center_x - 7, center_y - 7, center_x + 7, center_y + 7),
-                    outline=button_text, width=1)
-        # Center dot
-        draw.ellipse((center_x - 3, center_y - 3, center_x + 3, center_y + 3),
-                    fill=button_text)
-        
-        # Draw zoom level display
-        y_pos += button_size + spacing
-        bbox = [x_pos, y_pos, x_pos + button_size, y_pos + button_size]
-        draw.rounded_rectangle(bbox, radius=corner_radius, fill=button_bg)
-        zoom_text = f"Z:{self.zoom_level}"
-        
-        # Use a slightly larger font for better visibility
-        try:
-            # Try to use a system font at 13pt
-            font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 13)
-        except (IOError, OSError):
-            # Fallback to default font if truetype unavailable
-            font = ImageFont.load_default()
-        
-        # Center the text both horizontally and vertically
-        text_bbox = draw.textbbox((0, 0), zoom_text, font=font)
-        text_width = text_bbox[2] - text_bbox[0]
-        text_height = text_bbox[3] - text_bbox[1]
-        text_x = x_pos + (button_size - text_width) // 2
-        text_y = y_pos + (button_size - text_height) // 2 - 3  # Offset 3 pixels upward
-        draw.text((text_x, text_y), zoom_text, font=font, fill=button_text)
+        # Button manager draws all buttons with state
+        self.button_manager.draw_all_buttons(draw, zoom_level=self.zoom_level, 
+                                             hovered_button=self.hovered_button,
+                                             pressed_button=self.pressed_button)
         
         # Composite overlay
         result = Image.alpha_composite(pil_image, overlay)
         return result
-    
-    def _reposition_controls(self):
-        """Reposition the real QPushButton widgets on top of the map."""
-        x_pos = self.CONTROLS_PADDING_LEFT
-        y_pos = self.CONTROLS_PADDING_TOP
-        button_size = self.ZOOM_BUTTON_SIZE
-        spacing = self.ZOOM_BUTTON_SPACING
-        
-        # Zoom in button
-        self.zoom_in_button.move(x_pos, y_pos)
-        
-        # Zoom out button
-        y_pos += button_size + spacing
-        self.zoom_out_button.move(x_pos, y_pos)
-        
-        # Recenter button
-        y_pos += button_size + spacing
-        self.recenter_button.move(x_pos, y_pos)

@@ -14,6 +14,7 @@ from PIL import Image, ImageDraw
 
 from src.shared.map.mbtiles_provider import MBTilesProvider
 from src.shared.map.map_renderer import MapRenderer
+from src.map.map_buttons import MapButtonManager, MapButtonConfig
 
 logger = logging.getLogger(__name__)
 
@@ -416,6 +417,9 @@ class MapWidget(QWidget):
         # Hover state for button effects
         self.hovered_button = None  # Which button is currently hovered
         self.pressed_button = None  # Which button is currently being pressed
+        
+        # Create shared button manager
+        self.button_manager = MapButtonManager()
         
         # Render timer
         self.render_timer = QTimer()
@@ -931,27 +935,26 @@ class MapWidget(QWidget):
         if event.button() == Qt.LeftButton:
             x, y = event.x(), event.y()
             
-            # Check if clicking on zoom_in button (top)
-            button_x = self.CONTROLS_PADDING_LEFT
-            button_y = self.CONTROLS_PADDING_TOP
-            if (button_x <= x <= button_x + self.ZOOM_BUTTON_SIZE and
-                button_y <= y <= button_y + self.ZOOM_BUTTON_SIZE):
-                self.zoom_in()
-                return
-            
-            # Check if clicking on zoom_out button (middle)
-            button_y = self.CONTROLS_PADDING_TOP + self.ZOOM_BUTTON_SIZE + self.ZOOM_BUTTON_SPACING
-            if (button_x <= x <= button_x + self.ZOOM_BUTTON_SIZE and
-                button_y <= y <= button_y + self.ZOOM_BUTTON_SIZE):
-                self.zoom_out()
-                return
-            
-            # Check if clicking on recenter button (bottom)
-            button_y = self.CONTROLS_PADDING_TOP + 2 * (self.ZOOM_BUTTON_SIZE + self.ZOOM_BUTTON_SPACING) + 30  # Approximate label height
-            if (button_x <= x <= button_x + self.ZOOM_BUTTON_SIZE and
-                button_y <= y <= button_y + self.ZOOM_BUTTON_SIZE):
-                self.recenter_on_default()
-                return
+            # Check if clicking on any button (using button_rects from last render)
+            if hasattr(self, 'button_rects') and self.button_rects:
+                for button_name, (x1, y1, x2, y2) in self.button_rects.items():
+                    if x1 <= x <= x2 and y1 <= y <= y2:
+                        # Button clicked - execute callback
+                        if button_name == 'zoom_in':
+                            self.zoom_in()
+                            return
+                        elif button_name == 'zoom_out':
+                            self.zoom_out()
+                            return
+                        elif button_name == 'zoom_level':
+                            # Zoom level label - no action
+                            return
+                        elif button_name == 'mark_center':
+                            self.mark_center()
+                            return
+                        elif button_name == 'recenter':
+                            self.recenter_on_default()
+                            return
             
             # Check if clicking on a turning point (PRIORITY: check this first for Shift+click range selection)
             # Only do this if a track is actually selected
@@ -1426,146 +1429,36 @@ class MapWidget(QWidget):
     
     def draw_ui_controls(self, pil_image):
         """Draw UI control buttons on PIL image. Returns button hit areas."""
-        # Create a transparent overlay for buttons
+        # Create overlay
         overlay = Image.new('RGBA', pil_image.size, (0, 0, 0, 0))
         overlay_draw = ImageDraw.Draw(overlay)
         
-        # Button colors
-        button_opacity_normal = 200   # 78% opaque
-        button_opacity_hover = 255    # 100% opaque (fully opaque on hover)
-        button_opacity_pressed = 180  # 71% opaque (slightly darker when pressed)
-        button_text = (255, 255, 255, 255)  # White, fully opaque
+        # Position buttons first (so their x,y coords are set for drawing)
+        cfg = MapButtonConfig
+        x_pos = cfg.PADDING_LEFT
+        y_pos = cfg.PADDING_TOP
         
-        x_pos = self.CONTROLS_PADDING_LEFT
-        y_pos = self.CONTROLS_PADDING_TOP
-        button_size = self.ZOOM_BUTTON_SIZE
-        corner_radius = 8
+        for button_name in self.button_manager.BUTTON_ORDER:
+            button = self.button_manager.get_button(button_name)
+            if button:
+                button.set_position(x_pos, y_pos)
+                y_pos += cfg.BUTTON_SIZE + cfg.BUTTON_SPACING
         
+        # Now draw buttons with their positions set
+        self.button_manager.draw_all_buttons(overlay_draw, zoom_level=self.zoom_level,
+                                             hovered_button=self.hovered_button,
+                                             pressed_button=self.pressed_button)
+        
+        # Build button rects for hit detection
         button_rects = {}
+        x_pos = cfg.PADDING_LEFT
+        y_pos = cfg.PADDING_TOP
         
-        # Helper function to get button color and size based on state
-        def get_button_state(button_name):
-            """Returns (color, size_scale) for button based on hover/pressed state."""
-            is_pressed = self.pressed_button == button_name
-            is_hovered = self.hovered_button == button_name
-            
-            if is_pressed:
-                # Pressed: dark blue, smaller size
-                color = (30, 100, 160, button_opacity_pressed)  # Dark blue
-                size_scale = 0.94  # 94% size (slightly sunken)
-            elif is_hovered:
-                # Hovered: bright blue
-                color = (52, 144, 220, button_opacity_hover)
-                size_scale = 1.0
-            else:
-                # Normal: semi-transparent blue
-                color = (52, 144, 220, button_opacity_normal)
-                size_scale = 1.0
-            
-            return color, size_scale
-        
-        def draw_button(button_name, x, y, button_size, icon_fn):
-            """Draw a button at position (x, y) with given size."""
-            color, size_scale = get_button_state(button_name)
-            
-            # Zoom level is display-only, no hover/press effects
-            if button_name == 'zoom_level':
-                color = (52, 144, 220, button_opacity_normal)  # Always normal color
-                size_scale = 1.0  # Never scales
-            
-            # Calculate inset for pressed effect
-            if size_scale < 1.0:
-                inset = int((button_size * (1.0 - size_scale)) / 2)
-            else:
-                inset = 0
-            
-            bbox = [x + inset, y + inset, x + button_size - inset, y + button_size - inset]
-            button_rects[button_name] = (x, y, x + button_size, y + button_size)  # Original rect for hit detection
-            
-            # Draw button background
-            overlay_draw.rounded_rectangle(bbox, radius=corner_radius, fill=color)
-            
-            # Draw icon
-            icon_fn(overlay_draw, bbox, button_text)
-        
-        def draw_plus_icon(draw, bbox, color):
-            """Draw + icon inside button."""
-            x1, y1, x2, y2 = bbox
-            center_x = (x1 + x2) // 2
-            center_y = (y1 + y2) // 2
-            draw.line([(center_x - 6, center_y), (center_x + 6, center_y)], fill=color, width=2)
-            draw.line([(center_x, center_y - 6), (center_x, center_y + 6)], fill=color, width=2)
-        
-        def draw_minus_icon(draw, bbox, color):
-            """Draw - icon inside button."""
-            x1, y1, x2, y2 = bbox
-            center_x = (x1 + x2) // 2
-            center_y = (y1 + y2) // 2
-            draw.line([(center_x - 6, center_y), (center_x + 6, center_y)], fill=color, width=2)
-        
-        def draw_z_icon(draw, bbox, color):
-            """Draw Z icon inside button - show zoom level."""
-            zoom_text = f"Z:{self.zoom_level}"
-            
-            # Use a slightly larger font for better visibility
-            try:
-                # Try to use a system font at 13pt bold
-                from PIL import ImageFont
-                font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 13)
-            except (IOError, OSError):
-                # Fallback to default font if truetype unavailable
-                font = ImageFont.load_default()
-            
-            # Center the text both horizontally and vertically within button
-            x1, y1, x2, y2 = bbox
-            button_width = x2 - x1
-            button_height = y2 - y1
-            
-            # Get text size
-            text_bbox = draw.textbbox((0, 0), zoom_text, font=font)
-            text_width = text_bbox[2] - text_bbox[0]
-            text_height = text_bbox[3] - text_bbox[1]
-            
-            # Calculate centered position
-            text_x = x1 + (button_width - text_width) // 2
-            text_y = y1 + (button_height - text_height) // 2 - 2  # Slight upward offset
-            
-            draw.text((text_x, text_y), zoom_text, font=font, fill=color)
-        
-        def draw_crosshair_icon(draw, bbox, color):
-            """Draw crosshair icon inside button."""
-            x1, y1, x2, y2 = bbox
-            center_x = (x1 + x2) // 2
-            center_y = (y1 + y2) // 2
-            draw.line([(center_x - 10, center_y), (center_x + 10, center_y)], fill=color, width=2)
-            draw.line([(center_x, center_y - 10), (center_x, center_y + 10)], fill=color, width=2)
-            draw.ellipse((center_x - 4, center_y - 4, center_x + 4, center_y + 4), outline=color, width=1)
-        
-        def draw_recenter_icon(draw, bbox, color):
-            """Draw recenter icon (concentric circles) inside button."""
-            x1, y1, x2, y2 = bbox
-            center_x = (x1 + x2) // 2
-            center_y = (y1 + y2) // 2
-            draw.ellipse((center_x - 12, center_y - 12, center_x + 12, center_y + 12), outline=color, width=2)
-            draw.ellipse((center_x - 7, center_y - 7, center_x + 7, center_y + 7), outline=color, width=1)
-            draw.ellipse((center_x - 3, center_y - 3, center_x + 3, center_y + 3), fill=color)
-        
-        # Draw all buttons
-        y_pos = self.CONTROLS_PADDING_TOP
-        
-        draw_button('zoom_in', x_pos, y_pos, button_size, draw_plus_icon)
-        y_pos += button_size + self.ZOOM_BUTTON_SPACING
-        
-        draw_button('zoom_out', x_pos, y_pos, button_size, draw_minus_icon)
-        y_pos += button_size + self.ZOOM_BUTTON_SPACING
-        
-        draw_button('zoom_level', x_pos, y_pos, button_size, draw_z_icon)
-        y_pos += button_size + self.ZOOM_BUTTON_SPACING
-        
-        draw_button('mark_center', x_pos, y_pos, button_size, draw_crosshair_icon)
-        y_pos += button_size + self.ZOOM_BUTTON_SPACING
-        
-        draw_button('recenter', x_pos, y_pos, button_size, draw_recenter_icon)
+        for button_name in self.button_manager.BUTTON_ORDER:
+            # Normalize zoom_level_label to zoom_level for hover detection
+            rect_name = 'zoom_level' if button_name == 'zoom_level_label' else button_name
+            button_rects[rect_name] = (x_pos, y_pos, x_pos + cfg.BUTTON_SIZE, y_pos + cfg.BUTTON_SIZE)
+            y_pos += cfg.BUTTON_SIZE + cfg.BUTTON_SPACING
         
         # Draw center crosshair if enabled
         if self.show_crosshair:
@@ -1573,52 +1466,23 @@ class MapWidget(QWidget):
             map_center_y = pil_image.height // 2
             crosshair_size = self.crosshair_size
             
-            # Horizontal line with outline
-            overlay_draw.line(
-                [(map_center_x - crosshair_size, map_center_y), (map_center_x + crosshair_size, map_center_y)],
-                fill=self.crosshair_outline_color,
-                width=2 + 2 * self.crosshair_outline_width
-            )
+            # Horizontal line
             overlay_draw.line(
                 [(map_center_x - crosshair_size, map_center_y), (map_center_x + crosshair_size, map_center_y)],
                 fill=self.crosshair_color,
                 width=2
             )
             
-            # Vertical line with outline
-            overlay_draw.line(
-                [(map_center_x, map_center_y - crosshair_size), (map_center_x, map_center_y + crosshair_size)],
-                fill=self.crosshair_outline_color,
-                width=2 + 2 * self.crosshair_outline_width
-            )
+            # Vertical line
             overlay_draw.line(
                 [(map_center_x, map_center_y - crosshair_size), (map_center_x, map_center_y + crosshair_size)],
                 fill=self.crosshair_color,
                 width=2
-            )
-            
-            # Small center circle with outline
-            circle_radius = 4
-            # Outline circle
-            overlay_draw.ellipse(
-                (map_center_x - circle_radius - self.crosshair_outline_width, 
-                 map_center_y - circle_radius - self.crosshair_outline_width,
-                 map_center_x + circle_radius + self.crosshair_outline_width, 
-                 map_center_y + circle_radius + self.crosshair_outline_width),
-                outline=self.crosshair_outline_color,
-                width=self.crosshair_outline_width
-            )
-            # Inner circle
-            overlay_draw.ellipse(
-                (map_center_x - circle_radius, map_center_y - circle_radius, map_center_x + circle_radius, map_center_y + circle_radius),
-                outline=self.crosshair_color,
-                width=1
             )
         
         # Composite the overlay onto the image
         pil_image = Image.alpha_composite(pil_image, overlay)
         return pil_image, button_rects
-    
     def _show_context_menu(self, pos):
         """Show context menu on right-click."""
         from PyQt5.QtWidgets import QMenu
@@ -1687,7 +1551,7 @@ class MapWidget(QWidget):
             return None
         
         tracks = self.track_manager.get_all_tracks()
-        if self.selected_track_id >= len(tracks):
+        if not tracks or self.selected_track_id < 0 or self.selected_track_id >= len(tracks):
             return None
         
         track = tracks[self.selected_track_id]
