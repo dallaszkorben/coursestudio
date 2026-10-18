@@ -25,7 +25,7 @@ from PyQt5.QtCore import Qt
 import gpxpy.gpx
 
 from src.gui.widgets.track_list_widget import TrackListWidget, TrackListModel
-from src.core.track_manager import TrackManager, TrackData, Trackpoint
+from src.track_editor.core.track_manager import TrackManager, TrackData, Trackpoint
 
 
 # ============================================================================

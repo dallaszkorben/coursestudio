@@ -28,7 +28,7 @@ from PyQt5.QtCore import Qt
 
 # Import modules to test
 from src.gui.main_window import MainWindow
-from src.core.track_manager import TrackManager
+from src.track_editor.core.track_manager import TrackManager
 
 
 # ============================================================================

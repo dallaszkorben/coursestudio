@@ -12,8 +12,8 @@ from PyQt5.QtGui import QPixmap, QFont
 from PyQt5.QtCore import Qt, QTimer, pyqtSignal
 from PIL import Image, ImageDraw
 
-from src.map.mbtiles_provider import MBTilesProvider
-from src.map.map_renderer import MapRenderer
+from src.shared.map.mbtiles_provider import MBTilesProvider
+from src.shared.map.map_renderer import MapRenderer
 
 logger = logging.getLogger(__name__)
 
@@ -318,6 +318,10 @@ class MapWidget(QWidget):
         self.crosshair_outline_width = config.get_int('appearance.map_display.Crosshair.outline.width', 1)
         self.crosshair_size = config.get_int('appearance.map_display.Crosshair.size', 20)
         
+        # Zoom bounds (will be set when MBTiles is loaded, default to safe values)
+        self.min_zoom = 1
+        self.max_zoom = 20
+        
         # Map state - load from recent_center, fall back to default_center
         recent_center_lat = config.get_float('appearance.tiles.recent_center.lat', None)
         recent_center_lon = config.get_float('appearance.tiles.recent_center.lon', None)
@@ -342,6 +346,10 @@ class MapWidget(QWidget):
                 self.zoom_level = self.ZOOM_LEVEL_DEFAULT
         
         self.config = config  # Store config for later use (e.g., saving center position and zoom)
+        
+        # ✅ NEW: Connect to config signals for live map synchronization
+        if self.config:
+            self.config.map_position_changed.connect(self._on_map_position_changed_external)
         
         # Drag state for moving trackpoints
         self.dragging_trackpoint = False
@@ -776,10 +784,18 @@ class MapWidget(QWidget):
         
         Called automatically after navigation to persist map state.
         This ensures that if the app closes, the user returns to their last viewed location.
+        
+        Uses set_silent() to avoid feedback loop from emitting signals 3 times,
+        then emits once after all values are set.
         """
-        self.config.set('appearance.tiles.recent_zoom', self.zoom_level)
-        self.config.set('appearance.tiles.recent_center.lat', self.center_lat)
-        self.config.set('appearance.tiles.recent_center.lon', self.center_lon)
+        # ✅ NEW: Use set_silent to avoid feedback loop
+        self.config.set_silent('appearance.tiles.recent_zoom', self.zoom_level)
+        self.config.set_silent('appearance.tiles.recent_center.lat', self.center_lat)
+        self.config.set_silent('appearance.tiles.recent_center.lon', self.center_lon)
+        
+        # ✅ NEW: Emit signal ONCE after all values are set
+        self.config.emit_map_position_changed()
+        
         self.config.save_to_file()
     
     def reset_to_recent_center(self):
@@ -795,6 +811,29 @@ class MapWidget(QWidget):
             self.center_lat = self.config.get_float('appearance.tiles.default_center.lat', 56.168)
             self.center_lon = self.config.get_float('appearance.tiles.default_center.lon', 15.586)
         
+        self.needs_render = True
+    
+    def _on_map_position_changed_external(self, lat, lon, zoom):
+        """
+        Handler for map_position_changed signal from config.
+        
+        Called when another tab (Map Editor) changes the map position/zoom.
+        Updates this map to show the same view.
+        
+        Args:
+            lat (float): New center latitude
+            lon (float): New center longitude
+            zoom (int): New zoom level
+        """
+        # Update our position
+        self.center_lat = lat
+        self.center_lon = lon
+        
+        # Update zoom if it's within valid bounds
+        if self.min_zoom <= zoom <= self.max_zoom:
+            self.zoom_level = zoom
+        
+        # Trigger re-render
         self.needs_render = True
     
     def save_center_position(self):
@@ -1030,7 +1069,7 @@ class MapWidget(QWidget):
                     
                     # If no track selected (selected_track_id is None or -1 from unselect), create a new one
                     if self.selected_track_id is None or self.selected_track_id == -1:
-                        from src.core.track_manager import TrackData
+                        from src.track_editor.core.track_manager import TrackData
                         # Create new track with auto-incremented name
                         track_count = len(self.track_manager.get_all_tracks())
                         new_track = TrackData(name=f"Track {track_count + 1}", trackpoints=[])

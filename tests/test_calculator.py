@@ -15,7 +15,7 @@ from pathlib import Path
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from src.core.calculator import (
+from src.track_editor.core.calculator import (
     haversine_distance,
     calculate_track_distance,
     calculate_bearing,

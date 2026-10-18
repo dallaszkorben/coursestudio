@@ -3,6 +3,9 @@ Application configuration manager using YAML format.
 
 Handles loading, accessing, and saving configuration settings
 from YAML config files with support for nested values.
+
+Includes PyQt5 signals for real-time config change notifications,
+enabling widgets to stay synchronized when config values change.
 """
 
 import os
@@ -10,14 +13,28 @@ import yaml
 from pathlib import Path
 from typing import Any, Optional
 
+from PyQt5.QtCore import QObject, pyqtSignal
 
-class AppConfig:
+
+class AppConfig(QObject):
     """
-    YAML-based configuration manager for CourseStudio.
+    YAML-based configuration manager for CourseStudio with signal support.
     
     Supports nested configuration hierarchy with dot-notation access.
     Example: config.get('Map.track.path.color') returns 'FF0000'
+    
+    Signals:
+        config_changed: Emitted when any config value changes
+            Args: (key: str, value: Any) - The config key and new value
+        
+        map_position_changed: Emitted when map position/zoom changes
+            Args: (center_lat: float, center_lon: float, zoom: int)
+            Convenience signal for tracking map state changes
     """
+    
+    # Signals
+    config_changed = pyqtSignal(str, object)  # key, value
+    map_position_changed = pyqtSignal(float, float, int)  # lat, lon, zoom
     
     DEFAULT_CONFIG_FILE = 'config/settings.yaml'
     
@@ -28,6 +45,7 @@ class AppConfig:
         Args:
             config_file: Path to YAML configuration file
         """
+        super().__init__()
         self.config_file = Path(config_file)
         self.config_data = {}
         self.load_from_file()
@@ -149,6 +167,9 @@ class AppConfig:
         """
         Set configuration value using dot notation.
         
+        Emits config_changed signal when value is updated.
+        Emits map_position_changed signal for map-related changes.
+        
         Args:
             path: Dot-separated path (e.g., 'Map.track.path.color')
             value: Value to set
@@ -164,7 +185,58 @@ class AppConfig:
         
         # Set final value
         config[keys[-1]] = value
+        
+        # ✅ NEW: Emit config_changed signal
+        self.config_changed.emit(path, value)
+        
+        # ✅ NEW: Emit map_position_changed signal for map-related keys
+        if path == 'appearance.tiles.recent_center.lat' or \
+           path == 'appearance.tiles.recent_center.lon' or \
+           path == 'appearance.tiles.recent_zoom':
+            # Emit map position changed signal with all three values
+            lat = self.get_float('appearance.tiles.recent_center.lat', 0)
+            lon = self.get_float('appearance.tiles.recent_center.lon', 0)
+            zoom = self.get_int('appearance.tiles.recent_zoom', 10)
+            self.map_position_changed.emit(lat, lon, zoom)
     
+    def set_silent(self, path: str, value: Any) -> None:
+        """
+        Set configuration value WITHOUT emitting signals.
+        
+        Used internally to set multiple related values without triggering
+        intermediate signal emissions. Call emit_map_position_changed() 
+        manually after setting all values.
+        
+        Args:
+            path: Dot-separated path (e.g., 'Map.track.path.color')
+            value: Value to set
+        """
+        keys = path.split('.')
+        config = self.config_data
+        
+        # Navigate/create nested structure
+        for key in keys[:-1]:
+            if key not in config:
+                config[key] = {}
+            config = config[key]
+        
+        # Set final value (NO signals emitted)
+        config[keys[-1]] = value
+    
+    def emit_map_position_changed(self) -> None:
+        """
+        Manually emit map_position_changed signal.
+        
+        Used after setting multiple map-related values via set_silent()
+        to emit a single signal with all values set correctly.
+        
+        This prevents the feedback loop caused by emitting signals
+        after each individual set() call.
+        """
+        lat = self.get_float('appearance.tiles.recent_center.lat', 0)
+        lon = self.get_float('appearance.tiles.recent_center.lon', 0)
+        zoom = self.get_int('appearance.tiles.recent_zoom', 10)
+        self.map_position_changed.emit(lat, lon, zoom)
     def get_all(self) -> dict:
         """Get entire configuration dictionary."""
         return self.config_data

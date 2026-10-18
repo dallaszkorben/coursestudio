@@ -12,7 +12,7 @@ Classes:
 Example:
         from PyQt5.QtWidgets import QApplication
         from src.gui.widgets.trackpoint_list_widget import TrackpointListWidget
-        from src.core.track_manager import TrackManager
+        from src.track_editor.core.track_manager import TrackManager
         
         app = QApplication([])
         manager = TrackManager()
@@ -31,8 +31,8 @@ from PyQt5.QtWidgets import (
 from PyQt5.QtGui import QFont, QColor
 from PyQt5.QtCore import Qt, pyqtSignal, QSize
 
-from src.core.track_manager import TrackManager, Trackpoint
-from src.utils import coordinate_formatter
+from src.track_editor.core.track_manager import TrackManager, Trackpoint
+from src.shared.utils import coordinate_formatter
 from src.gui.widgets.toggle_switch_widget import ToggleSwitchWidget
 
 

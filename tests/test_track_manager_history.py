@@ -1,8 +1,8 @@
 """Unit tests for TrackManager with integrated CommandHistory."""
 
 import pytest
-from src.core.track_manager import TrackManager
-from src.core.gpx_handler import GPXHandler
+from src.track_editor.core.track_manager import TrackManager
+from src.track_editor.core.gpx_handler import GPXHandler
 
 
 class TestTrackManagerWithHistory:

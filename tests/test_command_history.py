@@ -1,12 +1,12 @@
 """Unit tests for Command Pattern & History Stack."""
 
 import pytest
-from src.core.command_history import (
+from src.track_editor.core.command_history import (
     CommandHistory, RenameTrackCommand, AddTrackpointCommand,
     RemoveTrackpointCommand, RemoveTrackpointRangeCommand
 )
-from src.core.track_manager import TrackManager
-from src.core.gpx_handler import GPXHandler
+from src.track_editor.core.track_manager import TrackManager
+from src.track_editor.core.gpx_handler import GPXHandler
 
 
 class TestCommandHistory:

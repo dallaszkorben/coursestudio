@@ -21,7 +21,7 @@ import os
 # Add source to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
-from src.core.track_manager import (
+from src.track_editor.core.track_manager import (
     Trackpoint, TrackData, TrackManager, create_trackpoint_from_gpx_point
 )
 import gpxpy.gpx

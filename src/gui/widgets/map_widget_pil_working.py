@@ -14,7 +14,7 @@ from PyQt5.QtCore import Qt, pyqtSignal, QTimer, QRect, QSize
 from PyQt5.QtWidgets import QWidget, QVBoxLayout, QPushButton, QLabel
 from PyQt5.QtGui import QPixmap, QFont
 
-from src.map.mbtiles_provider import MBTilesProvider
+from src.shared.map.mbtiles_provider import MBTilesProvider
 
 logger = logging.getLogger(__name__)
 
@@ -168,7 +168,7 @@ class MapWidget(QWidget):
     def _do_render(self) -> None:
         """Perform map render."""
         try:
-            from src.map.map_renderer import MapRenderer
+            from src.shared.map.map_renderer import MapRenderer
             from PIL import ImageDraw, ImageFont
             import tempfile
             

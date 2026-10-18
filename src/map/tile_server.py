@@ -16,7 +16,7 @@ from PyQt5.QtWebEngineCore import QWebEngineUrlRequestInterceptor
 from PyQt5.QtCore import QUrl, QByteArray
 from PyQt5.QtNetwork import QNetworkReply
 
-from src.map.mbtiles_provider import MBTilesProvider
+from src.shared.map.mbtiles_provider import MBTilesProvider
 
 
 class TileRequestInterceptor(QWebEngineUrlRequestInterceptor):

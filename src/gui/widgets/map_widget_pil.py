@@ -22,8 +22,8 @@ from PyQt5.QtCore import Qt, pyqtSignal, QTimer, QRect
 from PyQt5.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel
 from PyQt5.QtGui import QPixmap, QFont
 
-from src.map.mbtiles_provider import MBTilesProvider
-from src.map.map_renderer import MapRenderer
+from src.shared.map.mbtiles_provider import MBTilesProvider
+from src.shared.map.map_renderer import MapRenderer
 
 
 class MapWidget(QWidget):

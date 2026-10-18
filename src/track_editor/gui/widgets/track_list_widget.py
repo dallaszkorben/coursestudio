@@ -13,7 +13,7 @@ Classes:
 Example:
     >>> from PyQt5.QtWidgets import QApplication
     >>> from src.gui.widgets.track_list_widget import TrackListWidget
-    >>> from src.core.track_manager import TrackManager
+    >>> from src.track_editor.core.track_manager import TrackManager
     >>> 
     >>> app = QApplication([])
     >>> manager = TrackManager()
@@ -31,7 +31,7 @@ from PyQt5.QtWidgets import (
 from PyQt5.QtGui import QFont, QIcon, QColor, QBrush
 from PyQt5.QtCore import Qt, pyqtSignal, QSize
 
-from src.core.track_manager import TrackManager, TrackData
+from src.track_editor.core.track_manager import TrackManager, TrackData
 
 
 # ============================================================================
@@ -370,7 +370,7 @@ class TrackListWidget(QWidget):
         """Handle '+' button click to create a new track."""
         
         # Create a new track with default name
-        from src.core.track_manager import TrackData
+        from src.track_editor.core.track_manager import TrackData
         track_count = len(self.track_manager.get_all_tracks())
         new_track = TrackData(name=f"Track {track_count + 1}", trackpoints=[])
         

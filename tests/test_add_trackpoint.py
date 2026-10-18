@@ -1,8 +1,8 @@
 """Unit tests for add_trackpoint functionality."""
 
 import pytest
-from src.core.track_manager import TrackManager, Trackpoint, TrackData
-from src.core.gpx_handler import GPXHandler
+from src.track_editor.core.track_manager import TrackManager, Trackpoint, TrackData
+from src.track_editor.core.gpx_handler import GPXHandler
 
 
 class TestAddTrackpoint:

@@ -45,7 +45,7 @@ import gpxpy.gpx
 from typing import List, Tuple, Optional, Dict, Any
 from pathlib import Path
 
-from src.core.calculator import calculate_track_distance, validate_coordinate
+from src.track_editor.core.calculator import calculate_track_distance, validate_coordinate
 
 
 class GPXHandler:

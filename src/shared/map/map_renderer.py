@@ -50,7 +50,7 @@ References:
 import math
 from PIL import Image
 
-from src.map.mbtiles_provider import MBTilesProvider
+from src.shared.map.mbtiles_provider import MBTilesProvider
 
 
 class MapRenderer:

@@ -15,8 +15,8 @@ Key Classes:
 
 Example:
     # Load GPX file and manage tracks
-    from src.core.track_manager import TrackManager
-    from src.core.gpx_handler import GPXHandler
+    from src.track_editor.core.track_manager import TrackManager
+    from src.track_editor.core.gpx_handler import GPXHandler
     
     manager = TrackManager()
     handler = GPXHandler()
@@ -178,7 +178,7 @@ class TrackManager:
         manager = TrackManager()
         
         # Load from GPX
-        from src.core.gpx_handler import GPXHandler
+        from src.track_editor.core.gpx_handler import GPXHandler
         handler = GPXHandler()
         gpx = handler.load_gpx('track.gpx')
         manager.load_from_gpx(gpx)
@@ -212,7 +212,7 @@ class TrackManager:
         
         # Optional command history for undo/redo
         if use_history:
-            from src.core.command_history import CommandHistory
+            from src.track_editor.core.command_history import CommandHistory
             self.history: Optional['CommandHistory'] = CommandHistory()
         else:
             self.history = None
@@ -278,7 +278,7 @@ class TrackManager:
             raise ValueError("GPX data is None or invalid")
         
         # Import calculator for distance calculation
-        from src.core.calculator import calculate_track_distance, validate_coordinate
+        from src.track_editor.core.calculator import calculate_track_distance, validate_coordinate
         
         # ===== RESET STATE =====
         # Clear previous tracks (fresh start for new file)
@@ -531,7 +531,7 @@ class TrackManager:
             return 0
         
         # Import calculator for distance calculation
-        from src.core.calculator import calculate_track_distance, validate_coordinate
+        from src.track_editor.core.calculator import calculate_track_distance, validate_coordinate
         
         appended_count = 0
         
@@ -712,7 +712,7 @@ class TrackManager:
             logger.warning(f"Cannot rename: invalid track index {track_index}")
             return False
         
-        from src.core.command_history import RenameTrackCommand
+        from src.track_editor.core.command_history import RenameTrackCommand
         
         old_name = track.name
         cmd = RenameTrackCommand(self, track_index, old_name, new_name)
@@ -792,7 +792,7 @@ class TrackManager:
             - Logs distance change for debugging
         """
         
-        from src.core.calculator import calculate_track_distance
+        from src.track_editor.core.calculator import calculate_track_distance
         
         # Validate track exists
         track = self.get_track_by_index(track_index)
@@ -1288,7 +1288,7 @@ class TrackManager:
             logger.warning("Command history not enabled")
             return False
         
-        from src.core.command_history import AddTrackpointCommand
+        from src.track_editor.core.command_history import AddTrackpointCommand
         
         cmd = AddTrackpointCommand(self, track_index, latitude, longitude, altitude, position)
         return self.history.execute(cmd)
@@ -1383,7 +1383,7 @@ class TrackManager:
             logger.warning("Command history not enabled")
             return False
         
-        from src.core.command_history import MoveTrackpointCommand
+        from src.track_editor.core.command_history import MoveTrackpointCommand
         
         cmd = MoveTrackpointCommand(self, track_index, point_index, latitude, longitude, altitude)
         return self.history.execute(cmd)
@@ -1511,7 +1511,7 @@ def create_trackpoint_from_gpx_point(gpx_point: gpxpy.gpx.GPXTrackPoint,
         ValueError: If coordinates are invalid
     """
     
-    from src.core.calculator import validate_coordinate
+    from src.track_editor.core.calculator import validate_coordinate
     
     validate_coordinate(gpx_point.latitude, gpx_point.longitude)
     

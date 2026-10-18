@@ -17,8 +17,8 @@ from PyQt5.QtWidgets import (
 )
 from PyQt5.QtCore import Qt
 
-from src.gui.widgets.track_list_widget import TrackListWidget
-from src.gui.widgets.trackpoint_list_widget import TrackpointListWidget
+from src.track_editor.gui.widgets.track_list_widget import TrackListWidget
+from src.track_editor.gui.widgets.trackpoint_list_widget import TrackpointListWidget
 from src.gui.widgets.map_widget import MapWidget
 
 logger = logging.getLogger(__name__)

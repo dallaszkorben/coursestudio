@@ -31,17 +31,17 @@ from PyQt5.QtCore import Qt, QSize, pyqtSignal
 from PyQt5.QtWidgets import QTabWidget
 
 from config.app_config_yaml import AppConfig
-from src.core.gpx_handler import GPXHandler
-from src.core.track_manager import TrackManager
-from src.gui.widgets.track_list_widget import TrackListWidget
-from src.gui.widgets.trackpoint_list_widget import TrackpointListWidget
+from src.track_editor.core.gpx_handler import GPXHandler
+from src.track_editor.core.track_manager import TrackManager
+from src.track_editor.gui.widgets.track_list_widget import TrackListWidget
+from src.track_editor.gui.widgets.trackpoint_list_widget import TrackpointListWidget
 from src.gui.widgets.map_widget import MapWidget
 from src.gui.widgets.settings_widget import SettingsWidget
 from src.gui.dialogs.help_dialog import HelpDialog
-from src.map.mbtiles_provider import MBTilesProvider
-from src.gui.tab_handler_track_editor import TrackEditorTabHandler
-from src.gui.tab_handler_map_editor import MapEditorTabHandler
-from src.gui.tab_handler_settings import SettingsTabHandler
+from src.shared.map.mbtiles_provider import MBTilesProvider
+from src.gui.tab_handlers.tab_handler_track_editor import TrackEditorTabHandler
+from src.gui.tab_handlers.tab_handler_map_editor import MapEditorTabHandler
+from src.gui.tab_handlers.tab_handler_settings import SettingsTabHandler
 
 
 # ============================================================================
@@ -544,7 +544,10 @@ class MainWindow(QMainWindow):
         # Tab 2: Map Editor (using MapEditorTabHandler)
         # ====================================================================
         
-        map_editor_handler = MapEditorTabHandler()
+        map_editor_handler = MapEditorTabHandler(
+            self.mbtiles_provider,
+            self.config
+        )
         map_editor_widget = map_editor_handler.create_tab()
         
         self.main_tab_widget.addTab(map_editor_widget, "Map Editor")

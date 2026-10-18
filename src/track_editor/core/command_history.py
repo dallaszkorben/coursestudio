@@ -12,8 +12,8 @@ Classes:
     - CommandHistory: Manages undo/redo stacks
 
 Example:
-    >>> from src.core.command_history import CommandHistory, RenameTrackCommand
-    >>> from src.core.track_manager import TrackManager
+    >>> from src.track_editor.core.command_history import CommandHistory, RenameTrackCommand
+    >>> from src.track_editor.core.track_manager import TrackManager
     >>> 
     >>> manager = TrackManager()
     >>> history = CommandHistory()
@@ -34,7 +34,7 @@ from abc import ABC, abstractmethod
 from typing import List, Optional
 from dataclasses import dataclass
 
-from src.core.track_manager import TrackManager, Trackpoint
+from src.track_editor.core.track_manager import TrackManager, Trackpoint
 
 
 logger = logging.getLogger(__name__)

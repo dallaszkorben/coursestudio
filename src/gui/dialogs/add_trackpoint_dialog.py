@@ -13,7 +13,7 @@ from PyQt5.QtWidgets import (
 )
 from PyQt5.QtCore import Qt
 
-from src.utils.coordinate_formatter import (
+from src.shared.utils.coordinate_formatter import (
     parse_coordinate, dms_to_decimal
 )
 
