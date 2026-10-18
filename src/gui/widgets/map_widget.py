@@ -15,6 +15,7 @@ from PIL import Image, ImageDraw
 from src.shared.map.mbtiles_provider import MBTilesProvider
 from src.shared.map.map_renderer import MapRenderer
 from src.map.map_buttons import MapButtonManager, MapButtonConfig
+from src.shared.map.crosshair_drawer import draw_crosshair
 
 logger = logging.getLogger(__name__)
 
@@ -323,28 +324,62 @@ class MapWidget(QWidget):
         self.min_zoom = 1
         self.max_zoom = 20
         
-        # Map state - load from recent_center, fall back to default_center
-        recent_center_lat = config.get_float('appearance.tiles.recent_center.lat', None)
-        recent_center_lon = config.get_float('appearance.tiles.recent_center.lon', None)
+        # Map state - load from mbtiles first, then recent, then default
+        # Store mbtiles_center/zoom for reference (used by Recenter button)
+        self.mbtiles_center_lon = None
+        self.mbtiles_center_lat = None
+        self.mbtiles_zoom = None
         
-        if recent_center_lat is not None and recent_center_lon is not None:
-            self.center_lat = recent_center_lat
-            self.center_lon = recent_center_lon
+        if mbtiles_provider:
+            try:
+                lon, lat, zoom = mbtiles_provider.get_mbtiles_center_with_fallback()
+                self.mbtiles_center_lon = lon
+                self.mbtiles_center_lat = lat
+                self.mbtiles_zoom = zoom
+                logger.info(f"Loaded mbtiles_center from provider: ({lon}, {lat}, Z{zoom})")
+            except Exception as e:
+                logger.warning(f"Could not load mbtiles center: {e}")
+        
+        # Primary: Load current center/zoom from mbtiles
+        if self.mbtiles_center_lon is not None and self.mbtiles_center_lat is not None:
+            self.center_lat = self.mbtiles_center_lat
+            self.center_lon = self.mbtiles_center_lon
+            if self.mbtiles_zoom is not None:
+                self.zoom_level = self.mbtiles_zoom
         else:
-            # Fall back to default center
-            self.center_lat = config.get_float('appearance.tiles.default_center.lat', 56.168)
-            self.center_lon = config.get_float('appearance.tiles.default_center.lon', 15.586)
+            # Fallback 1: Load from recent (user's last viewed position)
+            recent_center_lat = config.get_float('appearance.tiles.recent_center.lat', None)
+            recent_center_lon = config.get_float('appearance.tiles.recent_center.lon', None)
+            
+            if recent_center_lat is not None and recent_center_lon is not None:
+                self.center_lat = recent_center_lat
+                self.center_lon = recent_center_lon
+            else:
+                # Fallback 2: Load from default (user's saved "home")
+                self.center_lat = config.get_float('appearance.tiles.default_center.lat', 56.168)
+                self.center_lon = config.get_float('appearance.tiles.default_center.lon', 15.586)
         
-        # Map zoom - load from recent_zoom, fall back to default_zoom, then ZOOM_LEVEL_DEFAULT
+        # Load zoom level with same fallback priority
         recent_zoom = config.get_int('appearance.tiles.recent_zoom', None)
-        if recent_zoom is not None:
+        if recent_zoom is not None and self.mbtiles_zoom is None:
             self.zoom_level = recent_zoom
-        else:
+        elif self.mbtiles_zoom is None:
             default_zoom = config.get_int('appearance.tiles.default_zoom', None)
             if default_zoom is not None:
                 self.zoom_level = default_zoom
             else:
                 self.zoom_level = self.ZOOM_LEVEL_DEFAULT
+        
+        # Initialize default_center/zoom from mbtiles (these are what "Recenter" button uses)
+        if self.mbtiles_center_lon is not None:
+            config.set('appearance.tiles.default_center.lat', self.mbtiles_center_lat)
+            config.set('appearance.tiles.default_center.lon', self.mbtiles_center_lon)
+        if self.mbtiles_zoom is not None:
+            config.set('appearance.tiles.default_zoom', self.mbtiles_zoom)
+        
+        # Clamp zoom to valid range for current mbtiles provider
+        self._update_zoom_bounds_from_provider()
+        self._clamp_zoom_to_valid_range()
         
         self.config = config  # Store config for later use (e.g., saving center position and zoom)
         
@@ -429,6 +464,26 @@ class MapWidget(QWidget):
         # Mark for initial render
         self.needs_render = True
         self.map_ready.emit()
+    
+    def _update_zoom_bounds_from_provider(self):
+        """Update min/max zoom based on mbtiles provider's available zooms."""
+        if not self.mbtiles_provider:
+            return
+        
+        available_zooms = self.mbtiles_provider.get_available_zooms()
+        if available_zooms:
+            self.min_zoom = min(available_zooms)
+            self.max_zoom = max(available_zooms)
+            logger.debug(f"Updated zoom bounds: {self.min_zoom}-{self.max_zoom}")
+    
+    def _clamp_zoom_to_valid_range(self):
+        """Clamp current zoom_level to valid range for provider."""
+        if self.zoom_level < self.min_zoom:
+            logger.warning(f"Zoom level {self.zoom_level} too low, clamping to {self.min_zoom}")
+            self.zoom_level = self.min_zoom
+        elif self.zoom_level > self.max_zoom:
+            logger.warning(f"Zoom level {self.zoom_level} too high, clamping to {self.max_zoom}")
+            self.zoom_level = self.max_zoom
     
     @staticmethod
     def _hex_to_rgb(hex_color):
@@ -771,16 +826,35 @@ class MapWidget(QWidget):
         """
         Save current center position and zoom level as the default.
         
-        This allows the user to have a "home" position they can jump back to
-        with the Recenter button.
-        """
-        # Save current center and zoom as default
-        self.config.set('appearance.tiles.default_zoom', self.zoom_level)
-        self.config.set('appearance.tiles.default_center.lat', self.center_lat)
-        self.config.set('appearance.tiles.default_center.lon', self.center_lon)
-        self.config.save_to_file()
+        Updates both:
+        1. mbtiles file metadata (mbtiles_center, mbtiles_zoom)
+        2. settings.yaml (default_center, default_zoom)
         
-        logger.info(f"Marked center: Z{self.zoom_level}, ({self.center_lat:.4f}, {self.center_lon:.4f})")
+        This allows the user to have a "home" position they can jump back to with the Recenter button.
+        The mbtiles update ensures next file reload centers to this marked position.
+        """
+        try:
+            # Step 1: Update mbtiles file metadata (if mbtiles provider available)
+            if self.mbtiles_provider and hasattr(self.mbtiles_provider, 'update_mbtiles_center'):
+                logger.info(f"🔵 mark_center: Updating mbtiles metadata...")
+                success = self.mbtiles_provider.update_mbtiles_center(
+                    self.center_lon, self.center_lat, self.zoom_level
+                )
+                if success:
+                    logger.info(f"✅ mark_center: mbtiles metadata updated")
+                else:
+                    logger.warning(f"⚠️  mark_center: Failed to update mbtiles metadata")
+            
+            # Step 2: Save current center and zoom as default in settings.yaml
+            self.config.set('appearance.tiles.default_zoom', self.zoom_level)
+            self.config.set('appearance.tiles.default_center.lat', self.center_lat)
+            self.config.set('appearance.tiles.default_center.lon', self.center_lon)
+            self.config.save_to_file()
+            
+            logger.info(f"✅ mark_center: Marked as default center: Z{self.zoom_level}, ({self.center_lat:.4f}, {self.center_lon:.4f})")
+            
+        except Exception as e:
+            logger.error(f"❌ mark_center: Error marking center: {e}", exc_info=True)
     
     def update_recent_state(self):
         """
@@ -935,26 +1009,32 @@ class MapWidget(QWidget):
         if event.button() == Qt.LeftButton:
             x, y = event.x(), event.y()
             
-            # Check if clicking on any button (using button_rects from last render)
-            if hasattr(self, 'button_rects') and self.button_rects:
-                for button_name, (x1, y1, x2, y2) in self.button_rects.items():
-                    if x1 <= x <= x2 and y1 <= y <= y2:
-                        # Button clicked - execute callback
-                        if button_name == 'zoom_in':
-                            self.zoom_in()
-                            return
-                        elif button_name == 'zoom_out':
-                            self.zoom_out()
-                            return
-                        elif button_name == 'zoom_level':
-                            # Zoom level label - no action
-                            return
-                        elif button_name == 'mark_center':
-                            self.mark_center()
-                            return
-                        elif button_name == 'recenter':
-                            self.recenter_on_default()
-                            return
+            # Check if clicking on any button (same logic as Map Editor)
+            # Calculate button positions on the fly using MapButtonConfig
+            cfg = MapButtonConfig
+            button_y = cfg.PADDING_TOP
+            
+            for button_name in self.button_manager.BUTTON_ORDER:
+                if (cfg.PADDING_LEFT <= x <= cfg.PADDING_LEFT + cfg.BUTTON_SIZE and
+                    button_y <= y <= button_y + cfg.BUTTON_SIZE):
+                    # Button clicked - execute callback
+                    self.pressed_button = button_name
+                    self.needs_render = True
+                    
+                    if button_name == 'zoom_in':
+                        self.zoom_in()
+                    elif button_name == 'zoom_out':
+                        self.zoom_out()
+                    elif button_name == 'zoom_level':
+                        # Zoom level label - no action
+                        pass
+                    elif button_name == 'mark_center':
+                        self.mark_center()
+                    elif button_name == 'recenter':
+                        self.recenter_on_default()
+                    return
+                
+                button_y += cfg.BUTTON_SIZE + cfg.BUTTON_SPACING
             
             # Check if clicking on a turning point (PRIORITY: check this first for Shift+click range selection)
             # Only do this if a track is actually selected
@@ -1460,28 +1540,22 @@ class MapWidget(QWidget):
             button_rects[rect_name] = (x_pos, y_pos, x_pos + cfg.BUTTON_SIZE, y_pos + cfg.BUTTON_SIZE)
             y_pos += cfg.BUTTON_SIZE + cfg.BUTTON_SPACING
         
-        # Draw center crosshair if enabled
-        if self.show_crosshair:
-            map_center_x = pil_image.width // 2
-            map_center_y = pil_image.height // 2
-            crosshair_size = self.crosshair_size
-            
-            # Horizontal line
-            overlay_draw.line(
-                [(map_center_x - crosshair_size, map_center_y), (map_center_x + crosshair_size, map_center_y)],
-                fill=self.crosshair_color,
-                width=2
-            )
-            
-            # Vertical line
-            overlay_draw.line(
-                [(map_center_x, map_center_y - crosshair_size), (map_center_x, map_center_y + crosshair_size)],
-                fill=self.crosshair_color,
-                width=2
-            )
-        
-        # Composite the overlay onto the image
+        # Composite the button overlay onto the image first
         pil_image = Image.alpha_composite(pil_image, overlay)
+        
+        # Draw center crosshair if enabled (using shared function)
+        # Note: draw_crosshair takes pil_image and returns it with crosshair drawn
+        pil_image = draw_crosshair(
+            pil_image,
+            pil_image.width // 2,
+            pil_image.height // 2,
+            self.show_crosshair,
+            self.crosshair_color,
+            self.crosshair_outline_color,
+            self.crosshair_outline_width,
+            self.crosshair_size
+        )
+        
         return pil_image, button_rects
     def _show_context_menu(self, pos):
         """Show context menu on right-click."""

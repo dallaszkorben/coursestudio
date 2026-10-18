@@ -404,6 +404,118 @@ class MBTilesProvider:
         self.logger.warning("Could not determine geometric center - no center or bounds in metadata")
         return None
     
+    def get_mbtiles_center_with_fallback(self) -> Tuple[float, float, int]:
+        """
+        Get center (lon, lat, zoom) from mbtiles metadata or generate fallback.
+        
+        Implements fallback strategy from specification:
+        - If mbtiles has center metadata: use it
+        - Otherwise: find lowest zoom, select random tile, return random position
+        
+        Returns:
+            Tuple of (longitude, latitude, zoom_level)
+            
+        Raises:
+            RuntimeError: If no center can be determined and no tiles exist
+        """
+        if not self.is_loaded():
+            raise RuntimeError("No mbtiles file loaded")
+        
+        # First: Try to use center from metadata
+        if self._metadata and self._metadata.center:
+            lon, lat, zoom = self._metadata.center
+            self.logger.info(f"Using mbtiles center from metadata: ({lon}, {lat}, Z{zoom})")
+            return (lon, lat, zoom)
+        
+        self.logger.warning("No center in mbtiles metadata, using fallback strategy")
+        
+        # Fallback: Find lowest zoom and random position
+        import random
+        import math
+        
+        min_zoom = self._metadata.min_zoom if self._metadata else 0
+        
+        # Query for any tile at minimum zoom
+        cursor = self._db_connection.cursor()
+        cursor.execute(
+            "SELECT tile_column, tile_row FROM tiles WHERE zoom_level = ? LIMIT 1",
+            (min_zoom,)
+        )
+        result = cursor.fetchone()
+        
+        if not result:
+            raise RuntimeError(
+                f"No tiles found in mbtiles at zoom level {min_zoom} - cannot generate fallback center"
+            )
+        
+        tile_x, tile_y = result
+        
+        # Get number of tiles at this zoom level (2^zoom)
+        num_tiles = 2 ** min_zoom
+        
+        # Generate random tile position at same zoom
+        random_tile_x = random.randint(0, num_tiles - 1)
+        random_tile_y = random.randint(0, num_tiles - 1)
+        
+        # Convert tile to lat/lon (Web Mercator inverse)
+        lon = (random_tile_x / num_tiles) * 360 - 180
+        lat_rad = math.atan(math.sinh(math.pi * (1 - 2 * random_tile_y / num_tiles)))
+        lat = math.degrees(lat_rad)
+        
+        self.logger.info(
+            f"Generated fallback center from Z{min_zoom} tile ({random_tile_x}, {random_tile_y}): "
+            f"({lon}, {lat}, Z{min_zoom})"
+        )
+        
+        return (lon, lat, min_zoom)
+    
+    def update_mbtiles_center(self, longitude: float, latitude: float, zoom: int) -> bool:
+        """
+        Update the center metadata in the mbtiles file.
+        
+        Writes new center (lon, lat, zoom) to the metadata table in the format:
+        "longitude,latitude,zoom"
+        
+        Args:
+            longitude: Center longitude (-180 to 180)
+            latitude: Center latitude (-85 to 85)
+            zoom: Zoom level (0-18)
+        
+        Returns:
+            True if update successful, False otherwise
+        """
+        if not self.is_loaded() or not self._db_connection:
+            self.logger.error("Cannot update center - no mbtiles file loaded")
+            return False
+        
+        center_str = f"{longitude},{latitude},{zoom}"
+        
+        try:
+            cursor = self._db_connection.cursor()
+            
+            # Delete existing center if present
+            cursor.execute("DELETE FROM metadata WHERE name = 'center'")
+            
+            # Insert new center
+            cursor.execute(
+                "INSERT INTO metadata (name, value) VALUES (?, ?)",
+                ('center', center_str)
+            )
+            
+            self._db_connection.commit()
+            
+            # Update cached metadata
+            if self._metadata:
+                self._metadata.center = (longitude, latitude, zoom)
+            
+            self.logger.info(f"Updated mbtiles center to ({longitude}, {latitude}, Z{zoom})")
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"Failed to update mbtiles center: {e}")
+            self._db_connection.rollback()
+            return False
+    
     def get_lowest_zoom_level(self) -> Optional[int]:
         """
         Get the lowest (least detailed) zoom level available in mbtiles.

@@ -711,4 +711,159 @@ def parse_coordinate(coord_string: str) -> float:
 
 ---
 
+## 13. MAP CENTER AND ZOOM MANAGEMENT
+
+### 13.1 Three Levels of Center/Zoom State
+
+The application manages three separate center/zoom values:
+
+#### Level 1: mbtiles_center / mbtiles_zoom
+**Stored:** In the mbtiles file metadata (immutable by user directly)
+**Purpose:** The tileset's recommended default position
+**Format:** Metadata fields `center` (format: "lon,lat,zoom") and individual zoom fields
+**Lifecycle:**
+- Read from mbtiles file when loaded
+- Used to initialize both current_center/current_zoom AND default_center/default_zoom
+- Updated to current position when user clicks "Update" button next to "Default Center" field
+- Written back to the mbtiles file metadata
+
+#### Level 2: default_center / default_zoom
+**Stored:** In `settings.yaml` under `appearance.tiles`
+**Purpose:** User's saved "home" position for manual recenter
+**Configuration Keys:**
+- `appearance.tiles.default_center.lat`
+- `appearance.tiles.default_center.lon`
+- `appearance.tiles.default_zoom`
+**Lifecycle:**
+- Initialized from mbtiles_center/mbtiles_zoom on app startup or mbtiles load
+- Updated when user clicks "Mark Center" button (sets to current position)
+- Used when user clicks "Recenter" button (navigates to this position + zoom)
+- Updated when user clicks "Update" button (takes mbtiles_center/zoom and stores here)
+
+#### Level 3: recent_center / recent_zoom
+**Stored:** In `settings.yaml` under `appearance.tiles`
+**Purpose:** Preserve user's last viewed position across app restarts
+**Configuration Keys:**
+- `appearance.tiles.recent_center.lat`
+- `appearance.tiles.recent_center.lon`
+- `appearance.tiles.recent_zoom`
+**Lifecycle:**
+- Auto-updated whenever user pans or zooms the map
+- Persisted to `settings.yaml` after each navigation
+- Used on app restart to restore map to last position
+- Fallback: If recent_center/zoom unavailable, use default_center/zoom
+
+### 13.2 Initialization Sequence
+
+**Scenario A: App Startup**
+1. Load mbtiles file (from `appearance.tiles.recent_mbtiles` in settings.yaml)
+2. Read `mbtiles_center` and `mbtiles_zoom` from file metadata
+3. Set `current_center = mbtiles_center`, `current_zoom = mbtiles_zoom`
+4. Set `default_center = mbtiles_center`, `default_zoom = mbtiles_zoom`
+5. If mbtiles doesn't have center/zoom metadata:
+   - Find lowest existing zoom level in mbtiles
+   - Find an existing tile at that zoom level
+   - Randomly select a position within that tile
+   - Use as mbtiles_center and mbtiles_zoom
+   - Set both current_center/zoom and default_center/zoom to this position
+
+**Scenario B: User Loads New MBTiles**
+- Same as Scenario A: Read mbtiles metadata and reinitialize both center/zoom values
+
+**Scenario C: App Restart (After User Sessions)**
+1. Load mbtiles file
+2. Initialize center/zoom as per Scenario A
+3. Override with `recent_center/recent_zoom` from settings.yaml (user's last position)
+   - Only override if both recent values exist
+   - Clamp zoom to valid range for loaded mbtiles
+
+### 13.3 User Actions and State Updates
+
+| User Action | Effect on mbtiles_center | Effect on default_center | Effect on recent_center |
+|-------------|-------------------------|------------------------|----------------------|
+| **Pan/Zoom map** | No change | No change | Update automatically |
+| **Click "Mark Center"** | No change | Update to current | Update automatically |
+| **Click "Recenter"** | No change | No change (go to it) | Update to default_zoom/center |
+| **Click "Update" button** | Update with current | Update with current | Update automatically |
+
+### 13.4 Button Behaviors
+
+#### "Mark Center" Button
+- **Action:** Saves current map position as the "home" position
+- **Updates:** `default_center` and `default_zoom` in settings.yaml
+- **Visual Feedback:** Confirmation message or status bar update
+- **Storage:** Persists to settings.yaml immediately
+
+#### "Recenter" Button
+- **Action:** Navigate map to saved "home" position
+- **Navigates to:** `default_center` with `default_zoom`
+- **Effect on recent_center:** Updates to default_center (user is now viewing that position)
+- **Effect on recent_zoom:** Updates to default_zoom
+
+#### "Update" Button (next to "Default Center" field)
+- **Action:** Save current viewing position to mbtiles and settings
+- **Updates mbtiles file:**
+  - Write current_center.lon and current_center.lat to metadata `center` field
+  - Write current_zoom to metadata zoom field
+- **Updates settings.yaml:**
+  - Update `default_center.lat`, `default_center.lon`, `default_zoom`
+- **Confirmation:** Show confirmation that mbtiles file was updated
+- **Persistence:** Both mbtiles file and settings.yaml saved immediately
+
+### 13.5 Fallback Strategy (When mbtiles_center/zoom Missing)
+
+If the mbtiles file doesn't contain center/zoom metadata:
+
+1. Query the `tiles` table to find available zoom levels
+2. Select the LOWEST available zoom level (Z_min)
+3. Query for ANY existing tile at Z_min
+   - SELECT one tile with zoom_level = Z_min
+4. Calculate the geographic bounds of that tile (using Web Mercator inverse)
+5. Generate random coordinates within that tile's bounds
+6. Use that position as mbtiles_center and mbtiles_zoom
+7. Set both current_center/zoom and default_center/zoom to this position
+
+**Rationale:** Ensures user sees a valid position from the tileset, no matter what zoom levels are available.
+
+### 13.6 Configuration Storage Format
+
+**In mbtiles file (metadata table):**
+```
+center = "15.591959953308105,56.16647275741994,15"
+```
+Format: comma-separated `longitude,latitude,zoom` (same as MBTiles spec)
+
+**In settings.yaml:**
+```yaml
+appearance:
+  tiles:
+    recent_mbtiles: Sweeden-Z6-Z15.mbtiles
+    recent_center:
+      lat: 56.16647275741994
+      lon: 15.591959953308105
+    recent_zoom: 15
+    default_center:
+      lat: 56.16647275741994
+      lon: 15.591959953308105
+    default_zoom: 15
+```
+
+### 13.7 Implementation Checklist
+
+- [ ] Add `mbtiles_center` and `mbtiles_zoom` as distinct from `default_center/zoom`
+- [ ] Extract center/zoom from mbtiles metadata on file load
+- [ ] Implement fallback strategy for missing center/zoom in mbtiles
+- [ ] Initialize both current and default from mbtiles on startup
+- [ ] Auto-update recent_center/zoom on every pan/zoom action
+- [ ] Implement "Mark Center" button → updates default_center/zoom
+- [ ] Implement "Recenter" button → navigates to default_center/zoom
+- [ ] Implement "Update" button → writes to mbtiles + updates default_center/zoom
+- [ ] Validate zoom levels are within mbtiles min/max range
+- [ ] Clamp zoom on app restart if recent_zoom exceeds mbtiles limits
+- [ ] Test initialization with and without center/zoom in mbtiles metadata
+- [ ] Test app restart: recent_center/zoom are restored correctly
+- [ ] Test loading new mbtiles: center/zoom properly reinitialized
+
+---
+
 **END OF SPECIFICATION DOCUMENT**

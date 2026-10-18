@@ -167,6 +167,11 @@ class MapEditorTabHandler:
             # Load file metadata into characteristics panel
             self.characteristics_panel.load_mbtiles(self.mbtiles_reader)
             
+            # Connect Update button signal to handler
+            self.characteristics_panel.update_center_requested.connect(
+                self._on_update_center_requested
+            )
+            
             # ================================================================
             # Create Map Viewer (Right)
             # ================================================================
@@ -227,6 +232,99 @@ class MapEditorTabHandler:
         layout.addWidget(error_label, alignment=Qt.AlignCenter)
         logger.error(f"Error widget created: {error_msg}")
     
+    def _on_update_center_requested(self) -> None:
+        """
+        Handle Update button click from characteristics panel.
+        
+        Implementation of specification section (e):
+        - Write current_center/current_zoom to mbtiles file (update mbtiles_center/mbtiles_zoom in metadata)
+        - Update default_center/default_zoom in settings.yaml from current_center/current_zoom
+        """
+        logger.info("\n" + "="*60)
+        logger.info("🔵 UPDATE BUTTON HANDLER CALLED 🔵")
+        logger.info("="*60)
+        
+        try:
+            if not self.map_viewer or not self.mbtiles_provider:
+                logger.error("Map viewer or mbtiles provider not initialized")
+                QMessageBox.warning(self.widget, "Error", "Map viewer not ready")
+                return
+            
+            # Get current map position from MapViewer
+            current_lon = self.map_viewer.center_lon
+            current_lat = self.map_viewer.center_lat
+            current_zoom = self.map_viewer.zoom_level
+            
+            logger.info(f"🔵 Current map position: ({current_lon:.4f}, {current_lat:.4f}) Z{current_zoom}")
+            
+            # Step 1: Update mbtiles file metadata
+            logger.info(f"🔵 Updating mbtiles metadata...")
+            success = self.mbtiles_provider.update_mbtiles_center(
+                current_lon, current_lat, current_zoom
+            )
+            
+            if not success:
+                logger.error("❌ Failed to update mbtiles metadata")
+                QMessageBox.critical(self.widget, "Error", "Failed to update mbtiles file")
+                return
+            
+            logger.info(f"✅ mbtiles metadata updated successfully")
+            
+            # Step 2: Update settings.yaml with new default center/zoom
+            logger.info(f"🔵 Updating settings.yaml...")
+            self.config.set_silent('appearance.tiles.default_center.lat', current_lat)
+            self.config.set_silent('appearance.tiles.default_center.lon', current_lon)
+            self.config.set_silent('appearance.tiles.default_zoom', current_zoom)
+            self.config.save_to_file()
+            
+            logger.info(f"✅ settings.yaml updated successfully")
+            logger.info(f"   - default_center.lat = {current_lat}")
+            logger.info(f"   - default_center.lon = {current_lon}")
+            logger.info(f"   - default_zoom = {current_zoom}")
+            
+            # Step 3: Reload characteristics panel to show updated center
+            logger.info(f"🔵 Reloading characteristics panel...")
+            self.characteristics_panel.load_mbtiles(self.mbtiles_reader)
+            logger.info(f"✅ Characteristics panel reloaded")
+            
+            # Step 4: Emit config signal to sync with Track Editor
+            logger.info(f"🔵 Emitting map_position_changed signal...")
+            self.config.emit_map_position_changed()
+            logger.info(f"✅ Signal emitted")
+            
+            # Show success message
+            QMessageBox.information(
+                self.widget,
+                "Success",
+                f"Updated mbtiles center and default position:\n"
+                f"({current_lon:.4f}, {current_lat:.4f}) at Z{current_zoom}\n\n"
+                f"Changes saved to:\n"
+                f"- mbtiles file metadata\n"
+                f"- settings.yaml"
+            )
+            
+            logger.info("="*60)
+            logger.info("✅ UPDATE BUTTON HANDLER COMPLETED SUCCESSFULLY ✅")
+            logger.info("="*60 + "\n")
+            
+        except Exception as e:
+            logger.error(f"Error in update center handler: {e}", exc_info=True)
+            QMessageBox.critical(self.widget, "Error", f"Update failed: {e}")
+    
+    def _create_error_widget(self, layout: QVBoxLayout, error_msg: str) -> None:
+        """
+        Create error display widget.
+        
+        Args:
+            layout: Parent layout to add error widget to
+            error_msg: Error message to display
+        """
+        error_label = QLabel(error_msg)
+        error_label.setAlignment(Qt.AlignCenter)
+        error_label.setStyleSheet("color: #ff4444; font-size: 12px;")
+        layout.addWidget(error_label, alignment=Qt.AlignCenter)
+        logger.error(f"Error widget created: {error_msg}")
+    
     def get_characteristics_panel(self) -> CharacteristicsPanel:
         """Get the Characteristics Panel widget."""
         return self.characteristics_panel
@@ -241,6 +339,18 @@ class MapEditorTabHandler:
     
     
     def open_mbtiles_file(self) -> None:
+        """
+        Open a file dialog to select new MBTiles file.
+        
+        When a new file is selected:
+        1. Loads metadata using MBTilesReader
+        2. Uses MBTilesFileLoader to determine optimal center/zoom
+        3. Updates settings.yaml with new configuration
+        4. Updates Characteristics Panel with new metadata
+        5. Updates Map Viewer with new file
+        6. Syncs with Track Editor via config signals
+        """
+        print(f"\n🟢🟢🟢 CTRL+SHIFT+O TRIGGERED - open_mbtiles_file() called 🟢🟢🟢\n")
         """
         Open a file dialog to select new MBTiles file.
         
@@ -302,30 +412,59 @@ class MapEditorTabHandler:
             logger.info(f"🟢 ✅ Characteristics panel updated with new file metadata: {new_name}")
             
             # Step 5: Update Map Viewer with new file and position
-            # Set map position from configuration result
+            # Get correct position from MBTilesFileLoader (which reads mbtiles metadata)
             lat = config_result['recent_center']['lat']
             lon = config_result['recent_center']['lon']
             zoom = config_result['recent_zoom']
             
+            logger.info(f"🔵 Setting MapViewer position from load_and_configure(): ({lat:.4f}, {lon:.4f}) Z{zoom}")
             self.map_viewer.center_lat = lat
             self.map_viewer.center_lon = lon
             self.map_viewer.zoom_level = zoom
             
             # Load new MBTiles provider with the new file
+            # ⚠️ CRITICAL: Do NOT call set_mbtiles_provider()
+            # That method has its own initialization logic that can override the position
+            # we just set from load_and_configure()
             try:
-                print(f"\n🔴 UPDATING MBTILES PROVIDER: {file_path} 🔴\n")
+                logger.info(f"🔵 Loading new MBTiles provider: {file_path}")
                 self.mbtiles_provider.load_mbtiles_from_path(file_path)
-                self.map_viewer.set_mbtiles_provider(self.mbtiles_provider)
-                logger.info(f"🔴 Map provider updated with new file: {file_path}")
+                
+                # Update MapViewer's provider reference WITHOUT reinitializing position
+                self.map_viewer.mbtiles_provider = self.mbtiles_provider
+                
+                # Update zoom bounds from the new provider
+                available_zooms = self.mbtiles_provider.get_available_zooms()
+                if available_zooms:
+                    self.map_viewer.min_zoom = min(available_zooms)
+                    self.map_viewer.max_zoom = max(available_zooms)
+                    
+                    # Clamp current zoom to valid range for new provider
+                    if self.map_viewer.zoom_level < self.map_viewer.min_zoom:
+                        old_zoom = self.map_viewer.zoom_level
+                        self.map_viewer.zoom_level = self.map_viewer.min_zoom
+                        logger.info(f"🔵 Clamped zoom Z{old_zoom} → Z{self.map_viewer.min_zoom} (new min)")
+                    elif self.map_viewer.zoom_level > self.map_viewer.max_zoom:
+                        old_zoom = self.map_viewer.zoom_level
+                        self.map_viewer.zoom_level = self.map_viewer.max_zoom
+                        logger.info(f"🔵 Clamped zoom Z{old_zoom} → Z{self.map_viewer.max_zoom} (new max)")
+                
+                # Store metadata center for reference (for Recenter and Update buttons)
+                metadata = self.mbtiles_provider.get_metadata()
+                if metadata and metadata.center:
+                    self.map_viewer.metadata_center_lon = metadata.center[0]
+                    self.map_viewer.metadata_center_lat = metadata.center[1]
+                    self.map_viewer.metadata_center_zoom = metadata.center[2]
+                    logger.info(f"🔵 Stored metadata_center: ({metadata.center[1]:.4f}, {metadata.center[0]:.4f}), Z{metadata.center[2]}")
+                
+                logger.info(f"🔵 ✅ Provider updated with position preserved: ({self.map_viewer.center_lat:.4f}, {self.map_viewer.center_lon:.4f}) Z{self.map_viewer.zoom_level}")
             except Exception as e:
                 logger.error(f"Error loading MBTiles into provider: {e}", exc_info=True)
                 # Don't fail completely, characteristics panel is still updated
             
-            # Step 6: Emit signal to sync with Track Editor
-            # This updates both tabs to show same position
-            self.config.emit_map_position_changed()
-            
-            # Step 7: Render map
+            # Step 6: Render map
+            # Note: Signal already emitted by load_and_configure(), no need to repeat
+            # The config already has P1 set, just render the updated provider
             self.map_viewer.render_map()
             
             logger.info(f"✅ Successfully loaded new MBTiles file: {file_path}")

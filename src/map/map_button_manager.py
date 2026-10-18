@@ -67,7 +67,6 @@ class MapButtonManager:
             if button_name in self.buttons:
                 button = self.buttons[button_name]
                 button.move(x_pos, y_pos)
-                logger.debug(f"Positioned {button_name} at ({x_pos}, {y_pos})")
                 y_pos += cfg.BUTTON_SIZE + cfg.BUTTON_SPACING
     
     def draw_all_buttons(self, draw_context, zoom_level: int = 10):

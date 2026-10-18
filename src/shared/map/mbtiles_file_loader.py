@@ -77,6 +77,7 @@ class MBTilesFileLoader:
             - available_zooms: List of available zoom levels
             - metadata: MBTilesMetadata object
         """
+        logger.info(f"🚀🚀🚀 MBTilesFileLoader.load_and_configure() STARTING 🚀🚀🚀")
         logger.info(f"Loading mbtiles file: {mbtiles_file_path}")
         
         # Step 1: Clear previous state
@@ -155,6 +156,9 @@ class MBTilesFileLoader:
             Tuple of (latitude, longitude, zoom_level)
         """
         logger.info("Determining initial position using priority logic")
+        logger.info(f"  metadata.center = {self.metadata.center}")
+        logger.info(f"  metadata.bounds = {self.metadata.bounds}")
+        logger.info(f"  available_zooms = {sorted(self.available_zooms)}")
         
         # Extract from metadata
         mbtiles_center = self.metadata.center  # (lon, lat, zoom) or None
@@ -166,17 +170,17 @@ class MBTilesFileLoader:
             
             # Verify zoom is available
             if zoom in self.available_zooms:
-                logger.info(f"Case 1: Using center ({lat}, {lon}) and zoom {zoom} from mbtiles")
+                logger.info(f"✅ CASE 1: Using center ({lat:.6f}, {lon:.6f}) and zoom {zoom} from mbtiles")
                 return lat, lon, zoom
             else:
-                logger.info(f"Case 1: Center from mbtiles, but zoom {zoom} not available")
+                logger.info(f"⚠️  CASE 1 FAIL: Center from mbtiles, but zoom {zoom} not available (have {sorted(self.available_zooms)})")
                 # Fall through to next case
         
         # Case 2: Center exists but zoom doesn't (or zoom from metadata unavailable)
         if mbtiles_center and len(mbtiles_center) >= 2:
             lon, lat = mbtiles_center[0], mbtiles_center[1]
             zoom = self.min_zoom  # Use lowest available zoom
-            logger.info(f"Case 2: Using center ({lat}, {lon}) with lowest zoom {zoom}")
+            logger.info(f"✅ CASE 2: Using center ({lat:.6f}, {lon:.6f}) with lowest zoom {zoom}")
             return lat, lon, zoom
         
         # Case 3: Try to use bounds (which implies center)
@@ -189,26 +193,26 @@ class MBTilesFileLoader:
             if mbtiles_center and len(mbtiles_center) >= 3:
                 zoom = mbtiles_center[2]
                 if zoom in self.available_zooms:
-                    logger.info(f"Case 3a: Using center from bounds ({center_lat}, {center_lon}) with zoom {zoom}")
+                    logger.info(f"✅ CASE 3a: Using center from bounds ({center_lat:.6f}, {center_lon:.6f}) with zoom {zoom}")
                     return center_lat, center_lon, zoom
             
             # Otherwise use lowest zoom
             zoom = self.min_zoom
-            logger.info(f"Case 3b: Using center from bounds ({center_lat}, {center_lon}) with lowest zoom {zoom}")
+            logger.info(f"✅ CASE 3b: Using center from bounds ({center_lat:.6f}, {center_lon:.6f}) with lowest zoom {zoom}")
             return center_lat, center_lon, zoom
         
         # Case 4: Neither center nor bounds exist
         # Find any available tile at lowest zoom level
-        logger.info(f"Case 4: No center/bounds in metadata, finding any tile at zoom {self.min_zoom}")
+        logger.info(f"❌ CASE 4: No center/bounds in metadata, finding any tile at zoom {self.min_zoom}")
         
         tile_position = self._find_any_tile_at_zoom(self.min_zoom)
         if tile_position:
             lat, lon = tile_position
-            logger.info(f"Case 4: Found tile at ({lat}, {lon}) zoom {self.min_zoom}")
+            logger.info(f"✅ CASE 4: Found tile at ({lat:.6f}, {lon:.6f}) zoom {self.min_zoom}")
             return lat, lon, self.min_zoom
         
         # Fallback: Use center of world at lowest zoom
-        logger.warning("Case 4: No tiles found, using world center")
+        logger.warning("❌ CASE 4 FALLBACK: No tiles found, using world center")
         return 0.0, 0.0, self.min_zoom
     
     

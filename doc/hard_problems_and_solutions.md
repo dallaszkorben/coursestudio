@@ -1950,3 +1950,186 @@ When UI elements are managed by multiple code paths (positioning + rendering, or
 - Can create cascading issues if not caught early
 
 ---
+
+## Problem X: MBTiles File Reload - Map Stays at Old Position Instead of Centering to New File's Metadata
+
+### Problem Description
+
+**Steps to reproduce:**
+1. App starts → Map shows P1 (correct center/zoom from mbtiles metadata)
+2. User navigates map to P2 (different position)
+3. User opens File menu → Load MBTiles → selects the SAME file
+4. **Expected**: Map should recenter to P1 (from mbtiles metadata)
+5. **Actual**: Map stays at P2 (old position from navigation)
+6. **Result**: File reload doesn't reset to mbtiles center
+
+**User feedback**: "The map should go back to the starting position when I reload the file"
+
+### What I Did Wrong (Failed Attempts)
+
+**Attempt 1**: Assumed bug was in `MBTilesFileLoader.load_and_configure()`
+```python
+# Added extensive logging to _determine_initial_position()
+# Checked metadata.center vs metadata.bounds
+# Verified settings.yaml was being updated
+```
+- **Result**: ❌ Failed - Logs never appeared!
+- **Why**: Was logging in the wrong place - function never called
+
+**Attempt 2**: Checked for conflicting initialization signals
+```python
+# Thought maybe two signals were fighting
+# Tried removing emit_map_position_changed() calls
+# Tried changing order of set_mbtiles_provider() vs load_mbtiles()
+```
+- **Result**: ❌ Failed - Same problem persisted
+- **Why**: Root cause was somewhere else entirely
+
+**Attempt 3**: Deep dive into signal chain and position determination
+```python
+# Traced through all position-setting code paths
+# Verified metadata was being read correctly
+# Checked if settings.yaml was being reloaded from disk
+```
+- **Result**: ❌ Failed - Still couldn't find where position was being lost
+- **Why**: Didn't notice there were TWO separate file loading code paths
+
+### Root Cause
+
+**Two different file loading code paths with different behavior:**
+
+1. **`tab_handler_map_editor.open_mbtiles_file()` (correct):**
+   - Calls `MBTilesFileLoader.load_and_configure()` ✓
+   - Reads mbtiles metadata to determine position ✓
+   - Updates map to new position ✓
+   - This path was CORRECT but NEVER USED
+
+2. **`main_window.action_load_mbtiles()` (incorrect):**
+   - Calls `self.mbtiles_provider.load_mbtiles_from_path()` ✗
+   - Reads OLD `recent_zoom` and `recent_center` from settings.yaml ✗
+   - Keeps map at old position P2 ✗
+   - This path was ACTUALLY USED (via File menu)
+
+**Why they diverged:**
+- `main_window.py` has File → Load MBTiles menu option
+- `tab_handler_map_editor.py` has Ctrl+Shift+O keyboard shortcut
+- User was using File menu (main_window path), not keyboard shortcut
+- Each had its own implementation, no code reuse
+- The "correct" implementation in tab_handler existed but wasn't connected to the File menu
+
+**The trap:**
+- Extensive logging added to tab_handler code that was never executed
+- Settings.yaml verification showed correct data but old data was being read from it
+- All analysis pointed to "proper initialization logic" when the real bug was "wrong code path being used"
+- The actual entry point (File menu in main_window) bypassed MBTilesFileLoader entirely
+
+### Solution
+
+Modified `main_window.action_load_mbtiles()` to call `MBTilesFileLoader.load_and_configure()` instead of just reading old settings:
+
+```python
+# BEFORE (wrong - reads old position):
+if self.mbtiles_provider.load_mbtiles_from_path(mbtiles_path):
+    # Check if recent zoom is available in new mbtiles, adjust if needed
+    recent_zoom = self.config.get_int('appearance.tiles.recent_zoom', None)  # OLD VALUE!
+    if recent_zoom:
+        self.map_widget.set_zoom_with_compatibility(recent_zoom)
+    
+    # Re-render map with new tiles
+    self.map_widget.render_map()
+
+# AFTER (correct - reads new metadata):
+if self.mbtiles_provider.load_mbtiles_from_path(mbtiles_path):
+    # Use MBTilesFileLoader to determine optimal configuration
+    try:
+        reader = MBTilesReader(mbtiles_path)
+        loader = MBTilesFileLoader(reader, self.config)
+        config_result = loader.load_and_configure(mbtiles_path)
+        
+        # Get position from mbtiles metadata
+        lat = config_result['recent_center']['lat']
+        lon = config_result['recent_center']['lon']
+        zoom = config_result['recent_zoom']
+        
+        # Update map_widget with NEW position
+        self.map_widget.center_lat = lat
+        self.map_widget.center_lon = lon
+        self.map_widget.set_zoom_with_compatibility(zoom)
+        
+    except Exception as e:
+        logger.error(f"Error loading mbtiles configuration: {e}", exc_info=True)
+        # Fallback: just load with current position
+        recent_zoom = self.config.get_int('appearance.tiles.recent_zoom', None)
+        if recent_zoom:
+            self.map_widget.set_zoom_with_compatibility(recent_zoom)
+    
+    # Re-render map with new tiles
+    self.map_widget.render_map()
+```
+
+**Key changes:**
+- Call `MBTilesFileLoader.load_and_configure()` to read metadata
+- Extract position from `config_result` instead of old settings
+- Update map_widget to new position before rendering
+- Includes try/except fallback for safety
+
+**Result**: File reload now correctly recenters to mbtiles metadata position.
+
+### Key Learning
+
+**Pattern: Multiple Code Paths to Same Feature = Maintenance Nightmare**
+
+When the same feature (loading mbtiles file) has multiple entry points with different implementations:
+
+1. **Bug can hide in the unused path** - The "correct" implementation existed in tab_handler, but the File menu used a different (buggy) implementation
+2. **Logging in wrong place is worthless** - Added extensive logging to tab_handler code that never executed
+3. **User reports point to real entry point** - User was using File menu, not Ctrl+Shift+O shortcut
+4. **Code review doesn't catch this** - Each implementation looks reasonable in isolation
+
+**❌ DON'T:**
+- Implement same feature in multiple places
+- Assume all code paths are used equally
+- Debug based on "where it should be" instead of "where it actually is"
+- Ignore that multiple entry points exist
+
+**✅ DO:**
+1. **Trace the actual code path user takes** - Don't assume you know it
+   - In this case: File menu → main_window.action_load_mbtiles() → mbtiles_provider.load_mbtiles_from_path()
+2. **Add logging at the actual entry point** - Not in code you think should run
+3. **Consolidate implementations** - Have ONE authoritative implementation, call it from all entry points
+4. **Test all entry points** - File menu AND keyboard shortcut
+5. **Use function extraction** - Pull shared logic into a single helper function
+
+**Better architecture:**
+```python
+# Single authoritative implementation
+def _load_mbtiles_and_update_ui(mbtiles_path):
+    """Centralized logic for loading mbtiles and updating all UI."""
+    reader = MBTilesReader(mbtiles_path)
+    loader = MBTilesFileLoader(reader, self.config)
+    config_result = loader.load_and_configure(mbtiles_path)
+    
+    # Apply to both map_widget and map_editor
+    self._apply_mbtiles_config_to_ui(config_result)
+
+# Call from all entry points
+def action_load_mbtiles(self):  # File menu
+    file_path = QFileDialog.getOpenFileName(...)
+    if file_path:
+        self._load_mbtiles_and_update_ui(file_path)
+
+def open_mbtiles_file(self):  # Keyboard shortcut
+    file_path = QFileDialog.getOpenFileName(...)
+    if file_path:
+        self._load_mbtiles_and_update_ui(file_path)
+```
+
+This ensures both entry points use identical logic.
+
+**Why this matters:**
+- Easy to miss during development (both implementations work for their respective entry points)
+- Causes bugs when one path is used but another was tested
+- Common in evolving codebases (feature added via shortcut, later added to menu with copy-paste code)
+- Creates maintenance burden (fix a bug, find it only fixed half the code)
+
+---

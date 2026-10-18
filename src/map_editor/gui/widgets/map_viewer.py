@@ -79,11 +79,22 @@ class MapViewer(QWidget):
         self.min_zoom = 1
         self.max_zoom = 20
         
+        # Store mbtiles center/zoom (loaded when mbtiles_provider is set)
+        self.mbtiles_center_lon = None
+        self.mbtiles_center_lat = None
+        self.mbtiles_zoom = None
+        
+        # ✅ DO NOT load from config here!
+        # The initialization will happen in set_mbtiles_provider() with proper priority:
+        # 1. Primary: mbtiles_center/zoom from file
+        # 2. Fallback 1: recent_center/zoom from settings
+        # 3. Fallback 2: default_center/zoom from settings
+        # This matches MapWidget initialization exactly.
+        
         # Stored center from metadata (for recenter button)
         self.metadata_center_lon = 0
         self.metadata_center_lat = 0
         self.metadata_center_zoom = 10
-        
         # Pan state (for mouse dragging)
         self.pan_start_x = None
         self.pan_start_y = None
@@ -128,6 +139,26 @@ class MapViewer(QWidget):
         
         logger.info("MapViewer initialized")
     
+    def _update_zoom_bounds_from_provider(self):
+        """Update min/max zoom based on mbtiles provider's available zooms."""
+        if not self.mbtiles_provider:
+            return
+        
+        available_zooms = self.mbtiles_provider.get_available_zooms()
+        if available_zooms:
+            self.min_zoom = min(available_zooms)
+            self.max_zoom = max(available_zooms)
+            logger.debug(f"Updated zoom bounds: {self.min_zoom}-{self.max_zoom}")
+    
+    def _clamp_zoom_to_valid_range(self):
+        """Clamp current zoom_level to valid range for provider."""
+        if self.zoom_level < self.min_zoom:
+            logger.warning(f"Zoom level {self.zoom_level} too low, clamping to {self.min_zoom}")
+            self.zoom_level = self.min_zoom
+        elif self.zoom_level > self.max_zoom:
+            logger.warning(f"Zoom level {self.zoom_level} too high, clamping to {self.max_zoom}")
+            self.zoom_level = self.max_zoom
+    
     def _hex_to_rgb(self, hex_color: str) -> tuple:
         """
         Convert hex color to RGB tuple.
@@ -145,12 +176,91 @@ class MapViewer(QWidget):
             return (255, 0, 0)  # Default to red if parsing fails
     
     def set_mbtiles_provider(self, mbtiles_provider: MBTilesProvider):
-        """Set the MBTiles provider (called by main window)."""
+        """
+        Set the MBTiles provider (called by tab handler on initialization).
+        
+        Implements specification Section 13.2(a) initialization sequence:
+        1. Primary: Load mbtiles_center/zoom from file metadata
+        2. Fallback 1: Load recent_center/zoom from config (user's last position)
+        3. Fallback 2: Load default_center/zoom from config (user's "home")
+        4. Fallback 3: Use hardcoded defaults
+        
+        This matches MapWidget initialization exactly.
+        """
         self.mbtiles_provider = mbtiles_provider
+        
+        # Load mbtiles center and zoom from metadata
+        try:
+            lon, lat, zoom = mbtiles_provider.get_mbtiles_center_with_fallback()
+            self.mbtiles_center_lon = lon
+            self.mbtiles_center_lat = lat
+            self.mbtiles_zoom = zoom
+            logger.info(f"Loaded mbtiles_center from provider: ({lon}, {lat}, Z{zoom})")
+        except Exception as e:
+            logger.warning(f"Could not load mbtiles center: {e}")
+            self.mbtiles_center_lon = None
+            self.mbtiles_center_lat = None
+            self.mbtiles_zoom = None
+        
+        # PRIMARY: Use mbtiles center/zoom if available
+        if self.mbtiles_center_lon is not None and self.mbtiles_center_lat is not None:
+            self.center_lon = self.mbtiles_center_lon
+            self.center_lat = self.mbtiles_center_lat
+            if self.mbtiles_zoom is not None:
+                self.zoom_level = self.mbtiles_zoom
+            logger.info(f"Using PRIMARY (mbtiles): ({self.center_lat:.4f}, {self.center_lon:.4f}), Z{self.zoom_level}")
+        else:
+            # FALLBACK 1: Use recent_center/zoom (user's last viewed position)
+            recent_center_lat = self.config.get_float('appearance.tiles.recent_center.lat', None)
+            recent_center_lon = self.config.get_float('appearance.tiles.recent_center.lon', None)
+            recent_zoom = self.config.get_int('appearance.tiles.recent_zoom', None)
+            
+            if recent_center_lat is not None and recent_center_lon is not None:
+                self.center_lat = recent_center_lat
+                self.center_lon = recent_center_lon
+                if recent_zoom is not None:
+                    self.zoom_level = recent_zoom
+                logger.info(f"Using FALLBACK 1 (recent): ({self.center_lat:.4f}, {self.center_lon:.4f}), Z{self.zoom_level}")
+            else:
+                # FALLBACK 2: Use default_center/zoom (user's saved "home")
+                self.center_lat = self.config.get_float('appearance.tiles.default_center.lat', 56.168)
+                self.center_lon = self.config.get_float('appearance.tiles.default_center.lon', 15.586)
+                default_zoom = self.config.get_int('appearance.tiles.default_zoom', None)
+                if default_zoom is not None:
+                    self.zoom_level = default_zoom
+                else:
+                    self.zoom_level = 10  # FALLBACK 3: hardcoded default
+                logger.info(f"Using FALLBACK 2 (default): ({self.center_lat:.4f}, {self.center_lon:.4f}), Z{self.zoom_level}")
+        
+        # ✅ Initialize default_center from mbtiles (user can recenter to this)
+        # Only set if mbtiles has a center (don't overwrite user's previously saved default)
+        if self.mbtiles_center_lon is not None and self.mbtiles_center_lat is not None:
+            self.config.set('appearance.tiles.default_center.lat', self.mbtiles_center_lat)
+            self.config.set('appearance.tiles.default_center.lon', self.mbtiles_center_lon)
+            if self.mbtiles_zoom is not None:
+                self.config.set('appearance.tiles.default_zoom', self.mbtiles_zoom)
+            logger.info(f"Initialized default_center from mbtiles for Recenter button")
+        
+        # Update zoom bounds and clamp current zoom to valid range
+        self._update_zoom_bounds_from_provider()
+        self._clamp_zoom_to_valid_range()
         logger.debug("MBTilesProvider set in MapViewer")
     
     def load_mbtiles(self, mbtiles_provider: MBTilesProvider):
-        """Load an MBTiles file via provider."""
+        """
+        Load an MBTiles file via provider.
+        
+        ⚠️ CRITICAL: This method should NOT override center/zoom!
+        
+        The center/zoom was already initialized correctly in set_mbtiles_provider()
+        with the proper fallback hierarchy. This method should ONLY:
+        1. Update zoom bounds from available tiles
+        2. Clamp current zoom to valid range
+        3. Render the map
+        
+        Calling this after set_mbtiles_provider() would override the correct
+        initialization with potentially wrong values (like old recent_center).
+        """
         try:
             self.mbtiles_provider = mbtiles_provider
             
@@ -160,59 +270,38 @@ class MapViewer(QWidget):
                 logger.error("No metadata available from mbtiles_provider")
                 return
             
-            # Get actual zoom levels available
+            # ONLY update zoom bounds, don't override center/zoom
             available_zooms = mbtiles_provider.get_available_zooms()
             if available_zooms:
                 self.min_zoom = min(available_zooms)
                 self.max_zoom = max(available_zooms)
+                logger.info(f"Updated zoom bounds: Z{self.min_zoom}-Z{self.max_zoom}")
             else:
                 self.min_zoom = 1
                 self.max_zoom = 20
             
-            # Set initial zoom level
-            self.zoom_level = (self.min_zoom + self.max_zoom) // 2
+            # Clamp current zoom to valid range
+            if self.zoom_level < self.min_zoom:
+                self.zoom_level = self.min_zoom
+                logger.info(f"Clamped zoom to min: Z{self.zoom_level}")
+            elif self.zoom_level > self.max_zoom:
+                self.zoom_level = self.max_zoom
+                logger.info(f"Clamped zoom to max: Z{self.zoom_level}")
             
-            # Set center from metadata or bounds
+            # Store metadata center for Recenter button reference
             if metadata.center:
-                # ✅ Use metadata center and zoom
-                self.center_lon = metadata.center[0]
-                self.center_lat = metadata.center[1]
-                self.zoom_level = metadata.center[2]
                 self.metadata_center_lon = metadata.center[0]
                 self.metadata_center_lat = metadata.center[1]
                 self.metadata_center_zoom = metadata.center[2]
+                logger.debug(f"Stored metadata center: ({self.metadata_center_lat:.4f}, {self.metadata_center_lon:.4f}), Z{self.metadata_center_zoom}")
             elif metadata.bounds:
-                # Fallback to bounds center
                 west, south, east, north = metadata.bounds
-                self.center_lon = (west + east) / 2
-                self.center_lat = (south + north) / 2
-                self.metadata_center_lon = self.center_lon
-                self.metadata_center_lat = self.center_lat
+                self.metadata_center_lon = (west + east) / 2
+                self.metadata_center_lat = (south + north) / 2
                 self.metadata_center_zoom = self.zoom_level
-            else:
-                # Default to 0, 0
-                self.center_lat = 0
-                self.center_lon = 0
+                logger.debug(f"Stored metadata center from bounds: ({self.metadata_center_lat:.4f}, {self.metadata_center_lon:.4f}), Z{self.metadata_center_zoom}")
             
-            # ✅ NEW: Load recent position from config if available
-            if self.config:
-                recent_center_lat = self.config.get_float('appearance.tiles.recent_center.lat', None)
-                recent_center_lon = self.config.get_float('appearance.tiles.recent_center.lon', None)
-                recent_zoom = self.config.get_int('appearance.tiles.recent_zoom', None)
-                
-                # Check if recent values are within valid bounds
-                if (recent_center_lat is not None and recent_center_lon is not None and 
-                    recent_zoom is not None):
-                    if self.min_zoom <= recent_zoom <= self.max_zoom:
-                        self.center_lat = recent_center_lat
-                        self.center_lon = recent_center_lon
-                        self.zoom_level = recent_zoom
-                        logger.info(f"Loaded recent position from config: Z{self.zoom_level} at ({self.center_lat:.4f}, {self.center_lon:.4f})")
-            
-            zoom_range = f"Z{self.min_zoom}-Z{self.max_zoom}"
-            logger.info(f"Loaded MBTiles via provider")
-            logger.info(f"Available zoom: {zoom_range}, Current: Z{self.zoom_level}")
-            logger.info(f"Center: {self.center_lat:.4f}, {self.center_lon:.4f}")
+            logger.info(f"Loaded MBTiles: Z{self.min_zoom}-Z{self.max_zoom}, Current position: ({self.center_lat:.4f}, {self.center_lon:.4f}), Z{self.zoom_level}")
             
             # Render map
             self.render_map()
@@ -255,6 +344,9 @@ class MapViewer(QWidget):
             # ✅ NEW: Emit signal ONCE after all values are set
             self.config.emit_map_position_changed()
             
+            # ✅ CRITICAL: Save to file (this was missing!)
+            self.config.save_to_file()
+            
             logger.debug(f"Saved position to config: Z{self.zoom_level} at ({self.center_lat:.4f}, {self.center_lon:.4f})")
     
     def _on_map_position_changed_external(self, lat, lon, zoom):
@@ -279,32 +371,66 @@ class MapViewer(QWidget):
         
         # Trigger re-render
         self.render_map()
-        logger.debug(f"Updated map from external signal: Z{self.zoom_level} at ({self.center_lat:.4f}, {self.center_lon:.4f})")
     
     def mark_center(self):
         """
         Mark current map center and zoom as the default.
         
-        Saves current center_lat, center_lon, and zoom_level to config as defaults.
+        Updates both:
+        1. mbtiles file metadata (mbtiles_center, mbtiles_zoom)
+        2. settings.yaml (default_center, default_zoom)
+        
         This allows the user to have a "home" position they can jump back to with the Recenter button.
+        The mbtiles update ensures next file reload centers to this marked position.
         """
-        self.config.set('appearance.tiles.default_zoom', self.zoom_level)
-        self.config.set('appearance.tiles.default_center.lat', self.center_lat)
-        self.config.set('appearance.tiles.default_center.lon', self.center_lon)
-        self.config.save_to_file()
-        logger.info(f"Marked center: Z{self.zoom_level}, ({self.center_lat:.4f}, {self.center_lon:.4f})")
+        try:
+            # Step 1: Update mbtiles file metadata (if mbtiles provider available)
+            if self.mbtiles_provider and hasattr(self.mbtiles_provider, 'update_mbtiles_center'):
+                logger.info(f"🔵 mark_center: Updating mbtiles metadata...")
+                success = self.mbtiles_provider.update_mbtiles_center(
+                    self.center_lon, self.center_lat, self.zoom_level
+                )
+                if success:
+                    logger.info(f"✅ mark_center: mbtiles metadata updated")
+                else:
+                    logger.warning(f"⚠️  mark_center: Failed to update mbtiles metadata")
+            
+            # Step 2: Update settings.yaml with new default center/zoom
+            self.config.set('appearance.tiles.default_zoom', self.zoom_level)
+            self.config.set('appearance.tiles.default_center.lat', self.center_lat)
+            self.config.set('appearance.tiles.default_center.lon', self.center_lon)
+            self.config.save_to_file()
+            logger.info(f"✅ mark_center: Marked as default center: Z{self.zoom_level}, ({self.center_lat:.4f}, {self.center_lon:.4f})")
+            
+        except Exception as e:
+            logger.error(f"❌ mark_center: Error marking center: {e}", exc_info=True)
     
     def recenter(self):
         """
-        Recenter map to the metadata center point.
+        Recenter map to the marked default position and zoom.
         
-        Moves to center coordinates and zoom level stored in metadata.
+        If user has clicked "Mark Center" button, navigate to that location.
+        If not set, do nothing (user hasn't marked a default yet).
+        
+        Implementation matches MapWidget.recenter_on_default() exactly.
         """
-        self.center_lon = self.metadata_center_lon
-        self.center_lat = self.metadata_center_lat
-        self.zoom_level = self.metadata_center_zoom
-        logger.debug(f"Recentered to metadata center ({self.center_lon:.4f}, {self.center_lat:.4f}) at Z{self.zoom_level}")
+        default_zoom = self.config.get_int('appearance.tiles.default_zoom', None)
+        default_center_lat = self.config.get_float('appearance.tiles.default_center.lat', None)
+        default_center_lon = self.config.get_float('appearance.tiles.default_center.lon', None)
+        
+        # Only recenter if default has been explicitly set (not None)
+        if default_zoom is None or default_center_lat is None or default_center_lon is None:
+            logger.info("Default center/zoom not yet marked - nothing to recenter to")
+            return
+        
+        self.zoom_level = default_zoom
+        self.center_lat = default_center_lat
+        self.center_lon = default_center_lon
+        
+        # Also update recent center/zoom since we're navigating
         self._save_position_to_config()
+        
+        logger.info(f"Recentered to marked default: Z{self.zoom_level}, ({self.center_lat:.4f}, {self.center_lon:.4f})")
         self.render_map()
     
     def set_center(self, lon: float, lat: float):
@@ -483,6 +609,10 @@ class MapViewer(QWidget):
             self.center_lat, self.center_lon = tile_to_latlon(self.center_tile_x, self.center_tile_y, self.zoom_level)
             
             logger.debug(f"Zoomed to Z{self.zoom_level} at cursor position")
+            
+            # ✅ CRITICAL FIX: Save new position to config after zoom
+            self._save_position_to_config()
+            
             self.render_map()
     
     def resizeEvent(self, event):

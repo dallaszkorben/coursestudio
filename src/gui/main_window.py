@@ -1141,15 +1141,45 @@ class MainWindow(QMainWindow):
                 logger.info(f"Loading mbtiles file: {mbtiles_path}")
                 
                 if self.mbtiles_provider.load_mbtiles_from_path(mbtiles_path):
-                    # Update recent_mbtiles in config
-                    filename = self.mbtiles_provider.get_loaded_filename()
-                    self.config.set('appearance.tiles.recent_mbtiles', filename)
-                    self.config.save_to_file()
+                    # 🔵 DEBUG: Check what zooms are available after loading
+                    available_zooms = self.mbtiles_provider.get_available_zooms()
+                    logger.info(f"🔵 After load_mbtiles_from_path: available_zooms = {available_zooms}")
                     
-                    # Check if recent zoom is available in new mbtiles, adjust if needed
-                    recent_zoom = self.config.get_int('appearance.tiles.recent_zoom', None)
-                    if recent_zoom:
-                        self.map_widget.set_zoom_with_compatibility(recent_zoom)
+                    # Use MBTilesFileLoader to determine optimal configuration
+                    # This will read center/zoom from mbtiles metadata instead of keeping old position
+                    try:
+                        from src.map_editor.core.mbtiles_reader import MBTilesReader
+                        from src.shared.map.mbtiles_file_loader import MBTilesFileLoader
+                        
+                        reader = MBTilesReader(mbtiles_path)
+                        loader = MBTilesFileLoader(reader, self.config)
+                        config_result = loader.load_and_configure(mbtiles_path)
+                        
+                        # Get position from mbtiles metadata
+                        lat = config_result['recent_center']['lat']
+                        lon = config_result['recent_center']['lon']
+                        zoom = config_result['recent_zoom']
+                        
+                        logger.info(f"🔵 Determined position from mbtiles metadata: ({lat:.4f}, {lon:.4f}) Z{zoom}")
+                        
+                        # Update zoom bounds for map_widget based on new file's available zooms
+                        min_zoom = config_result['min_zoom']
+                        max_zoom = config_result['max_zoom']
+                        self.map_widget.min_zoom = min_zoom
+                        self.map_widget.max_zoom = max_zoom
+                        logger.info(f"🔵 Updated map_widget zoom bounds: Z{min_zoom}-Z{max_zoom}")
+                        
+                        # Update map_widget with new position and provider
+                        self.map_widget.center_lat = lat
+                        self.map_widget.center_lon = lon
+                        self.map_widget.set_zoom_with_compatibility(zoom)
+                        
+                    except Exception as e:
+                        logger.error(f"Error loading mbtiles configuration: {e}", exc_info=True)
+                        # Fallback: just load with current position
+                        recent_zoom = self.config.get_int('appearance.tiles.recent_zoom', None)
+                        if recent_zoom:
+                            self.map_widget.set_zoom_with_compatibility(recent_zoom)
                     
                     # Re-render map with new tiles
                     self.map_widget.render_map()
@@ -1183,6 +1213,8 @@ class MainWindow(QMainWindow):
                     except Exception as e:
                         logger.warning(f"Could not update Map Editor: {e}")
                     
+                    # Get filename for status message
+                    filename = self.mbtiles_provider.get_loaded_filename()
                     self.statusBar().showMessage(f"Loaded mbtiles: {filename}")
                     logger.info(f"Successfully loaded mbtiles: {filename}")
                 else:

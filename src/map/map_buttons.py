@@ -275,16 +275,11 @@ class MapButtonManager:
             hovered_button: Name of button currently hovered (or None)
             pressed_button: Name of button currently pressed (or None)
         """
-        logger.debug(f"📌 ButtonManager.draw_all_buttons() called with hovered_button={hovered_button}, pressed_button={pressed_button}")
         for button_name in self.BUTTON_ORDER:
             if button_name in self.buttons:
                 button = self.buttons[button_name]
                 button.hovered = (button_name == hovered_button)
                 button.pressed = (button_name == pressed_button)
-                if button.hovered:
-                    logger.debug(f"   ✨ {button_name} is HOVERED (opacity will be 255)")
-                if button.pressed:
-                    logger.debug(f"   🔴 {button_name} is PRESSED (will be smaller)")
                 is_zoom_label = (button_name == 'zoom_level_label')
                 button.draw(draw_context, is_zoom_level_label=is_zoom_label, zoom_level=zoom_level)
     

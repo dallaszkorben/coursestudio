@@ -108,6 +108,7 @@ class CharacteristicsPanel(QWidget):
     center_requested = pyqtSignal(float, float)  # Emitted when center button clicked (lon, lat)
     recenter_requested = pyqtSignal(float, float, int)  # Emitted when recenter button clicked (lon, lat, zoom)
     metadata_updated = pyqtSignal()  # Emitted when name/description is updated
+    update_center_requested = pyqtSignal()  # Emitted when Update button clicked (to save current map position)
     
     def __init__(self, parent=None):
         """Initialize characteristics panel."""
@@ -247,7 +248,8 @@ class CharacteristicsPanel(QWidget):
         self.center_label = self._create_info_label()
         self.recenter_button = QPushButton("Update")
         self.recenter_button.setMaximumWidth(60)
-        self.recenter_button.setEnabled(False)
+        self.recenter_button.setEnabled(True)  # Always enabled so user can save current map position
+        self.recenter_button.clicked.connect(self._on_update_center_clicked)
         
         center_item_layout.addWidget(self.center_label)
         center_item_layout.addWidget(self.recenter_button)
@@ -385,13 +387,8 @@ class CharacteristicsPanel(QWidget):
             lon_str = format_coordinate(lon, COORDINATE_FORMAT, DECIMAL_PLACES)
             lat_str = format_coordinate(lat, COORDINATE_FORMAT, DECIMAL_PLACES)
             self.center_label.setText(f"({lon_str}, {lat_str}) at Z{zoom}")
-            self.recenter_button.setEnabled(True)
-            # Store center coordinates for button callback
-            self.recenter_button.clicked.disconnect() if self.recenter_button.receivers(self.recenter_button.clicked) > 0 else None
-            self.recenter_button.clicked.connect(lambda: self.recenter_requested.emit(lon, lat, zoom))
         else:
             self.center_label.setText("(not set in file)")
-            self.recenter_button.setEnabled(False)
         
         # Update zoom levels
         self.zoom_list.clear()
@@ -480,6 +477,19 @@ class CharacteristicsPanel(QWidget):
                 self.metadata_updated.emit()
             else:
                 logger.error("Failed to save description")
+    
+    def _on_update_center_clicked(self) -> None:
+        """
+        Handle Update button click.
+        
+        Emits signal to request updating mbtiles center with current map position.
+        The tab handler receives this signal and:
+        1. Gets current_center/current_zoom from MapViewer
+        2. Writes to mbtiles metadata
+        3. Updates default_center/default_zoom in settings.yaml
+        """
+        logger.info("Update button clicked - requesting center update")
+        self.update_center_requested.emit()
     
     def clear(self) -> None:
         """Clear all displayed information."""
