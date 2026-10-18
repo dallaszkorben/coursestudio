@@ -48,9 +48,73 @@
 │     ┌─────────────────────────────────────┐                         │
 │     │      AppConfig                      │                         │
 │     │      (settings.ini management)      │                         │
+│     │      + PyQt5 Signals:               │                         │
+│     │        - map_position_changed       │                         │
 │     └─────────────────────────────────────┘                         │
 │                                                                     │
 └─────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+### Tab Architecture (Track Editor vs Map Editor)
+
+```
+┌──────────────────────────────────────────────────────────────────────┐
+│                      MainWindow                                       │
+│                     (Tab Manager)                                     │
+├──────────────────────────────────────────────────────────────────────┤
+│                                                                      │
+│  ┌─────────────────────┐           ┌──────────────────────────┐     │
+│  │  Track Editor Tab   │           │   Map Editor Tab         │     │
+│  │  (TrackEditorTab    │           │   (MapEditorTab)         │     │
+│  │   Handler)          │           │                          │     │
+│  │                     │           │  ┌──────────────────┐    │     │
+│  ├─ Track List        │           │  │Characteristics   │    │     │
+│  ├─ Map Widget        │           │  │Panel (left 30%)  │    │     │
+│  ├─ Trackpoint List   │           │  ├─ File metadata  │    │     │
+│  ├─ Details Panel     │           │  ├─ Zoom levels    │    │     │
+│  │                     │           │  ├─ Edit controls  │    │     │
+│  └─────────────────────┘           │  └──────────────────┘    │     │
+│          │                         │          │               │     │
+│          │ Pan/Zoom events         │          │ Pan/Zoom      │     │
+│          ▼                         │          ▼ events        │     │
+│  ┌─────────────────────┐           │  ┌──────────────────┐    │     │
+│  │ MapWidget           │           │  │MapViewer (right  │    │     │
+│  │ (displays track)    │           │  │70%) (displays    │    │     │
+│  │                     │           │  │MBTiles)          │    │     │
+│  └──────┬──────────────┘           │  └────────┬─────────┘    │     │
+│         │                          │           │              │     │
+│         │ Calls:                   │           │ Calls:       │     │
+│         │ config.set_silent()      │           │ config.      │     │
+│         │ config.emit_map_         │           │ set_silent() │     │
+│         │   position_changed()     │           │ config.emit_ │     │
+│         │                          │           │ map_position │     │
+│         └──────┬─────────────────┬─┘           │ _changed()   │     │
+│                │                 │             │              │     │
+│                │ AppConfig       │             └────────┬─────┘     │
+│                │ signal:         │                      │           │
+│                │ map_position_   │                      │           │
+│                │ changed(lat,    │                      │           │
+│                │ lon, zoom)      │                      │           │
+│                │                 │                      │           │
+│                ├─────────────────┼──────────────────────┤           │
+│                │                 │                      │           │
+│                ▼                 ▼                      ▼           │
+│         ┌──────────────┐  ┌──────────────────┐  ┌──────────────┐   │
+│         │ MapWidget    │  │ AppConfig        │  │ MapViewer    │   │
+│         │ receives     │  │ broadcasts       │  │ receives     │   │
+│         │ signal,      │  │ signal to ALL    │  │ signal,      │   │
+│         │ updates      │  │ connected        │  │ updates      │   │
+│         │ map to       │  │ listeners        │  │ map to       │   │
+│         │ position P2  │  │                  │  │ position P2  │   │
+│         └──────────────┘  └──────────────────┘  └──────────────┘   │
+│                │                                        │            │
+│                └────────────────┬───────────────────────┘            │
+│                                 │                                   │
+│                    Result: Both tabs in sync!                       │
+│                                                                      │
+└──────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
