@@ -1184,6 +1184,17 @@ class MainWindow(QMainWindow):
                     # Re-render map with new tiles
                     self.map_widget.render_map()
                     
+                    # 🟢 RE-INITIALIZE MAP EDITOR'S MAP VIEWER WITH NEW MBTILES PROVIDER
+                    # This is critical! We must call set_mbtiles_provider() to re-initialize 
+                    # the map viewer with the new file's metadata (center, zoom, bounds)
+                    # Otherwise it keeps the old position (recent_zoom, recent_center)
+                    try:
+                        logger.info(f"🟢 Re-initializing MapEditor map_viewer with new mbtiles provider...")
+                        self.map_editor_handler.map_viewer.set_mbtiles_provider(self.mbtiles_provider)
+                        logger.info(f"🟢 MapEditor map_viewer re-initialized with new provider")
+                    except Exception as e:
+                        logger.error(f"Error re-initializing MapEditor map_viewer: {e}", exc_info=True)
+                    
                     # 🟢 UPDATE MAP EDITOR TAB'S CHARACTERISTICS PANEL
                     # Load new reader and update Map Editor's characteristics panel
                     try:
@@ -1207,6 +1218,11 @@ class MainWindow(QMainWindow):
                             elif current_zoom > max_zoom:
                                 self.map_editor_handler.map_viewer.zoom_level = max_zoom
                                 logger.info(f"🟢 Adjusted zoom from {current_zoom} to {max_zoom} (new file max)")
+                            
+                            # 🟢 UPDATE ZOOM BOUNDS FOR MAP EDITOR'S MAP VIEWER
+                            # This is critical - update the min/max zoom the map_viewer uses for zoom_in/zoom_out validation
+                            self.map_editor_handler.map_viewer._update_zoom_bounds_from_provider()
+                            logger.info(f"🟢 Updated MapEditor zoom bounds from provider: Z{self.map_editor_handler.map_viewer.min_zoom}-Z{self.map_editor_handler.map_viewer.max_zoom}")
                             
                             # Render with new zoom
                             self.map_editor_handler.map_viewer.render_map()

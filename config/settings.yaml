@@ -85,14 +85,14 @@ appearance:
       size: 20
   tiles:
     recent_mbtiles: /home/akoel/Projects/boat/general/Code/CourseStudio/mbtiles/OSM-OpenCPN2-Baltic.mbtiles
-    recent_zoom: 15
+    recent_zoom: 11
     recent_center:
-      lat: 56.17456357559932
-      lon: 15.598268508911133
-    default_zoom: 16
+      lat: 56.06326893436648
+      lon: 15.67598819732666
+    default_zoom: 11
     default_center:
-      lat: 56.16866242858537
-      lon: 15.588784217834473
+      lat: 55.952709307002785
+      lon: 15.701394081115723
 coordinates_display:
   format:
     coordinate_format: dms
