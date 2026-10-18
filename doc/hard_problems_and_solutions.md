@@ -1271,7 +1271,7 @@ A proper implementation that provides "ready-to-use images" enables:
 ---
 
 
-## Problem 4: Button Hover Effects Not Detecting Mouse Movement
+## Problem 14: Button Hover Effects Not Detecting Mouse Movement
 
 ### Problem Description
 
@@ -1445,7 +1445,7 @@ This problem revealed several important lessons:
 - Consider using Qt signals/slots instead of direct event handling when possible (cleaner abstraction)
 
 ---
-## Problem 5: Mouse Wheel Zoom Not Keeping Cursor Position - View Drifts When Zooming In/Out
+## Problem 15: Mouse Wheel Zoom Not Keeping Cursor Position - View Drifts When Zooming In/Out
 
 ### Problem Description
 
@@ -1601,5 +1601,215 @@ Where:
 - ✅ Solution: Pure tile math, which is zoom-agnostic
 
 **Lesson for next time**: When a geometric problem seems hard, check if there's a **coordinate system specifically designed** for that problem. Web Mercator tile math was designed for exactly this - no need to reinvent with offsets.
+
+---
+## Problem 16: Multiple Signal Emissions Cause Feedback Loop - Map Jumps Back After Pan
+
+### Problem Description
+
+When user pans map in Track Editor or Map Editor:
+- **Expected**: Map stays at new position P2, syncs to other tab, saves to settings.yaml
+- **Actual**: Map appears to jitter, then jumps back to previous position P1
+- **Symptoms**: 
+  - Pan from A to B, release mouse
+  - Map briefly shows B, then snaps back to A
+  - Other tab doesn't update smoothly
+  - New position not saved correctly
+
+**User Impact**: Impossible to reposition map - always reverts to where it was before.
+
+### What I Did Wrong (Failed Attempts)
+
+**Attempt 1**: Assumed rendering logic was wrong
+```python
+# In MapWidget._on_map_position_changed_external()
+# Thought: Maybe the handler is setting wrong coordinates?
+# Result: ❌ Handler code was correct, coordinates were right
+```
+- **Why failed**: Added logging, saw correct coords being passed
+- **Clue missed**: Coords were correct, but called multiple times
+
+**Attempt 2**: Thought it was a Z-order/rendering pipeline issue
+```python
+# Maybe render is happening before state update?
+# Add explicit render calls after state change
+self.center_lat = lat
+self.center_lon = lon
+self.needs_render = True
+self._render_map()  # Force render
+```
+- **Result**: ❌ Still jumping
+- **Why failed**: Render was being called 3 times with different partial data
+
+**Attempt 3**: Suspected race condition or async timing
+```python
+# Maybe add a delay? Queue up the update?
+QTimer.singleShot(100, self._render_map)
+```
+- **Result**: ❌ Still failed, just with 100ms delay
+- **Why failed**: Not a timing issue - just multiple signal emissions
+
+**Attempt 4**: Looked for signal disconnect issues
+```python
+# Maybe signals weren't disconnecting properly?
+# Check signal connections in handler
+```
+- **Result**: ❌ Signals were connected correctly
+- **Why failed**: Problem wasn't in the signal connections themselves
+
+**Root insight**: None of these addressed the actual problem: **3 signals emitted instead of 1**
+
+### Root Cause Analysis
+
+**The chain of events:**
+
+When saving map position after pan:
+```python
+def update_recent_state(self):
+    self.config.set('appearance.tiles.recent_zoom', self.zoom_level)        # Call 1
+    self.config.set('appearance.tiles.recent_center.lat', self.center_lat)  # Call 2
+    self.config.set('appearance.tiles.recent_center.lon', self.center_lon)  # Call 3
+```
+
+Each `set()` call immediately emitted the `map_position_changed` signal:
+
+```
+Call 1: config.set('recent_zoom', 15)
+  └─ AppConfig.set() fires: map_position_changed.emit(lat=?, lon=?, zoom=15)
+  └─ ❌ lat and lon still have OLD values (incomplete state)
+  └─ Handler _on_map_position_changed_external() called
+  └─ Render: zoom updated, but coordinates wrong
+
+Call 2: config.set('recent_center.lat', 56.2000)
+  └─ AppConfig.set() fires: map_position_changed.emit(lat=56.2000, lon=?, zoom=15)
+  └─ ❌ lon still has OLD value (still incomplete)
+  └─ Handler called again with NEW lat, but OLD lon
+  └─ Render: coordinates partially updated
+
+Call 3: config.set('recent_center.lon', 15.5000)
+  └─ AppConfig.set() fires: map_position_changed.emit(lat=56.2000, lon=15.5000, zoom=15)
+  └─ ✅ Finally complete state
+  └─ Handler called AGAIN with correct coords
+  └─ Render: finally correct
+
+Result: 3 renders with 3 different incomplete/conflicting states
+Effect: Map renders multiple times, each with partial data
+Visual: Flicker/jitter, position appears to jump around
+```
+
+**Why the jump back to P1?**
+
+The multiple incomplete renders meant the map was trying to center on:
+1. Old position with new zoom
+2. New lat with old lon
+3. Finally new position
+
+The visual result: quick flicker showing conflicting positions, appearing as a "jump back".
+
+**Why this is hard to spot:**
+- ❌ No errors or warnings - it's "working" code
+- ❌ Silent bug - just visual jitter
+- ❌ Async-like behavior from sync code (signals fire multiple times)
+- ❌ Crosses multiple layers (UI → config → signals → handlers → rendering)
+- ❌ Doesn't show the real problem in logs (coords look correct after all 3 calls)
+
+### Solution
+
+**Two new methods in AppConfig:**
+
+```python
+def set_silent(self, path: str, value: Any) -> None:
+    """Set value WITHOUT emitting signal - allows batch updates"""
+    # ... set value in config_data ...
+    # NO signal emitted
+
+def emit_map_position_changed(self) -> None:
+    """Manually emit map_position_changed signal with complete state"""
+    lat = self.get_float('appearance.tiles.recent_center.lat', 0)
+    lon = self.get_float('appearance.tiles.recent_center.lon', 0)
+    zoom = self.get_int('appearance.tiles.recent_zoom', 10)
+    self.map_position_changed.emit(lat, lon, zoom)
+```
+
+**Updated both map widgets to use batching pattern:**
+
+```python
+# In MapWidget.update_recent_state() and MapViewer._save_position_to_config()
+
+def update_recent_state(self):
+    # Step 1: Set all values silently (no signals)
+    self.config.set_silent('appearance.tiles.recent_zoom', self.zoom_level)
+    self.config.set_silent('appearance.tiles.recent_center.lat', self.center_lat)
+    self.config.set_silent('appearance.tiles.recent_center.lon', self.center_lon)
+    
+    # Step 2: Emit signal ONCE with complete state
+    self.config.emit_map_position_changed()
+    
+    # Step 3: Persist to file
+    self.config.save_to_file()
+```
+
+**Result:**
+```
+Step 1-3: config.set_silent() calls
+  └─ Values set in config_data
+  └─ NO signals emitted
+  └─ NO renders happen
+
+Step 4: config.emit_map_position_changed()
+  └─ Reads ALL values from config (all complete)
+  └─ Fires signal ONCE: map_position_changed.emit(56.2000, 15.5000, 15)
+  └─ Handler called ONCE with complete state
+  └─ SINGLE render with correct position
+  └─ ✅ Map stays at P2
+```
+
+### Key Learning
+
+**Pattern: Batch Configuration Updates with Signals**
+
+When multiple related config values need to be saved:
+
+**❌ DON'T do this:**
+```python
+config.set('key1', value1)  # Signal fires
+config.set('key2', value2)  # Signal fires again
+config.set('key3', value3)  # Signal fires again
+# 3 handlers called with 3 different incomplete states
+```
+
+**✅ DO this:**
+```python
+config.set_silent('key1', value1)
+config.set_silent('key2', value2)
+config.set_silent('key3', value3)
+config.emit_custom_signal()  # Signal fires ONCE with complete state
+# 1 handler called with complete, consistent state
+```
+
+**Non-obvious aspect**: This is a general architectural pattern that applies anywhere you have:
+- Multiple related state changes
+- Signal-based listeners
+- Consumers expecting complete, consistent state
+
+**The signal emission feedback loop is silent and deceptive:**
+- Code looks correct (save all the values!)
+- No errors or warnings
+- Works "sort of" (values do get saved)
+- But creates cascading incomplete updates
+
+**Why this matters:**
+- Applies to any PyQt + config system (not just maps)
+- Easy to miss in code review (looks normal)
+- Hard to debug (symptoms point wrong direction)
+- Performance impact (3x unnecessary work)
+- User-visible jitter/flicker
+
+**Prevention for future:**
+1. **Question signal frequency** - "How many times will this signal fire?"
+2. **Test with multiple values** - Batch operations that touch 3+ config keys
+3. **Log signal emissions** - If debugging flicker/jitter, log signal fires with timestamp
+4. **Use set_silent pattern** - Whenever saving related config values together
+5. **Review config.set() patterns** - Look for multiple set() calls in close sequence
 
 ---
