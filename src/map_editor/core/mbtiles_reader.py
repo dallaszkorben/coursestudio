@@ -260,7 +260,10 @@ class MBTilesReader:
                 )
             
             conn.close()
-            logger.debug(f"Found {len(self.zoom_levels)} zoom levels")
+            
+            zooms_list = [z.zoom for z in self.zoom_levels]
+            logger.debug(f"Found {len(self.zoom_levels)} zoom levels: {zooms_list}")
+            logger.info(f"✅ Loaded zoom levels from {self.file_path.name}: {zooms_list}")
             
         except Exception as e:
             logger.error(f"Error loading zoom levels: {e}", exc_info=True)

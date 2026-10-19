@@ -73,6 +73,7 @@ class MapViewer(QWidget):
         
         # Map state
         self.mbtiles_provider = None
+        self.mbtiles_reader = None  # ✅ NEW: Direct reader for accurate zoom queries
         self.center_lat = 0
         self.center_lon = 0
         self.zoom_level = 10
@@ -139,8 +140,31 @@ class MapViewer(QWidget):
         
         logger.info("MapViewer initialized")
     
+    def set_mbtiles_reader(self, reader):
+        """
+        Set the mbtiles reader for accurate zoom queries.
+        
+        This is used to get actual available zooms from the database,
+        not the cached metadata range from the provider.
+        
+        Args:
+            reader: MBTilesReader instance
+        """
+        self.mbtiles_reader = reader
+        self._update_zoom_bounds_from_provider()
+    
     def _update_zoom_bounds_from_provider(self):
-        """Update min/max zoom based on mbtiles provider's available zooms."""
+        """Update min/max zoom based on actual available zooms."""
+        # Prefer using the reader for accurate zoom list (queries database directly)
+        if self.mbtiles_reader:
+            available_zooms = self.mbtiles_reader.get_available_zooms()
+            if available_zooms:
+                self.min_zoom = min(available_zooms)
+                self.max_zoom = max(available_zooms)
+                logger.debug(f"Updated zoom bounds from reader: {self.min_zoom}-{self.max_zoom}")
+                return
+        
+        # Fallback to provider if reader not available
         if not self.mbtiles_provider:
             return
         
@@ -148,7 +172,7 @@ class MapViewer(QWidget):
         if available_zooms:
             self.min_zoom = min(available_zooms)
             self.max_zoom = max(available_zooms)
-            logger.debug(f"Updated zoom bounds: {self.min_zoom}-{self.max_zoom}")
+            logger.debug(f"Updated zoom bounds from provider: {self.min_zoom}-{self.max_zoom}")
     
     def _clamp_zoom_to_valid_range(self):
         """Clamp current zoom_level to valid range for provider."""

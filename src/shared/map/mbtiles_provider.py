@@ -557,6 +557,28 @@ class MBTilesProvider:
         
         return (self._metadata.min_zoom, self._metadata.max_zoom)
     
+    def refresh_metadata(self) -> bool:
+        """
+        Refresh metadata from the loaded mbtiles file.
+        
+        Call this after modifying the mbtiles file (e.g., after generating zoom levels)
+        to reload the metadata, especially min/max zoom levels.
+        
+        Returns:
+            True if metadata was refreshed successfully, False otherwise
+        """
+        if not self.is_loaded():
+            self.logger.warning("Cannot refresh metadata: no mbtiles file loaded")
+            return False
+        
+        try:
+            self._metadata = self._load_metadata()
+            self.logger.info(f"✅ Refreshed metadata: zoom range {self._metadata.min_zoom}-{self._metadata.max_zoom}")
+            return True
+        except Exception as e:
+            self.logger.error(f"Error refreshing metadata: {e}", exc_info=True)
+            return False
+    
     def get_available_zooms(self) -> List[int]:
         """
         Get list of all available zoom levels in loaded mbtiles file.

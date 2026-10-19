@@ -551,6 +551,15 @@ class MainWindow(QMainWindow):
         )
         map_editor_widget = self.map_editor_handler.create_tab()
         
+        # ✅ NEW: Set callback to refresh TrackEditor's map_widget when zoom generation completes
+        def refresh_track_editor_zoom_bounds():
+            """Refresh TrackEditor map_widget zoom bounds after MapEditor zoom generation."""
+            if self.map_widget:
+                self.map_widget.refresh_zoom_bounds()
+                logger.info("🟢 Refreshed TrackEditor map_widget zoom bounds after MapEditor generation")
+        
+        self.map_editor_handler.set_on_zoom_generated_callback(refresh_track_editor_zoom_bounds)
+        
         self.main_tab_widget.addTab(map_editor_widget, "Map Editor")
         
         # ====================================================================
@@ -609,7 +618,20 @@ class MainWindow(QMainWindow):
         # Status message
         self.status_label = status_bar.showMessage("Ready")
         
+        # Show initially loaded mbtiles file
+        self._show_current_mbtiles_in_status()
+        
         logger.info("Status bar created")
+    
+    def _show_current_mbtiles_in_status(self):
+        """Show the currently loaded mbtiles filename in the status bar."""
+        filename = self.mbtiles_provider.get_loaded_filename()
+        if filename:
+            self.statusBar().showMessage(f"Loaded mbtiles: {filename}")
+            logger.info(f"Status bar shows: Loaded mbtiles: {filename}")
+        else:
+            self.statusBar().showMessage("No mbtiles file loaded")
+            logger.info("No mbtiles file currently loaded")
     
     # ========================================================================
     # Signal Connections
@@ -645,6 +667,9 @@ class MainWindow(QMainWindow):
         5. TRACKPOINT LIST SIGNALS
            - trackpoint_list_widget.point_selected → _on_trackpoint_selected()
            - trackpoint_list_widget.point_double_clicked → _on_trackpoint_double_clicked()
+        
+        6. TAB CHANGE SIGNALS
+           - main_tab_widget.currentChanged → _on_tab_changed() (update MapEditor button state)
            - trackpoint_list_widget.coordinate_format_changed → _on_coordinate_format_changed()
         
         6. MAP WIDGET SIGNALS
@@ -687,9 +712,41 @@ class MainWindow(QMainWindow):
         self.file_saved.connect(self._on_file_saved)
         self.track_selected.connect(self._on_track_selected)
         
+        # Tab change signal (to update MapEditor button states)
+        self.main_tab_widget.currentChanged.connect(self._on_tab_changed)
+        
         # Map widget signals (range selection for insert point feature)
         if hasattr(self, 'map_widget') and hasattr(self.map_widget, 'range_selection_changed'):
             self.map_widget.range_selection_changed.connect(self._update_insert_menu_state)
+    
+    # ========================================================================
+    # Tab Management
+    # ========================================================================
+    
+    def _on_tab_changed(self, index: int) -> None:
+        """
+        Handle tab change signal.
+        
+        Updates MapEditor's Generate Zoom Levels button state based on:
+        1. Whether MapEditor tab is currently active
+        2. Whether an mbtiles file is loaded
+        
+        Args:
+            index: Index of the newly activated tab (0=Track Editor, 1=Map Editor, 2=Settings)
+        """
+        # Check if MapEditor tab is now active (index 1)
+        is_map_editor_active = (index == 1)
+        
+        # Enable/disable Generate Zoom button based on tab and file loaded state
+        if self.map_editor_handler and self.map_editor_handler.characteristics_panel:
+            if is_map_editor_active and self.mbtiles_provider and self.mbtiles_provider.is_loaded():
+                # MapEditor is active AND file is loaded → Enable button
+                self.map_editor_handler.characteristics_panel.generate_zoom_button.setEnabled(True)
+                logger.debug("Enabled Generate Zoom Levels button (MapEditor tab active, file loaded)")
+            else:
+                # Either MapEditor not active OR file not loaded → Disable button
+                self.map_editor_handler.characteristics_panel.generate_zoom_button.setEnabled(False)
+                logger.debug("Disabled Generate Zoom Levels button (MapEditor tab not active or no file)")
     
     # ========================================================================
     # Window Title Management
@@ -1233,6 +1290,10 @@ class MainWindow(QMainWindow):
                     filename = self.mbtiles_provider.get_loaded_filename()
                     self.statusBar().showMessage(f"Loaded mbtiles: {filename}")
                     logger.info(f"Successfully loaded mbtiles: {filename}")
+                    
+                    # Update MapEditor button state (file now loaded)
+                    current_tab = self.main_tab_widget.currentIndex()
+                    self._on_tab_changed(current_tab)
                 else:
                     QMessageBox.warning(self, "Error", "Failed to load mbtiles file. Check the log for details.")
                     self.statusBar().showMessage("Failed to load mbtiles file")

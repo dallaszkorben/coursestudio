@@ -109,6 +109,7 @@ class CharacteristicsPanel(QWidget):
     recenter_requested = pyqtSignal(float, float, int)  # Emitted when recenter button clicked (lon, lat, zoom)
     metadata_updated = pyqtSignal()  # Emitted when name/description is updated
     update_center_requested = pyqtSignal()  # Emitted when Update button clicked (to save current map position)
+    generate_zoom_levels_requested = pyqtSignal()  # Emitted when Generate Zoom Levels button clicked
     
     def __init__(self, parent=None):
         """Initialize characteristics panel."""
@@ -281,6 +282,32 @@ class CharacteristicsPanel(QWidget):
         self.zoom_list.itemSelectionChanged.connect(self._on_zoom_selected)
         zoom_layout.addWidget(self.zoom_list)
         
+        # Generate Zoom Levels button
+        self.generate_zoom_button = QPushButton("⚙️ Generate Zoom Levels")
+        self.generate_zoom_button.setStyleSheet("""
+            QPushButton {
+                background-color: #0d5a0d;
+                color: #FFFFFF;
+                border: 1px solid #1a7a1a;
+                padding: 6px;
+                border-radius: 3px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #0f7a0f;
+            }
+            QPushButton:pressed {
+                background-color: #0a4a0a;
+            }
+            QPushButton:disabled {
+                background-color: #444444;
+                color: #888888;
+            }
+        """)
+        self.generate_zoom_button.setEnabled(False)  # Disabled until file loaded
+        self.generate_zoom_button.clicked.connect(self._on_generate_zoom_levels)
+        zoom_layout.addWidget(self.generate_zoom_button)
+        
         container_layout.addWidget(zoom_group)
         
         # Statistics Section
@@ -331,16 +358,12 @@ class CharacteristicsPanel(QWidget):
         Args:
             reader (MBTilesReader): MBTiles reader with loaded file
         """
-        logger.info(f"🔵 load_mbtiles() called with reader for: {reader.get_metadata().name}")
-        
         self.mbtiles_reader = reader
         
         # Get metadata
         metadata = reader.get_metadata()
-        logger.info(f"🔵 Metadata retrieved: name='{metadata.name}', desc='{metadata.description}'")
         
         # CLEAR ALL FIELDS FIRST - ensure old values are gone
-        logger.info("🔵 Clearing all fields...")
         self.name_input.clear()
         self.description_input.clear()
         self.format_label.clear()
@@ -353,18 +376,15 @@ class CharacteristicsPanel(QWidget):
         self.file_size_label.clear()
         self.missing_zooms_label.clear()
         self.zoom_list.clear()
-        logger.info("🔵 All fields cleared")
         
         # Update file info (populate editable fields)
         self.name_input.blockSignals(True)
         self.name_input.setText(metadata.name or "")
         self.name_input.blockSignals(False)
-        logger.info(f"🔵 name_input set to: '{self.name_input.text()}'")
         
         self.description_input.blockSignals(True)
         self.description_input.setText(metadata.description or "")
         self.description_input.blockSignals(False)
-        logger.info(f"🔵 description_input set to: '{self.description_input.text()}'")
         
         self.format_label.setText(metadata.format or "unknown")
         self.type_label.setText(metadata.type or "baselayer")
@@ -392,7 +412,11 @@ class CharacteristicsPanel(QWidget):
         
         # Update zoom levels
         self.zoom_list.clear()
-        for zoom_info in reader.get_zoom_levels():
+        zoom_levels = reader.get_zoom_levels()
+        logger.info(f"🟢 Loading {len(zoom_levels)} zoom levels into characteristics panel: {[z.zoom for z in zoom_levels]}")
+        logger.info(f"🟢 File: {reader.file_path}")
+        
+        for zoom_info in zoom_levels:
             item = ZoomLevelItem(zoom_info)
             self.zoom_list.addItem(item)
             
@@ -401,6 +425,8 @@ class CharacteristicsPanel(QWidget):
             tiles = zoom_info.tile_count
             status = "✓ Original" if zoom_info.is_original else "◆ Generated"
             text = f"Z{zoom:2d}  {tiles:>6,} tiles  {status}"
+            
+            logger.debug(f"🟢 Adding zoom to display: {text}")
             
             label = QLabel(text)
             label.setAlignment(Qt.AlignCenter | Qt.AlignVCenter)
@@ -490,6 +516,20 @@ class CharacteristicsPanel(QWidget):
         """
         logger.info("Update button clicked - requesting center update")
         self.update_center_requested.emit()
+    
+    def _on_generate_zoom_levels(self) -> None:
+        """
+        Handle Generate Zoom Levels button click.
+        
+        Emits signal to request zoom level generation.
+        The tab handler receives this signal and:
+        1. Shows zoom selection dialog
+        2. Starts zoom generation in background thread
+        3. Shows progress dialog
+        4. Updates characteristics panel when done
+        """
+        logger.info("Generate Zoom Levels button clicked")
+        self.generate_zoom_levels_requested.emit()
     
     def clear(self) -> None:
         """Clear all displayed information."""

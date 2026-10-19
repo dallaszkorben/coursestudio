@@ -866,4 +866,451 @@ appearance:
 
 ---
 
+## 14. GENERATE ZOOM LEVELS FEATURE
+
+### 14.1 Purpose and Overview
+
+**Feature:** Generate missing zoom levels in MBTiles files by intelligently resampling from existing zoom levels.
+
+**Problem Solved:**
+- MBTiles files often have incomplete zoom coverage (e.g., Z6, Z8, Z10, Z12, Z14, Z16 - missing odd zooms)
+- Users cannot navigate smoothly - jumping between available zoom levels
+- Solution: Automatically generate missing zooms through downsampling or upsampling
+
+**User Experience:**
+1. User loads MBTiles with incomplete zoom coverage
+2. User clicks "⚙️ Generate Zoom Levels" button (only enabled in MapEditor tab with file loaded)
+3. Dialog shows:
+   - **Available:** Zooms already in file (marked ✓ existing)
+   - **Missing:** Gaps in the continuous range (marked ○ missing)
+   - **Outside Range:** Zooms below min-1 or above max+2 (marked ⊘ outside range)
+4. For each zoom, shows: Tile count estimate, source zoom, quality warnings
+5. User selects which zooms to generate
+6. Progress dialog shows real-time generation progress
+7. New zooms are written to mbtiles file
+8. UI automatically updates to show new available zooms
+
+### 14.2 Core Algorithm
+
+#### 14.2.1 Decision Tree for Source Zoom Selection
+
+**Goal:** For a target zoom level, determine which source zoom level to use and whether to downsample or upsample.
+
+```
+ALGORITHM SelectSourceZoom(target_zoom):
+    available_zooms = read_from_database()
+    
+    // Strategy 1: Use zoom Z+1 (downsampling - best quality)
+    IF (target_zoom + 1) in available_zooms:
+        RETURN (target_zoom + 1, "downsampling")
+    
+    // Strategy 2: Use zoom Z-1 (upsampling)
+    IF (target_zoom - 1) in available_zooms:
+        RETURN (target_zoom - 1, "upsampling")
+    
+    // Strategy 3: Find nearest zoom (could be multiple steps away)
+    nearest_zoom = FindNearestZoom(target_zoom, available_zooms)
+    
+    IF nearest_zoom > target_zoom:
+        RETURN (nearest_zoom, "downsampling")
+    ELSE:
+        RETURN (nearest_zoom, "upsampling")
+END ALGORITHM
+```
+
+**Example Scenarios:**
+- File has [6, 8, 10, 12, 14, 16], user wants Z9:
+  - Check Z10 → exists → Use Z10 as source (downsampling)
+- File has [6, 8, 10, 12, 14, 16], user wants Z7:
+  - Check Z8 → exists → Use Z8 as source (downsampling)
+- File has [6, 12, 16], user wants Z13:
+  - Check Z14 → doesn't exist
+  - Check Z12 → exists → Use Z12 as source (upsampling)
+- File has [6, 12, 16], user wants Z7:
+  - Check Z8 → doesn't exist
+  - Check Z6 → exists → Use Z6 as source (upsampling)
+
+#### 14.2.2 Downsampling Algorithm (Source > Target)
+
+**Concept:** Combine 4 tiles from source zoom into 1 tile at target zoom.
+
+**Example:** Z14 → Z13 (source is 1 level higher)
+- Each zoom level divides the world into 2^z × 2^z tiles
+- Z14: 2^14 × 2^14 = 16,384 × 16,384 tiles
+- Z13: 2^13 × 2^13 = 8,192 × 8,192 tiles (half the dimensions)
+- Each Z13 tile represents 4 Z14 tiles (2×2 grid)
+
+**Tile Coordinate Mapping:**
+```
+For target tile at Z13 with coordinates (tx, ty):
+    Source tiles at Z14:
+    (tx*2,     ty*2)      // top-left
+    (tx*2 + 1, ty*2)      // top-right
+    (tx*2,     ty*2 + 1)  // bottom-left
+    (tx*2 + 1, ty*2 + 1)  // bottom-right
+```
+
+**Resampling Process:**
+1. Fetch 4 source tiles (256×256 pixels each)
+2. Create 512×512 canvas
+3. Place tiles in 2×2 grid
+4. Resample entire canvas to 256×256 using LANCZOS filter
+5. Save as PNG/JPEG (preserve original format)
+
+**Code Pattern:**
+```python
+def downsample_tile(source_zoom, target_zoom, tile_x, tile_y):
+    """Generate target tile by downsampling from source zoom."""
+    
+    # Calculate source tile coordinates
+    source_tiles = [
+        (tile_x*2,     tile_y*2),
+        (tile_x*2 + 1, tile_y*2),
+        (tile_x*2,     tile_y*2 + 1),
+        (tile_x*2 + 1, tile_y*2 + 1)
+    ]
+    
+    # Fetch tiles from database
+    images = []
+    for sx, sy in source_tiles:
+        tile_blob = fetch_tile(source_zoom, sx, sy)
+        if tile_blob:
+            images.append(Image.open(BytesIO(tile_blob)))
+        else:
+            # Missing source tile - use gray placeholder
+            images.append(Image.new('RGB', (256, 256), (200, 200, 200)))
+    
+    # Create 512×512 canvas
+    canvas = Image.new('RGB', (512, 512))
+    canvas.paste(images[0], (0, 0))        # top-left
+    canvas.paste(images[1], (256, 0))      # top-right
+    canvas.paste(images[2], (0, 256))      # bottom-left
+    canvas.paste(images[3], (256, 256))    # bottom-right
+    
+    # Resample to 256×256 using LANCZOS
+    result = canvas.resize((256, 256), Image.LANCZOS)
+    
+    # Encode to blob
+    blob = BytesIO()
+    result.save(blob, format='PNG')
+    return blob.getvalue()
+```
+
+#### 14.2.3 Upsampling Algorithm (Source < Target)
+
+**Concept:** Extract appropriate region from source tile and upsample it.
+
+**Example:** Z12 → Z13 (source is 1 level lower)
+- Z13 has twice the tile density of Z12
+- Each Z12 tile expands to 4 Z13 tiles (2×2 grid)
+- Target tile must extract 1/4 of source tile
+
+**Tile Coordinate Mapping:**
+```
+For target tile at Z13 with coordinates (tx, ty):
+    Source tile at Z12: (tx // 2, ty // 2)
+    Quadrant within source: ((tx % 2) * 2) + (ty % 2)
+    
+    Quadrant mapping (within 256×256 source tile):
+    ┌─────────┬─────────┐
+    │    0    │    1    │
+    │[0:128]  │[128:256]│
+    ├─────────┼─────────┤
+    │    2    │    3    │
+    │[0:128]  │[128:256]│
+    └─────────┴─────────┘
+```
+
+**Resampling Process:**
+1. Fetch source tile (256×256)
+2. Extract appropriate 128×128 quadrant
+3. Resample to 256×256 using LANCZOS filter
+4. Save as PNG/JPEG (preserve original format)
+
+**Code Pattern:**
+```python
+def upsample_tile(source_zoom, target_zoom, tile_x, tile_y):
+    """Generate target tile by upsampling from source zoom."""
+    
+    # Calculate source tile and quadrant
+    source_x = tile_x // 2
+    source_y = tile_y // 2
+    quadrant = ((tile_x % 2) * 2) + (tile_y % 2)
+    
+    # Fetch source tile
+    tile_blob = fetch_tile(source_zoom, source_x, source_y)
+    if not tile_blob:
+        # No source tile - use gray placeholder
+        return Image.new('RGB', (256, 256), (200, 200, 200))
+    
+    source_image = Image.open(BytesIO(tile_blob))
+    if source_image.mode != 'RGB':
+        source_image = source_image.convert('RGB')
+    
+    # Extract quadrant
+    quadrant_bounds = {
+        0: (0, 0, 128, 128),        # top-left
+        1: (128, 0, 256, 128),      # top-right
+        2: (0, 128, 128, 256),      # bottom-left
+        3: (128, 128, 256, 256)     # bottom-right
+    }
+    x1, y1, x2, y2 = quadrant_bounds[quadrant]
+    quadrant_image = source_image.crop((x1, y1, x2, y2))
+    
+    # Upsample to 256×256
+    result = quadrant_image.resize((256, 256), Image.LANCZOS)
+    
+    # Encode to blob
+    blob = BytesIO()
+    result.save(blob, format='PNG')
+    return blob.getvalue()
+```
+
+### 14.3 Quality Warnings
+
+**When to Warn User:**
+
+| Scenario | Warning | Recommendation |
+|----------|---------|---|
+| Upsampling 1 level (Z12→Z13) | None | Safe, acceptable quality |
+| Upsampling 2 levels (Z12→Z14) | ⚠️ Moderate quality loss | Show warning, require confirmation |
+| Upsampling 3+ levels (Z12→Z15) | ⚠️ Poor quality | Show warning, strongly discourage but allow |
+| Downsampling any distance | None | Safe, always acceptable |
+| No source zoom available | ⚠️ Cannot generate | Show error, disable checkbox |
+
+**Code Pattern:**
+```python
+def should_warn_user(source_zoom, target_zoom):
+    """Determine if user should see quality warning."""
+    
+    if source_zoom is None:
+        return True, "No source zoom available"
+    
+    if source_zoom >= target_zoom:
+        # Downsampling - always safe
+        return False, ""
+    
+    # Upsampling - check distance
+    distance = target_zoom - source_zoom
+    
+    if distance == 1:
+        return False, ""  # 1 level OK
+    
+    if distance == 2:
+        return True, f"Upsampling from Z{source_zoom} to Z{target_zoom} (2 levels) - moderate quality loss"
+    
+    if distance > 2:
+        return True, f"Upsampling from Z{source_zoom} to Z{target_zoom} ({distance} levels) - significant quality loss"
+    
+    return False, ""
+```
+
+### 14.4 Tile Count Calculation
+
+**Critical:** Don't use naive formula `4^zoom`. For sparse/regional MBTiles, actual tile count is much smaller.
+
+**Correct Approach:**
+
+1. Query database for bounding box of existing tiles at source zoom
+2. Calculate equivalent bounding box at target zoom using coordinate scaling
+3. Count tiles within that bounding box
+
+**Code Pattern:**
+```python
+def calculate_tile_count(source_zoom, target_zoom, mbtiles_reader):
+    """Calculate realistic tile count for generation."""
+    
+    # Get bounding box of tiles at source zoom
+    source_min_col, source_max_col, source_min_row, source_max_row = \
+        mbtiles_reader.get_tile_bounds(source_zoom)
+    
+    if source_min_col == 0 and source_max_col == 0:
+        # No tiles at source zoom
+        return 4 ** target_zoom  # Fallback to theoretical maximum
+    
+    if source_zoom > target_zoom:
+        # Downsampling: divide by 2^(source_zoom - target_zoom)
+        divisor = 2 ** (source_zoom - target_zoom)
+        target_min_col = source_min_col // divisor
+        target_max_col = source_max_col // divisor
+        target_min_row = source_min_row // divisor
+        target_max_row = source_max_row // divisor
+    else:
+        # Upsampling: multiply by 2^(target_zoom - source_zoom)
+        multiplier = 2 ** (target_zoom - source_zoom)
+        target_min_col = source_min_col * multiplier
+        target_max_col = (source_max_col + 1) * multiplier - 1
+        target_min_row = source_min_row * multiplier
+        target_max_row = (source_max_row + 1) * multiplier - 1
+    
+    # Calculate grid size
+    width = target_max_col - target_min_col + 1
+    height = target_max_row - target_min_row + 1
+    return width * height
+```
+
+### 14.5 Dialog Display Strategy
+
+**Key Insight:** Show a **reasonable range**, not just missing zooms.
+
+```
+Available range from file: [6, 8, 9, 10, 11, 12, 14, 15]
+Missing zooms in range: [7, 13]
+
+Display range: (min - 1) to (max + 2) = Z5 to Z17
+Shows:
+  Z5  ⊘ outside range
+  Z6  ✓ existing
+  Z7  ○ missing (can generate from Z6 or Z8)
+  Z8  ✓ existing
+  Z9  ✓ existing
+  ...
+  Z17 ⊘ outside range
+```
+
+**Why this range:**
+- `min - 1`: Allow downsampling from min to generate zoom below minimum
+- `max + 2`: Allow upsampling from max to generate 2 zooms above (with warnings)
+- Prevents showing hundreds of unreasonable options (Z0-Z31)
+- Allows regenerating existing zooms if user wants higher quality
+
+**Code Pattern:**
+```python
+available_zooms = sorted(generator.reader.get_available_zooms())
+min_zoom = min(available_zooms)
+max_zoom = max(available_zooms)
+
+# Calculate display range
+display_min = max(0, min_zoom - 1)
+display_max = min(28, max_zoom + 2)
+display_range = list(range(display_min, display_max + 1))
+
+for zoom in display_range:
+    if zoom in available_zooms:
+        status = "✓ existing"
+    elif zoom in missing_zooms:
+        status = "○ missing"
+    else:
+        status = "⊘ outside range"
+    
+    try:
+        plan = generator.create_generation_plan(zoom)
+        info_text = f" ({plan.tile_count:,} tiles, from Z{plan.source_zoom})"
+        if plan.quality_warning:
+            info_text += " ⚠️"
+    except:
+        info_text = " (Cannot generate)"
+        checkbox.setEnabled(False)
+```
+
+### 14.6 Database Write Strategy
+
+**Critical:** Use transactions and batch writes for performance.
+
+```python
+def write_generated_zoom(db_connection, target_zoom, tiles):
+    """Write generated tiles to database atomically."""
+    
+    try:
+        cursor = db_connection.cursor()
+        cursor.execute("BEGIN TRANSACTION")
+        
+        # Insert all tiles for this zoom level
+        sql = """
+            INSERT OR IGNORE INTO tiles 
+            (zoom_level, tile_column, tile_row, tile_data)
+            VALUES (?, ?, ?, ?)
+        """
+        
+        for tile_x, tile_y, tile_data in tiles:
+            cursor.execute(sql, (target_zoom, tile_x, tile_y, tile_data))
+        
+        cursor.execute("COMMIT")
+        return True
+        
+    except Exception as e:
+        cursor.execute("ROLLBACK")
+        logger.error(f"Failed to write zoom {target_zoom}: {e}")
+        raise
+```
+
+### 14.7 UI State Management
+
+**Button Behavior:**
+- **Enabled:** MapEditor tab is active AND mbtiles file is loaded
+- **Disabled:** Different tab active OR no file loaded OR generating in progress
+- **During Generation:** Disabled, with progress dialog showing
+
+**Code Pattern (in MainWindow):**
+```python
+def _on_tab_changed(self, index: int) -> None:
+    """Update Generate button state when tab changes."""
+    is_map_editor_active = (index == 1)  # 0=Track, 1=Map, 2=Settings
+    
+    should_enable = (is_map_editor_active and 
+                    self.mbtiles_provider and 
+                    self.mbtiles_provider.is_loaded() and
+                    not self.is_generating)
+    
+    self.map_editor_handler.characteristics_panel.generate_zoom_button.setEnabled(should_enable)
+```
+
+### 14.8 Error Handling
+
+| Error | Handling |
+|-------|----------|
+| No mbtiles file loaded | Warning dialog, disable button |
+| No source zoom available for target | Disable checkbox in dialog |
+| Corrupted source tile | Use gray placeholder (200, 200, 200) |
+| Database locked | Retry with exponential backoff |
+| Insufficient disk space | Warn user before starting |
+| User cancels mid-generation | Rollback transaction, no partial data |
+
+### 14.9 Performance Considerations
+
+| Operation | Typical Time | Optimization |
+|-----------|---|---|
+| Generate single tile | 50-100ms | Resampling with LANCZOS |
+| Generate entire zoom (Z13) | 1-3 hours | Background thread + progress updates |
+| Memory usage | ~500MB | Tile caching (max 256 tiles in RAM) |
+
+**Threading Strategy:**
+- Use QThread for background generation
+- Progress signals emit every tile or every 100 tiles (configurable)
+- Allow user to cancel at any time
+- Do NOT block UI during generation
+
+### 14.10 Testing Checklist
+
+- [ ] Generate missing zoom from even to odd (Z6→Z7)
+- [ ] Generate missing zoom from odd to even (Z7→Z6)
+- [ ] Generate multiple zooms in sequence
+- [ ] Quality warnings appear for upsampling >2 levels
+- [ ] Regenerate existing zoom (user choice, check quality)
+- [ ] Generate outside current range (Z5 from Z6, Z17 from Z16)
+- [ ] Cancel mid-generation (no partial data in database)
+- [ ] Very large file (sparse coverage) - tile count is realistic, not 4^zoom
+- [ ] Dialog shows correct available/missing/outside-range zooms
+- [ ] Button enable/disable on tab switch
+- [ ] Button enable/disable on file load/unload
+
+### 14.11 Implementation Checklist
+
+- [x] Copy `ZoomGenerator` from MapLoom
+- [x] Copy `TileProcessor` from MapLoom
+- [x] Copy `ZoomGenerationWorker` from MapLoom
+- [x] Create `zoom_selection_dialog.py` showing all reasonable zooms
+- [x] Add "⚙️ Generate Zoom Levels" button to CharacteristicsPanel
+- [x] Implement button enable/disable based on tab + file state
+- [x] Connect button to zoom selection dialog (NO pre-check for gaps)
+- [x] Implement threading for background generation
+- [x] Implement progress dialog
+- [x] Handle completion: reload zoom data, update UI
+- [x] Handle errors: show user message, re-enable button
+- [ ] Test with actual mbtiles files
+- [ ] Performance testing with large files
+- [ ] Documentation for users
+
+---
+
 **END OF SPECIFICATION DOCUMENT**

@@ -1404,7 +1404,7 @@ class TrackManager:
             logger.warning("Command history not enabled")
             return False
         
-        from src.core.command_history import RemoveTrackpointCommand
+        from src.track_editor.core.command_history import RemoveTrackpointCommand
         
         cmd = RemoveTrackpointCommand(self, track_index, point_index)
         return self.history.execute(cmd)
@@ -1444,7 +1444,7 @@ class TrackManager:
             logger.warning("Command history not enabled")
             return False
         
-        from src.core.command_history import RemoveTrackpointRangeCommand
+        from src.track_editor.core.command_history import RemoveTrackpointRangeCommand
         
         cmd = RemoveTrackpointRangeCommand(self, track_index, start_index, end_index)
         return self.history.execute(cmd)

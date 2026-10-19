@@ -465,6 +465,16 @@ class MapWidget(QWidget):
         self.needs_render = True
         self.map_ready.emit()
     
+    def refresh_zoom_bounds(self):
+        """
+        Refresh zoom bounds from provider.
+        
+        Call this after the mbtiles provider has been updated
+        (e.g., after generating new zoom levels).
+        """
+        self._update_zoom_bounds_from_provider()
+        logger.info(f"✅ Refreshed MapWidget zoom bounds: Z{self.min_zoom}-Z{self.max_zoom}")
+    
     def _update_zoom_bounds_from_provider(self):
         """Update min/max zoom based on mbtiles provider's available zooms."""
         if not self.mbtiles_provider:
