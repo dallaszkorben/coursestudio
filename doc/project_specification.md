@@ -194,6 +194,157 @@ Two methods:
 
 ---
 
+### 2.7 MBTiles File Management
+
+**Requirement:** Load and manage MBTiles map tile files
+
+**Behaviors:**
+- User can open MBTiles file via "File → Open MBTiles File"
+- Map loads and displays with crosshair cursor for trackpoint insertion
+- User can close MBTiles file via "File → Close MBTiles File"
+- When closing: GPX file automatically closes as well (both files together)
+- Closing warns about unsaved GPX changes
+- Status bar shows current MBTiles filename at all times
+
+**Constraints:**
+- MBTiles file is **required** for any map display or trackpoint operations
+- Cannot open GPX file without MBTiles loaded (shows error dialog)
+- Cannot insert trackpoints without MBTiles loaded (shows error dialog)
+
+---
+
+### 2.8 GPX File Requirements
+
+**Requirement:** Enforce MBTiles prerequisite for GPX file operations
+
+**Behaviors:**
+- "Open GPX File" action is **disabled** when no MBTiles loaded
+- Clicking "Open GPX File" when MBTiles not loaded shows error: "Please load MBTiles file first"
+- Once MBTiles loaded, "Open GPX File" becomes enabled
+- Status bar shows current GPX filename when loaded
+
+**Rationale:** 
+- GPX files contain tracks that must be displayed on maps
+- Cannot display tracks without map tiles
+- Prevents confusing state: GPX open but no map visible
+
+---
+
+### 2.9 Trackpoint Insertion
+
+**Requirement:** Insert trackpoints only when map is available
+
+**Behaviors:**
+- Crosshair cursor appears only when MBTiles loaded and crosshair enabled
+- Shift+click to insert trackpoint at map location (only when MBTiles loaded)
+- If user attempts Shift+click without MBTiles loaded: Error dialog shows "Cannot insert trackpoint - MBTiles file required"
+- Trackpoint appears immediately on map
+- Trackpoint added to selected track's trackpoint list
+- Track distance and point count update automatically
+
+**Implementation:**
+- Check `mbtiles_provider.is_loaded()` before processing Shift+click
+- Guard check at line ~1147 and ~1206 in map_widget.py
+
+---
+
+### 2.10 Crosshair Display Logic
+
+**Requirement:** Show/hide crosshair based on MBTiles file state and user preference
+
+**Behaviors:**
+- **At app startup:** Crosshair hidden (no MBTiles loaded yet)
+- **When MBTiles loaded:** Crosshair becomes visible (if user has enabled it in config)
+- **When MBTiles closed:** Crosshair hidden immediately
+- **User preference:** Crosshair enable/disable setting stored in config and honored when file loads
+- **Enable mechanism:** `enable_crosshair()` method checks if MBTiles actually loaded before rendering
+
+**Implementation:**
+- `show_crosshair` boolean flag: Starts False, only enabled when mbtiles_provider.is_loaded()
+- `crosshair_enabled_in_config` stores user's config preference
+- enable_crosshair() calls render_map() immediately for instant display
+- clear_map() sets show_crosshair = False when files close
+
+**Defense in Depth:**
+- Multiple guard layers prevent bugs (initialization order, resource check, render call)
+- Configuration preference preserved but not applied until resource available
+
+---
+
+### 2.11 Status Bar Layout and Information Display
+
+**Requirement:** Display file information and status messages without visual flicker or overlap
+
+**Status Bar Structure:**
+```
+[Position 1: Tooltips/Temporary Messages] | [Position 2: MBTiles] | [Position 3: GPX] | [Position 4-5: Reserved]
+```
+
+**Layout Details:**
+
+| Position | Widget | Width | Type | Content |
+|----------|--------|-------|------|---------|
+| 1 | temp_status_label | Flexible (stretch) | Regular | Tooltips, transient action messages |
+| Separator | separator1 | Fixed | Permanent | Always visible divider |
+| 2 | mbtiles_status_label | 280px fixed | Permanent | "MBTiles: [filename]" |
+| Separator | separator2 | Fixed | Permanent | Always visible divider |
+| 3 | gpx_status_label | 250px fixed | Permanent | "GPX: [filename]" |
+| Separator | separator_reserved | 0 (hidden) | Permanent | Shows only when reserved positions populated |
+| 4 | reserved1_label | 0 (hidden) | Permanent | Future: Track count, etc. |
+| 5 | reserved2_label | 0 (hidden) | Permanent | Future: Zoom level, etc. |
+
+**Key Requirements:**
+
+1. **Permanent File Information**
+   - MBTiles filename always visible (Position 2), never pushed off screen
+   - GPX filename always visible (Position 3), never pushed off screen
+   - Both use fixed widths (280px, 250px) to prevent jumping
+
+2. **Stable Separators**
+   - Separators never disappear/flicker
+   - Separators always visible (except separator_reserved which shows only when needed)
+   - Prevents visual instability when messages change length
+
+3. **Temporary Messages**
+   - Displayed in flexible Position 1 (left side)
+   - Auto-clear after configurable timeout (1-5 seconds)
+   - Examples: "Zoom in", "Undone: [action]", "Merged 3 tracks"
+   - Cannot cover file information on right side
+
+4. **Reserved Positions**
+   - Positions 4-5 hidden by default (width 0)
+   - Can be populated by future features (e.g., track count, zoom level)
+   - When populated: Show content + unhide separator
+   - When cleared: Hide content + hide separator
+   - No wasted space when not in use
+
+**State Examples:**
+
+```
+App startup (no files):
+"(ready)              | MBTiles: None | GPX: None"
+
+MBTiles loaded:
+"(ready)              | MBTiles: Sweden-Raster-Z10-Z16.mbtiles | GPX: None"
+
+User merges tracks (temporary message):
+"Merged 3 tracks from archive.gpx | MBTiles: Sweden-Raster-Z10-Z16.mbtiles | GPX: tracks.gpx"
+
+After timeout (auto-clear):
+"(ready)              | MBTiles: Sweden-Raster-Z10-Z16.mbtiles | GPX: tracks.gpx"
+
+With reserved position populated:
+"(ready)              | MBTiles: Sweden-Raster-Z10-Z16.mbtiles | GPX: tracks.gpx | Tracks: 5 | Zoom: 15"
+```
+
+**Implementation:**
+- Use `addPermanentWidget()` for fixed positions (MBTiles, GPX, separators)
+- Use `addWidget()` with stretch=1 for flexible position (temporary messages)
+- Use QTimer for auto-clearing temporary messages
+- Reserved position helpers: `_set_reserved1_info()`, `_set_reserved2_info()`
+
+---
+
 ## 3. NON-FUNCTIONAL REQUIREMENTS
 
 ### 3.1 Technical Stack

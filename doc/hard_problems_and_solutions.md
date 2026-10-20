@@ -2133,3 +2133,161 @@ This ensures both entry points use identical logic.
 - Creates maintenance burden (fix a bug, find it only fixed half the code)
 
 ---
+## Problem 19: MBTiles Reload - Double Signal Emission and Order of Operations
+
+### Problem Description
+
+When reloading the same MBTiles file:
+- **Expected:** Map recenters to mbtiles_center position (P1 from metadata)
+- **Actual:** Map stays at previous user-navigated position (P2)
+- **Symptoms:** File loads but map doesn't move to home position
+
+### Root Cause Analysis
+
+**Conflicting initialization in `open_mbtiles_file()`:**
+
+1. `MBTilesFileLoader.load_and_configure()` reads P1 from metadata
+2. Map position set to P1 ✓
+3. BUT then `set_mbtiles_provider()` called AGAIN reads mbtiles metadata
+4. Initialization path for **startup** ≠ initialization path for **reload**
+5. Signals emitted in wrong order causing stale config reads
+
+**The bug:** Method `set_mbtiles_provider()` designed for initial app startup, not for reload operations.
+
+### Solution
+
+**Don't call `set_mbtiles_provider()` when reloading!**
+
+When reloading:
+1. Position already determined correctly by `load_and_configure()`
+2. Just load the new provider data
+3. Update zoom bounds
+4. Keep determined position (don't re-initialize)
+
+**Key learning:** Different code paths (startup vs. reload) need different initialization logic. Don't use same method for both.
+
+---
+
+## Problem 20: Map Initialization Sync - Different Center on Different Tabs
+
+### Problem Description
+
+On app startup:
+- **TrackEditor tab:** Map shows correct mbtiles_center ✓
+- **MapEditor tab:** Map shows different position ✗
+- **Issue:** Same MBTiles file, same center/zoom config, but different display
+
+### Root Cause
+
+MapViewer and MapWidget had different initialization priorities:
+
+**MapWidget (correct):**
+```
+Priority 1: mbtiles_center (from mbtiles metadata)
+Priority 2: recent_center (user's last position)
+Priority 3: default_center (settings)
+```
+
+**MapViewer (wrong):**
+```
+Priority 1: recent_center (from settings)  ← WRONG!
+Priority 2: default_center
+Priority 3: mbtiles_center (read later, might override)
+```
+
+Result: MapViewer showed recent position, MapWidget showed mbtiles center.
+
+### Solution
+
+**Make both use identical priority:**
+1. **First:** Check if MBTiles loaded → use mbtiles_center
+2. **Second:** Check if recent_center exists → use that
+3. **Third:** Check if default_center exists → use that
+4. **Last:** Hardcoded fallback
+
+Both MapWidget and MapViewer must follow same priority order in `__init__()` and `set_mbtiles_provider()`.
+
+### Key Learning
+
+When two UI components show the same data, verify they share identical initialization logic. Don't assume "both read from config" means they initialize the same way. Initialization order matters - different priority sequences produce different results.
+
+---
+
+## Problem 21: Crosshair Display - Feature Enabled But Resource Not Available
+
+### Problem Description
+
+Crosshair flag set to True in config, but crosshair never appears on map:
+- **Expected:** Crosshair visible when enabled in config
+- **Actual:** Crosshair hidden even though enabled
+- **Issue:** Code checks flag, not resource availability
+
+### Root Cause
+
+Code followed this pattern:
+```python
+if self.show_crosshair:  # Check flag
+    # Draw crosshair
+```
+
+But `show_crosshair` can be True even when MBTiles not loaded. Flag doesn't verify resource exists.
+
+### Solution
+
+**Guard check with resource verification:**
+```python
+if self.show_crosshair and self.mbtiles_provider and self.mbtiles_provider.is_loaded():
+    # Draw crosshair (resource verified to exist)
+```
+
+**Initialization logic:**
+1. At app startup: `show_crosshair = False` (no MBTiles yet)
+2. Config stores user preference in separate variable
+3. When MBTiles loads: Check config preference, set `show_crosshair = True` only if enabled
+4. When MBTiles closes: `show_crosshair = False`
+
+### Key Learning
+
+Don't check flags alone - check resource availability. Multiple guard layers prevent bugs:
+1. Flag exists (config preference)
+2. Resource exists (is_loaded())
+3. Then render
+
+This "defense in depth" catches logic errors at multiple points.
+
+---
+
+## Problem 22: Status Bar - Temporary Messages Covering Permanent Information
+
+### Problem Description
+
+Status bar had dual-section design:
+- Left section: temporary action messages
+- Right section: file information
+- **Problem:** Long messages pushed file info off screen or covered it
+
+### Root Cause
+
+**Layout architecture:**
+```
+[Flexible message area] | [Fixed file area]
+```
+
+But message area could grow infinitely, pushing right side off-screen.
+
+### Solution
+
+**Fixed-position permanent information:**
+
+Use `addPermanentWidget()` for file information (never moves):
+```
+[Flexible temporary] | [Separator] | [Fixed MBTiles] | [Separator] | [Fixed GPX]
+```
+
+Key principle: Permanent information on right with fixed widths. Temporary messages on left with flexible width but can't expand beyond screen bounds.
+
+### Key Learning
+
+Status bar widgets need clear separation: permanent vs. temporary. Permanent should use `addPermanentWidget()` which pins them to right edge. Temporary should be flexible but bounded.
+
+---

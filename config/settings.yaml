@@ -84,15 +84,15 @@ appearance:
         width: 1
       size: 20
   tiles:
-    recent_mbtiles: /home/akoel/Projects/boat/general/Code/CourseStudio/mbtiles/Sweeden-Z6-Z15.mbtiles
-    recent_zoom: 15
+    recent_mbtiles: /home/akoel/Projects/boat/general/Code/CourseStudio/mbtiles/OSM-OpenCPN2-Baltic.mbtiles
+    recent_zoom: 11
     recent_center:
-      lat: 56.1687327785248
-      lon: 15.5885910987854
-    default_zoom: 15
+      lat: 56.1779915582819
+      lon: 15.706822872161865
+    default_zoom: 16
     default_center:
-      lat: 56.1687327785248
-      lon: 15.5885910987854
+      lat: 56.16816664315776
+      lon: 15.594792366027832
 coordinates_display:
   format:
     coordinate_format: dms

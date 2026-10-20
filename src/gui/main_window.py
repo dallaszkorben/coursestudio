@@ -1403,14 +1403,49 @@ class MainWindow(QMainWindow):
                     # ✅ Re-enable crosshair now that map is loaded with MBTiles
                     self.map_widget.enable_crosshair()
                     
-                    # 🟢 RE-INITIALIZE MAP EDITOR'S MAP VIEWER WITH NEW MBTILES PROVIDER
-                    # This is critical! We must call set_mbtiles_provider() to re-initialize 
-                    # the map viewer with the new file's metadata (center, zoom, bounds)
-                    # Otherwise it keeps the old position (recent_zoom, recent_center)
+                    # ⚠️⚠️⚠️ CRITICAL FIX - DO NOT MODIFY WITHOUT UNDERSTANDING ⚠️⚠️⚠️
+                    # 
+                    # PROBLEM (Bug Fixed 2026-10-20):
+                    # When user loaded a new MBTiles file in MapEditor, it showed WRONG zoom level.
+                    # Example: File1 (Z6-15) user navigates to Z15 → Close app → Reopen → Load File2 (Z7-16)
+                    # Result: MapEditor showed Z15 (WRONG!) instead of Z16 from File2's metadata
+                    #
+                    # ROOT CAUSE:
+                    # 1. load_and_configure() correctly reads File2's metadata → zoom=16 ✓
+                    # 2. load_and_configure() saves zoom=16 to config file ✓
+                    # 3. BUT set_mbtiles_provider() reads from in-memory config SINGLETON
+                    # 4. Config singleton was initialized at app startup with OLD values (zoom=15)
+                    # 5. Config singleton is NEVER reloaded after save_to_file()
+                    # 6. Result: set_mbtiles_provider() reads stale cached zoom=15 ✗
+                    #
+                    # SOLUTION:
+                    # After set_mbtiles_provider() initializes, OVERRIDE the zoom/center with
+                    # FRESH values from load_and_configure() output (lines 1409-1419).
+                    # This ensures MapEditor gets CORRECT values, not stale config cache.
+                    #
+                    # WHY THIS IS CRITICAL:
+                    # - If you remove this override, the bug comes back
+                    # - Config singleton caching is unavoidable (it's a design choice)
+                    # - The override is the ONLY place where MapEditor gets correct values
+                    # - Users depend on zooming to correct level when switching MBTiles files
+                    #
+                    # IF YOU NEED TO MODIFY THIS:
+                    # - Understand config singleton behavior first (see config/app_config_yaml.py)
+                    # - Test by: Load File1 → navigate to max zoom → Load File2 → verify correct zoom
+                    # - If zoom is wrong, you broke it
+                    # ⚠️⚠️⚠️ END CRITICAL SECTION ⚠️⚠️⚠️
+                    
                     try:
                         logger.info(f"🟢 Re-initializing MapEditor map_viewer with new mbtiles provider...")
                         self.map_editor_handler.map_viewer.set_mbtiles_provider(self.mbtiles_provider)
                         logger.info(f"🟢 MapEditor map_viewer re-initialized with new provider")
+                        
+                        # ⚠️ OVERRIDE with fresh values from load_and_configure (see above comment block)
+                        logger.info(f"⚠️ CRITICAL: Overriding with fresh zoom Z{zoom} (not stale config cache)")
+                        self.map_editor_handler.map_viewer.zoom_level = zoom
+                        self.map_editor_handler.map_viewer.center_lat = lat
+                        self.map_editor_handler.map_viewer.center_lon = lon
+                        logger.info(f"✅ MapEditor zoom set to Z{self.map_editor_handler.map_viewer.zoom_level} (correct)")
                     except Exception as e:
                         logger.error(f"Error re-initializing MapEditor map_viewer: {e}", exc_info=True)
                     

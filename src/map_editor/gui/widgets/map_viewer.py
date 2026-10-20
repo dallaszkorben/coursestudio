@@ -208,13 +208,16 @@ class MapViewer(QWidget):
         """
         Set the MBTiles provider (called by tab handler on initialization).
         
-        Implements specification Section 13.2(a) initialization sequence:
-        1. Primary: Load mbtiles_center/zoom from file metadata
-        2. Fallback 1: Load recent_center/zoom from config (user's last position)
-        3. Fallback 2: Load default_center/zoom from config (user's "home")
-        4. Fallback 3: Use hardcoded defaults
+        CRITICAL FIX (2026-10-20): When loading a NEW mbtiles file, ALWAYS use the
+        mbtiles metadata zoom, NEVER fall back to old recent_zoom from config.
         
-        This matches MapWidget initialization exactly.
+        Implementation:
+        1. Load mbtiles_center/zoom from file metadata
+        2. If mbtiles has center/zoom: Use ONLY mbtiles values (ignore config)
+        3. If mbtiles has NO center/zoom: Use fallback from config
+        
+        This prevents: User loads File1 (Z6-15) → navigates to Z15 → loads File2 (Z7-16) 
+        → shows Z15 instead of Z16 from File2's metadata.
         """
         self.mbtiles_provider = mbtiles_provider
         
@@ -224,22 +227,27 @@ class MapViewer(QWidget):
             self.mbtiles_center_lon = lon
             self.mbtiles_center_lat = lat
             self.mbtiles_zoom = zoom
-            logger.info(f"Loaded mbtiles_center from provider: ({lon}, {lat}, Z{zoom})")
+            logger.info(f"🔵 Loaded mbtiles_center from provider: ({lon}, {lat}, Z{zoom})")
         except Exception as e:
-            logger.warning(f"Could not load mbtiles center: {e}")
+            logger.warning(f"❌ Could not load mbtiles center: {e}")
             self.mbtiles_center_lon = None
             self.mbtiles_center_lat = None
             self.mbtiles_zoom = None
         
         # PRIMARY: Use mbtiles center/zoom if available
+        # CRITICAL: Do NOT fall back to recent_zoom here - always use mbtiles_zoom
         if self.mbtiles_center_lon is not None and self.mbtiles_center_lat is not None:
             self.center_lon = self.mbtiles_center_lon
             self.center_lat = self.mbtiles_center_lat
             if self.mbtiles_zoom is not None:
-                self.zoom_level = self.mbtiles_zoom
-            logger.info(f"Using PRIMARY (mbtiles): ({self.center_lat:.4f}, {self.center_lon:.4f}), Z{self.zoom_level}")
+                self.zoom_level = self.mbtiles_zoom  # ✅ Use ONLY mbtiles_zoom, never fallback
+            logger.info(f"✅ Using PRIMARY (mbtiles): ({self.center_lat:.4f}, {self.center_lon:.4f}), Z{self.zoom_level}")
         else:
-            # FALLBACK 1: Use recent_center/zoom (user's last viewed position)
+            # FALLBACK: Only if mbtiles has NO center/zoom metadata
+            # In this case, use recent/default from config
+            logger.warning(f"⚠️  No center in mbtiles metadata, falling back to config")
+            
+            # Try recent_center/zoom first
             recent_center_lat = self.config.get_float('appearance.tiles.recent_center.lat', None)
             recent_center_lon = self.config.get_float('appearance.tiles.recent_center.lon', None)
             recent_zoom = self.config.get_int('appearance.tiles.recent_zoom', None)
@@ -249,17 +257,17 @@ class MapViewer(QWidget):
                 self.center_lon = recent_center_lon
                 if recent_zoom is not None:
                     self.zoom_level = recent_zoom
-                logger.info(f"Using FALLBACK 1 (recent): ({self.center_lat:.4f}, {self.center_lon:.4f}), Z{self.zoom_level}")
+                logger.info(f"✅ Using FALLBACK 1 (recent): ({self.center_lat:.4f}, {self.center_lon:.4f}), Z{self.zoom_level}")
             else:
-                # FALLBACK 2: Use default_center/zoom (user's saved "home")
+                # Final fallback: Use default_center/zoom
                 self.center_lat = self.config.get_float('appearance.tiles.default_center.lat', 56.168)
                 self.center_lon = self.config.get_float('appearance.tiles.default_center.lon', 15.586)
                 default_zoom = self.config.get_int('appearance.tiles.default_zoom', None)
                 if default_zoom is not None:
                     self.zoom_level = default_zoom
                 else:
-                    self.zoom_level = 10  # FALLBACK 3: hardcoded default
-                logger.info(f"Using FALLBACK 2 (default): ({self.center_lat:.4f}, {self.center_lon:.4f}), Z{self.zoom_level}")
+                    self.zoom_level = 10  # Hardcoded default
+                logger.info(f"✅ Using FALLBACK 2 (default): ({self.center_lat:.4f}, {self.center_lon:.4f}), Z{self.zoom_level}")
         
         # ✅ Initialize default_center from mbtiles (user can recenter to this)
         # Only set if mbtiles has a center (don't overwrite user's previously saved default)
@@ -268,12 +276,12 @@ class MapViewer(QWidget):
             self.config.set('appearance.tiles.default_center.lon', self.mbtiles_center_lon)
             if self.mbtiles_zoom is not None:
                 self.config.set('appearance.tiles.default_zoom', self.mbtiles_zoom)
-            logger.info(f"Initialized default_center from mbtiles for Recenter button")
+            logger.info(f"✅ Initialized default_center from mbtiles for Recenter button")
         
         # Update zoom bounds and clamp current zoom to valid range
         self._update_zoom_bounds_from_provider()
         self._clamp_zoom_to_valid_range()
-        logger.debug("MBTilesProvider set in MapViewer")
+        logger.debug("✅ MBTilesProvider set in MapViewer")
     
     def load_mbtiles(self, mbtiles_provider: MBTilesProvider):
         """

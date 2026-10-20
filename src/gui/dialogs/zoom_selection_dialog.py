@@ -108,9 +108,11 @@ class ZoomSelectionDialog(QDialog):
                 logger.info(f"Min: Z{min_zoom}, Max: Z{max_zoom}")
                 
                 # Calculate reasonable range for display
-                # Show from (min-1) to (max+2) to allow downsampling or upsampling
+                # Show from (min-1) to (max+1) to allow upsampling one level beyond max
+                # Example: If max existing is Z16, show Z17 for potential generation
+                # Do NOT show Z18 (+2) as that's too far beyond existing data
                 display_min = max(0, min_zoom - 1)
-                display_max = min(28, max_zoom + 2)
+                display_max = min(28, max_zoom + 1)
                 display_range = list(range(display_min, display_max + 1))
                 
                 logger.info(f"Display range: Z{display_min} to Z{display_max}")
@@ -132,40 +134,75 @@ class ZoomSelectionDialog(QDialog):
                     checkbox_layout = QHBoxLayout()
                     checkbox_layout.setContentsMargins(0, 0, 0, 0)
                     
+                    # ⚠️ CRITICAL FIX (2026-10-20):
+                    # For EXISTING zooms, show their actual tile count, NOT generation source!
+                    # Bug: Was calling create_generation_plan() for existing zooms and showing
+                    # "from Z15" which is wrong - existing zooms are ORIGINAL, not generated.
+                    # Solution: For existing zooms, get tile count from reader directly.
+                    
                     # Show if existing or missing
                     if zoom in available_zooms:
                         status = "✓ existing"
                         checkbox_label = f"Z{zoom:2d}  {status}"
+                        # Get tile count from reader (find zoom_level_info for this zoom)
+                        tile_count = None
+                        for zinfo in self.generator.reader.zoom_levels:
+                            if zinfo.zoom == zoom:
+                                tile_count = zinfo.tile_count
+                                break
+                        if tile_count:
+                            info_text = f" ({tile_count:,} tiles, ORIGINAL)"
+                        else:
+                            info_text = f" (ORIGINAL)"
+                        info_label = QLabel(info_text)
+                        logger.debug(f"Z{zoom}: {info_text}")
+                        
                     elif zoom in missing_zooms:
                         status = "○ missing"
                         checkbox_label = f"Z{zoom:2d}  {status}"
+                        # For missing zooms, show generation plan
+                        try:
+                            plan = self.generator.create_generation_plan(zoom)
+                            info_text = f" ({plan.tile_count:,} tiles, from Z{plan.source_zoom})"
+                            
+                            if plan.quality_warning:
+                                info_text += " ⚠️"
+                            
+                            info_label = QLabel(info_text)
+                            if plan.quality_warning:
+                                info_label.setToolTip(plan.quality_reason)
+                            
+                            logger.debug(f"Z{zoom}: {info_text}")
+                        except Exception as e:
+                            info_label = QLabel(f" (Cannot generate: {str(e)[:40]}...)")
+                            # Don't allow selection if generation fails
+                            checkbox.setEnabled(False)
+                            logger.warning(f"Z{zoom}: Cannot generate - {e}")
                     else:
                         status = "⊘ outside range"
                         checkbox_label = f"Z{zoom:2d}  {status}"
+                        # For outside-range zooms, show generation plan
+                        try:
+                            plan = self.generator.create_generation_plan(zoom)
+                            info_text = f" ({plan.tile_count:,} tiles, from Z{plan.source_zoom})"
+                            
+                            if plan.quality_warning:
+                                info_text += " ⚠️"
+                            
+                            info_label = QLabel(info_text)
+                            if plan.quality_warning:
+                                info_label.setToolTip(plan.quality_reason)
+                            
+                            logger.debug(f"Z{zoom}: {info_text}")
+                        except Exception as e:
+                            info_label = QLabel(f" (Cannot generate: {str(e)[:40]}...)")
+                            # Don't allow selection if generation fails
+                            checkbox.setEnabled(False)
+                            logger.warning(f"Z{zoom}: Cannot generate - {e}")
                     
                     checkbox = QCheckBox(checkbox_label)
                     checkbox.zoom_level = zoom
                     self.checkboxes[zoom] = checkbox
-                    
-                    # Try to get generation plan info
-                    try:
-                        plan = self.generator.create_generation_plan(zoom)
-                        info_text = f" ({plan.tile_count:,} tiles, from Z{plan.source_zoom})"
-                        
-                        if plan.quality_warning:
-                            info_text += " ⚠️"
-                        
-                        info_label = QLabel(info_text)
-                        if plan.quality_warning:
-                            info_label.setToolTip(plan.quality_reason)
-                        
-                        logger.debug(f"Z{zoom}: {info_text}")
-                        
-                    except Exception as e:
-                        info_label = QLabel(f" (Cannot generate: {str(e)[:40]}...)")
-                        # Don't allow selection if generation fails
-                        checkbox.setEnabled(False)
-                        logger.warning(f"Z{zoom}: Cannot generate - {e}")
                     
                     checkbox_layout.addWidget(checkbox)
                     checkbox_layout.addWidget(info_label)
