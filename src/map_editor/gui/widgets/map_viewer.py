@@ -52,8 +52,10 @@ class MapViewer(QWidget):
         self.config = config
         
         # Crosshair settings (read from config)
+        # ✅ CRITICAL: Start with crosshair DISABLED
+        # Only enable when MBTiles is loaded via enable_crosshair()
         if config:
-            self.show_crosshair = config.get_bool('appearance.map_display.Crosshair.show', True)
+            self.crosshair_enabled_in_config = config.get_bool('appearance.map_display.Crosshair.show', True)
             crosshair_color_str = config.get_str('appearance.map_display.Crosshair.body.color', 'FF0000')
             crosshair_outline_str = config.get_str('appearance.map_display.Crosshair.outline.color', 'FFFFFF')
             self.crosshair_color = self._hex_to_rgb(crosshair_color_str)
@@ -61,11 +63,14 @@ class MapViewer(QWidget):
             self.crosshair_outline_width = config.get_int('appearance.map_display.Crosshair.outline.width', 1)
             self.crosshair_size = config.get_int('appearance.map_display.Crosshair.size', 20)
         else:
-            self.show_crosshair = True
+            self.crosshair_enabled_in_config = True
             self.crosshair_color = (255, 0, 0)  # Red
             self.crosshair_outline_color = (255, 255, 255)  # White
             self.crosshair_outline_width = 1
             self.crosshair_size = 20
+        
+        # ✅ Start disabled (no mbtiles = no crosshair)
+        self.show_crosshair = False
         
         # Button state tracking
         self.hovered_button = None  # Which button is currently hovered
@@ -730,11 +735,18 @@ class MapViewer(QWidget):
         
         Called after loading new MBTiles file.
         This immediately re-renders the map to show the crosshair.
+        
+        CRITICAL: Only enable if mbtiles is actually loaded AND config allows it.
         """
-        self.show_crosshair = True
-        logger.debug("Crosshair re-enabled for map with MBTiles")
-        # ✅ Immediately re-render to show crosshair (don't wait for mouse event)
-        self.render_map()
+        # ✅ CRITICAL: Only enable if mbtiles is loaded
+        if self.mbtiles_provider and self.mbtiles_provider.is_loaded():
+            self.show_crosshair = self.crosshair_enabled_in_config  # Use config preference
+            logger.debug(f"Crosshair enabled for map with MBTiles (config: {self.crosshair_enabled_in_config})")
+            # Immediately re-render to show crosshair (don't wait for mouse event)
+            self.render_map()
+        else:
+            self.show_crosshair = False
+            logger.warning("enable_crosshair() called but mbtiles not loaded - keeping crosshair disabled")
     
     def _draw_ui_controls(self, pil_image):
         """Draw button visuals on the PIL image using button manager."""

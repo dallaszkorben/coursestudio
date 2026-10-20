@@ -632,45 +632,74 @@ class MainWindow(QMainWindow):
     # ========================================================================
     
     def _create_status_bar(self):
-        """Create status bar with separate sections for MBTiles and GPX files.
+        """Create status bar with fixed positions for different info types.
         
-        Layout:
-        [MBTiles: filename] | [GPX: filename] | [Temporary messages / Ready]
+        Layout (left to right):
+        [Tooltips/Temporary] | [MBTiles] | [GPX] | [Reserved1] | [Reserved2]
         
-        - Left: Persistent MBTiles filename
-        - Center: Temporary notifications (merged tracks, undo/redo, etc.)
-        - Right: Persistent GPX filename
+        Position 1: Tooltips/Temporary messages (stretches, auto-clears)
+        Position 2: MBTiles filename (fixed width, permanent)
+        Position 3: GPX filename (fixed width, permanent)
+        Position 4-5: Reserved for future use (hidden until used)
         """
         
         status_bar = QStatusBar()
         self.setStatusBar(status_bar)
         
-        # Create permanent labels for MBTiles and GPX files
+        # POSITION 1: Temporary messages/tooltips (left side, stretches)
+        # This is the default widget and will expand to fill available space
+        self.temp_status_label = QLabel("(ready)")
+        self.temp_status_label.setStyleSheet("color: #666666; font-style: italic;")
+        self.temp_status_label.setMinimumWidth(100)
+        # Stretch factor = 1 means it will take remaining space
+        status_bar.addWidget(self.temp_status_label, 1)
+        
+        # ✅ PERMANENT Separator (always visible, never changes)
+        self.separator1 = QLabel(" | ")
+        status_bar.addPermanentWidget(self.separator1, 0)
+        
+        # POSITION 2: MBTiles filename (permanent, fixed on right)
         self.mbtiles_status_label = QLabel("MBTiles: None")
-        self.mbtiles_status_label.setMinimumWidth(250)
+        self.mbtiles_status_label.setMinimumWidth(280)
+        self.mbtiles_status_label.setMaximumWidth(280)
+        status_bar.addPermanentWidget(self.mbtiles_status_label)
+        
+        # ✅ PERMANENT Separator (always visible, never changes)
+        self.separator2 = QLabel(" | ")
+        status_bar.addPermanentWidget(self.separator2, 0)
+        
+        # POSITION 3: GPX filename (permanent, fixed on right)
         self.gpx_status_label = QLabel("GPX: None")
         self.gpx_status_label.setMinimumWidth(250)
-        
-        # Add to status bar
-        status_bar.addWidget(self.mbtiles_status_label)
-        status_bar.addWidget(QLabel(" | "), 0)  # Separator
-        
-        # Center area for temporary messages (stretches to fill)
-        self.temp_status_label = QLabel("Ready")
-        status_bar.addWidget(self.temp_status_label, 1)  # Stretch factor = 1
-        
-        # Add GPX label to the right (permanent)
+        self.gpx_status_label.setMaximumWidth(250)
         status_bar.addPermanentWidget(self.gpx_status_label)
+        
+        # ✅ HIDDEN Separator (only shown when reserved positions are populated)
+        self.separator_reserved = QLabel(" | ")
+        self.separator_reserved.hide()  # Hidden by default
+        status_bar.addPermanentWidget(self.separator_reserved, 0)
+        
+        # POSITION 4: Reserved for future use (width 0 = hidden)
+        self.reserved1_label = QLabel("")
+        self.reserved1_label.setMinimumWidth(0)
+        self.reserved1_label.setMaximumWidth(0)
+        status_bar.addPermanentWidget(self.reserved1_label)
+        
+        # POSITION 5: Reserved for future use (width 0 = hidden)
+        self.reserved2_label = QLabel("")
+        self.reserved2_label.setMinimumWidth(0)
+        self.reserved2_label.setMaximumWidth(0)
+        status_bar.addPermanentWidget(self.reserved2_label)
         
         # Show initially loaded mbtiles file
         self._update_status_bar_files()
         
-        logger.info("Status bar created with MBTiles and GPX sections")
+        logger.info("Status bar created with 5 fixed positions (3 active + 2 reserved/hidden)")
     
     def _update_status_bar_files(self):
         """Update the permanent MBTiles and GPX filename labels in status bar."""
         
-        # Update MBTiles status
+        # Update MBTiles status (POSITION 2)
         mbtiles_filename = self.mbtiles_provider.get_loaded_filename()
         if mbtiles_filename:
             self.mbtiles_status_label.setText(f"MBTiles: {mbtiles_filename}")
@@ -679,7 +708,7 @@ class MainWindow(QMainWindow):
             self.mbtiles_status_label.setText("MBTiles: None")
             logger.debug("Status bar MBTiles: None")
         
-        # Update GPX status
+        # Update GPX status (POSITION 3)
         if self.current_file_path:
             gpx_filename = Path(self.current_file_path).name
             self.gpx_status_label.setText(f"GPX: {gpx_filename}")
@@ -689,7 +718,10 @@ class MainWindow(QMainWindow):
             logger.debug("Status bar GPX: None")
     
     def _show_temp_status(self, message: str, timeout_ms: int = 5000):
-        """Show a temporary message in the center of the status bar.
+        """Show a temporary message in POSITION 1 (left side, stretches).
+        
+        This position is for tooltips, temporary notifications, and transient info.
+        It will NOT cover the permanent MBTiles/GPX filenames on the right.
         
         Args:
             message: The message to display
@@ -698,7 +730,45 @@ class MainWindow(QMainWindow):
         self.temp_status_label.setText(message)
         if timeout_ms > 0:
             # Reset after timeout
-            QTimer.singleShot(timeout_ms, lambda: self.temp_status_label.setText("Ready"))
+            QTimer.singleShot(timeout_ms, lambda: self.temp_status_label.setText("(ready)"))
+    
+    def _set_reserved1_info(self, text: str, width: int = 200):
+        """Populate POSITION 4 (reserved1) and show separator.
+        
+        Args:
+            text: Information to display (empty string to hide)
+            width: Width of the position (default 200px, use 0 to hide)
+        """
+        if text:
+            self.reserved1_label.setText(text)
+            self.reserved1_label.setMinimumWidth(width)
+            self.reserved1_label.setMaximumWidth(width)
+            self.separator_reserved.show()
+        else:
+            self.reserved1_label.setText("")
+            self.reserved1_label.setMinimumWidth(0)
+            self.reserved1_label.setMaximumWidth(0)
+            self.separator_reserved.hide()
+    
+    def _set_reserved2_info(self, text: str, width: int = 150):
+        """Populate POSITION 5 (reserved2) and show separator.
+        
+        Args:
+            text: Information to display (empty string to hide)
+            width: Width of the position (default 150px, use 0 to hide)
+        """
+        if text:
+            self.reserved2_label.setText(text)
+            self.reserved2_label.setMinimumWidth(width)
+            self.reserved2_label.setMaximumWidth(width)
+            self.separator_reserved.show()
+        else:
+            self.reserved2_label.setText("")
+            self.reserved2_label.setMinimumWidth(0)
+            self.reserved2_label.setMaximumWidth(0)
+            # Only hide separator if BOTH reserved positions are empty
+            if not self.reserved1_label.text():
+                self.separator_reserved.hide()
     
     # ========================================================================
     # Signal Connections

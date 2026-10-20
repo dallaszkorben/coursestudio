@@ -438,3 +438,177 @@ Renamed for clarity:
 **Last Updated:** 2026-10-20  
 **Current Phase:** Complete (Phases 1-11 implemented, Close MBTiles feature added)  
 **Status:** Production-ready with close MBTiles functionality
+
+---
+
+## Status Bar Functionality
+
+### [2026-10-20] Status Bar with Fixed Positions
+
+**Feature:** Reorganized status bar at bottom of window with fixed positions for stable, organized information display.
+
+**Design:**
+
+```
+[Position 1: Tooltips|Flexible] | [Position 2: MBTiles|280px] | [Position 3: GPX|250px] | [Pos 4: Reserved|0] | [Pos 5: Reserved|0]
+```
+
+**Key Requirements Met:**
+
+1. **Stable Separators** (never disappear/flash)
+   - Implementation: Separators added as `addPermanentWidget()` (right side)
+   - Behavior: Fixed position, always visible
+   - Benefit: No visual flicker when messages change length
+
+2. **Permanent File Information** (always visible)
+   - MBTiles filename (Position 2): Fixed 280px
+   - GPX filename (Position 3): Fixed 250px
+   - Both: `addPermanentWidget()` ensures they never move
+   - Benefit: Users always see which files are loaded
+
+3. **Flexible Tooltip Area** (left side, stretches)
+   - Position 1: Temporary messages/tooltips
+   - Behavior: Expands/contracts with message length
+   - Never covers file information on right
+   - Benefit: Clean, organized layout
+
+4. **Reserved Positions** (hidden until needed)
+   - Position 4: Reserved 200px (width 0 = hidden)
+   - Position 5: Reserved 150px (width 0 = hidden)
+   - Separator: Hidden until reserved positions populated
+   - Benefit: Future-proof, no wasted space
+
+**Implementation Details:**
+
+| Position | Widget | Width | Type | Role |
+|----------|--------|-------|------|------|
+| 1 | temp_status_label | Flexible (stretch=1) | Regular | Tooltips, transient messages |
+| Sep 1 | separator1 | Fixed | Permanent | Always visible between tooltip and MBTiles |
+| 2 | mbtiles_status_label | 280px fixed | Permanent | Current MBTiles filename |
+| Sep 2 | separator2 | Fixed | Permanent | Always visible between MBTiles and GPX |
+| 3 | gpx_status_label | 250px fixed | Permanent | Current GPX filename |
+| Sep 3 | separator_reserved | 0 (hidden) | Permanent | Shows only when reserved positions used |
+| 4 | reserved1_label | 0 (hidden) | Permanent | Future: Track count, etc. |
+| 5 | reserved2_label | 0 (hidden) | Permanent | Future: Zoom level, etc. |
+
+**Key Methods:**
+
+1. **_create_status_bar()** (line 636 in main_window.py)
+   - Creates 5 positions with proper widget setup
+   - Separators managed independently
+   - Reserved positions start at width 0 (hidden)
+
+2. **_update_status_bar_files()** (line 700)
+   - Updates Position 2 (MBTiles filename)
+   - Updates Position 3 (GPX filename)
+   - Called when files loaded/closed
+
+3. **_show_temp_status(message, timeout_ms)** (line 720)
+   - Sets Position 1 temporary message
+   - Auto-clears after timeout (default 5 seconds)
+   - Message cannot cover Positions 2-3
+
+4. **_set_reserved1_info(text, width)** (line 735) - Helper for Position 4
+   - Sets content and width
+   - Shows separator if content provided
+   - Called by future features
+
+5. **_set_reserved2_info(text, width)** (line 756) - Helper for Position 5
+   - Sets content and width
+   - Shows separator if either reserved position has content
+   - Called by future features
+
+**Behavior Examples:**
+
+```
+State 1: App starts (no files)
+"(ready)              | MBTiles: None | GPX: None"
+
+State 2: User hovers over menu (tooltip)
+"Saves current GPX file | MBTiles: None | GPX: None"
+(tooltip in Position 1, no interference)
+
+State 3: MBTiles loaded
+"(ready)              | MBTiles: Sweden-Raster-Z10-Z16.mbtiles | GPX: None"
+
+State 4: User loads GPX
+"(ready)              | MBTiles: Sweden-Raster-Z10-Z16.mbtiles | GPX: tracks.gpx"
+
+State 5: User merges tracks (temporary message)
+"Merged 3 tracks from archive.gpx | MBTiles: Sweden-Raster-Z10-Z16.mbtiles | GPX: tracks.gpx"
+
+State 6: After 5 seconds (auto-clear)
+"(ready)              | MBTiles: Sweden-Raster-Z10-Z16.mbtiles | GPX: tracks.gpx"
+
+State 7: Reserved position enabled (future)
+"(ready)              | MBTiles: Sweden-Raster-Z10-Z16.mbtiles | GPX: tracks.gpx | Tracks: 5 | Zoom: 15"
+(separator_reserved now visible)
+```
+
+**Temporary Messages Using This Layout:**
+
+All these display in Position 1 without covering file info:
+- "Zoom in" (1s timeout)
+- "Zoom out" (1s timeout)
+- "Undone: [action]" (3s timeout)
+- "Redone: [action]" (3s timeout)
+- "Merged X tracks from [file]" (5s timeout)
+- "File closed" (3s timeout)
+- "MBTiles file closed" (3s timeout)
+- Menu tooltips (varies)
+- Any action feedback
+
+**Design Principles:**
+
+1. **Separation of Concerns**
+   - Permanent info (files) on right, never moves
+   - Temporary info (messages) on left, flexible
+   - Clear visual hierarchy
+
+2. **Stability**
+   - Separators fixed (no flicker)
+   - File positions fixed (no jumping)
+   - Predictable, professional appearance
+
+3. **Extensibility**
+   - Reserved positions ready to use
+   - Helper methods for future features
+   - No need to redesign when adding features
+
+4. **Space Efficiency**
+   - Hidden reserved positions take no space
+   - Separator hidden until needed
+   - Clean, minimal appearance initially
+
+**Testing Checklist:**
+
+✅ Status bar displays all 5 positions (3 active + 2 hidden)  
+✅ MBTiles filename visible and not pushed off screen  
+✅ GPX filename visible and not pushed off screen  
+✅ Separators always visible (never flicker)  
+✅ Temporary messages display without covering filenames  
+✅ Messages auto-clear after timeout  
+✅ Reserved positions hidden (width 0)  
+✅ Separator for reserved positions hidden initially  
+✅ Helper methods work for future population  
+
+**Related Documentation:**
+
+- STATUS_BAR_FIXED_POSITIONS.md - Original fixed position design
+- STATUS_BAR_FIXED_SEPARATORS_AND_RESERVED.md - Separator and reserved position fixes
+- STATUS_BAR_REDESIGN.md - Original dual-section design (superseded)
+
+**Files Modified:**
+
+- src/gui/main_window.py
+  - _create_status_bar() - Creates 5 positions
+  - _update_status_bar_files() - Updates MBTiles/GPX labels
+  - _show_temp_status() - Shows temporary messages
+  - _set_reserved1_info() - Helper for future features
+  - _set_reserved2_info() - Helper for future features
+
+---
+
+**Last Updated:** 2026-10-20  
+**Current Phase:** Complete (Phases 1-11 implemented, Close MBTiles + Status Bar)  
+**Status:** Production-ready with organized status bar layout

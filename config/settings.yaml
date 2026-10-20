@@ -87,8 +87,8 @@ appearance:
     recent_mbtiles: /home/akoel/Projects/boat/general/Code/CourseStudio/mbtiles/Sweeden-Z6-Z15.mbtiles
     recent_zoom: 15
     recent_center:
-      lat: 56.16808766006506
-      lon: 15.59283971786499
+      lat: 56.1687327785248
+      lon: 15.5885910987854
     default_zoom: 15
     default_center:
       lat: 56.1687327785248

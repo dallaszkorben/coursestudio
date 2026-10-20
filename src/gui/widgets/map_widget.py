@@ -314,7 +314,11 @@ class MapWidget(QWidget):
         self.double_selected_turning_point_outline_width = config.get_int('appearance.map_display.trackpoints.DoubleSelectedPoints.outline.size', 2)
         
         # Crosshair settings
-        self.show_crosshair = config.get_bool('appearance.map_display.Crosshair.show', True)
+        # ✅ CRITICAL: Start with crosshair DISABLED
+        # Only enable when MBTiles is loaded via enable_crosshair()
+        # Read config preference but don't apply until mbtiles loaded
+        self.crosshair_enabled_in_config = config.get_bool('appearance.map_display.Crosshair.show', True)
+        self.show_crosshair = False  # ✅ Start disabled (no mbtiles = no crosshair)
         self.crosshair_color = self._hex_to_rgb(config.get_str('appearance.map_display.Crosshair.body.color', 'FF0000'))
         self.crosshair_outline_color = self._hex_to_rgb(config.get_str('appearance.map_display.Crosshair.outline.color', 'FFFFFF'))
         self.crosshair_outline_width = config.get_int('appearance.map_display.Crosshair.outline.width', 1)
@@ -692,11 +696,18 @@ class MapWidget(QWidget):
         
         Called after loading new MBTiles file.
         This immediately re-renders the map to show the crosshair.
+        
+        CRITICAL: Only enable if mbtiles is actually loaded AND config allows it.
         """
-        self.show_crosshair = True
-        logger.debug("Crosshair re-enabled for map with MBTiles")
-        # ✅ Immediately re-render to show crosshair (don't wait for mouse event)
-        self.render_map()
+        # ✅ CRITICAL: Only enable if mbtiles is loaded
+        if self.mbtiles_provider and self.mbtiles_provider.is_loaded():
+            self.show_crosshair = self.crosshair_enabled_in_config  # Use config preference
+            logger.debug(f"Crosshair enabled for map with MBTiles (config: {self.crosshair_enabled_in_config})")
+            # Immediately re-render to show crosshair (don't wait for mouse event)
+            self.render_map()
+        else:
+            self.show_crosshair = False
+            logger.warning("enable_crosshair() called but mbtiles not loaded - keeping crosshair disabled")
     
     def _draw_tracks_on_image(self, pil_image, map_renderer):
         """
