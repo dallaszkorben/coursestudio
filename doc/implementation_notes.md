@@ -303,3 +303,138 @@ Critical reading for understanding non-obvious system gotchas and preventing reg
 **Last Updated:** 2026-10-06  
 **Current Phase:** Complete (Phases 1-11 implemented)  
 **Status:** Production-ready with comprehensive hard problem documentation
+
+---
+
+## New Functionality: Close MBTiles File
+
+### [2026-10-20] Close MBTiles File Feature Implementation
+
+**Feature:** User can now close the currently loaded MBTiles file via "File → Close MBTiles File"
+
+**Design Decisions:**
+
+1. **Dual File State Management**
+   - MBTiles file (required for map display)
+   - GPX file (optional data file)
+   - When MBTiles closed: GPX is also closed (no map = can't display tracks)
+
+2. **Confirmation Dialog**
+   - Warns user that GPX file will also be closed
+   - Checks for unsaved GPX changes
+   - Prevents accidental data loss
+
+3. **Clean State Reset**
+   - Unloads MBTiles provider
+   - Closes GPX file (if open)
+   - Clears maps in both editors (TrackEditor and MapEditor)
+   - Disables crosshair and UI controls
+   - Removes MBTiles from recent files (config)
+
+4. **Status Bar Dual Display**
+   - Implemented persistent dual-section status bar
+   - Left: Shows "MBTiles: [filename]"
+   - Right: Shows "GPX: [filename]"
+   - Center: Temporary notifications (auto-clear after 3-5 seconds)
+   - **Why:** User needs to see BOTH files at all times, not just one
+
+5. **Open GPX Requires MBTiles**
+   - "Open GPX File" action disabled when no MBTiles loaded
+   - Prevents logical error: can't display tracks without map
+   - Fail-safe check in action_open_file() prevents workarounds
+   - Clear error message directs user to load MBTiles first
+
+**Implementation:**
+
+| Component | File | Changes |
+|-----------|------|---------|
+| Menu Action | src/gui/main_window.py | Added "File → Close MBTiles File" (line 284) |
+| Close Handler | src/gui/main_window.py | New action_close_mbtiles() (line 1390) |
+| Status Bar | src/gui/main_window.py | Redesigned with dual sections (line 636) |
+| Crosshair Control | src/gui/widgets/map_widget.py | Added enable_crosshair() method |
+| Crosshair Control | src/map_editor/gui/widgets/map_viewer.py | Added enable_crosshair() method |
+| Open File Guard | src/gui/main_window.py | Check mbtiles loaded before opening GPX |
+
+**Behavior:**
+
+```
+User Workflow:
+1. Load MBTiles file → Map appears, crosshair visible, status bar shows filename
+2. Open GPX file → Tracks displayed, status bar shows both files
+3. Close MBTiles → Confirmation, GPX closed, maps cleared, status bar shows "None"
+4. Load new MBTiles → Maps reappear, crosshair enabled immediately
+```
+
+**Key Methods:**
+
+1. **action_close_mbtiles()** (line 1390)
+   - Validates MBTiles is loaded
+   - Checks for unsaved GPX changes
+   - Confirms with user
+   - Closes GPX file if open
+   - Clears both editor maps
+   - Disables open GPX action
+   - Updates status bar and config
+
+2. **_update_status_bar_files()** (line 668)
+   - Updates permanent left/right labels
+   - Called whenever files change
+   - Shows current state: MBTiles | | GPX
+
+3. **_show_temp_status()** (line 693)
+   - Shows temporary notifications in center
+   - Auto-clears after timeout
+   - Used for action feedback (merged, closed, etc.)
+
+4. **enable_crosshair()** 
+   - Re-enables crosshair when MBTiles loaded
+   - Calls render_map() immediately for instant display
+   - Prevents "wait for mouse hover" issue
+
+**Critical Fix: Crosshair Display**
+
+**Problem Found:** Crosshair wouldn't appear immediately when opening MBTiles in MapEditor
+
+**Root Cause:** 
+- enable_crosshair() only set flag, didn't trigger render
+- For MapEditor, enable_crosshair() was in try block and might not execute
+
+**Solution:**
+- enable_crosshair() now calls render_map() immediately
+- Moved enable_crosshair() outside try block for MapEditor
+- Ensures crosshair visible instantly, not after mouse hover
+
+**Menu Changes:**
+
+Renamed for clarity:
+- ✅ "Close File" → "Close GPX File" (line 335)
+- ✅ Updated help dialog to match (help_dialog.py)
+- ✅ Updated keyboard shortcut reference (Ctrl+W)
+
+**Related Documentation:**
+
+- FIX_OPEN_GPX_REQUIRES_MBTILES.md - Requirement to load MBTiles first
+- STATUS_BAR_REDESIGN.md - Dual file display in status bar
+- FIX_CROSSHAIR_DISAPPEARS_ON_CLOSE_MBTILES.md - Crosshair enable/disable logic
+- REMOVE_UPDATE_BUTTON_FROM_CHARACTERISTICS.md - UI cleanup from same session
+
+**Testing Notes:**
+
+✅ Close MBTiles closes GPX automatically  
+✅ Unsaved changes warning works  
+✅ Status bar shows both files  
+✅ Crosshair appears instantly when opening MBTiles  
+✅ Cannot open GPX without MBTiles loaded  
+✅ Both editors (TrackEditor, MapEditor) behave consistently  
+✅ Crosshair correctly hidden when map cleared  
+
+**Performance Impact:** Negligible
+- Two render calls (one on load, one on enable_crosshair) acceptable
+- Temporary status messages use QTimer (non-blocking)
+- Config save is synchronous but fast (~10ms)
+
+---
+
+**Last Updated:** 2026-10-20  
+**Current Phase:** Complete (Phases 1-11 implemented, Close MBTiles feature added)  
+**Status:** Production-ready with close MBTiles functionality

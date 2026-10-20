@@ -659,6 +659,45 @@ class MapWidget(QWidget):
         except Exception as e:
             logger.error(f"Error rendering map: {e}")
     
+    def clear_map(self):
+        """Clear the map display (show empty gray background).
+        
+        Also temporarily disables the crosshair so it doesn't reappear
+        if the map re-renders.
+        """
+        from PIL import Image
+        
+        # Disable crosshair for cleared map
+        self.show_crosshair = False
+        
+        # Create empty gray image
+        empty_image = Image.new('RGB', (self.width() or 400, self.height() or 300), color=(192, 192, 192))
+        
+        # Convert to QPixmap
+        with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tmp:
+            tmp_path = tmp.name
+        
+        try:
+            empty_image.save(tmp_path, 'PNG')
+            pixmap = QPixmap(tmp_path)
+            self.map_label.setPixmap(pixmap)
+        finally:
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
+        
+        logger.info("Map display cleared (crosshair disabled)")
+    
+    def enable_crosshair(self):
+        """Re-enable the crosshair when MBTiles is loaded.
+        
+        Called after loading new MBTiles file.
+        This immediately re-renders the map to show the crosshair.
+        """
+        self.show_crosshair = True
+        logger.debug("Crosshair re-enabled for map with MBTiles")
+        # ✅ Immediately re-render to show crosshair (don't wait for mouse event)
+        self.render_map()
+    
     def _draw_tracks_on_image(self, pil_image, map_renderer):
         """
         Draw tracks on the map.
@@ -1105,6 +1144,20 @@ class MapWidget(QWidget):
                 
                 # If range selected but no point clicked, insert new point at cursor and start dragging
                 if self.selected_trackpoint_range is not None:
+                    # ✅ CRITICAL: Cannot draw trackpoints without MBTiles (no map = nowhere to draw)
+                    if not self.mbtiles_provider or not self.mbtiles_provider.is_loaded():
+                        logger.warning("Cannot insert trackpoint: No MBTiles file loaded")
+                        from PyQt5.QtWidgets import QMessageBox
+                        main_window = QApplication.instance().activeWindow()
+                        if main_window:
+                            QMessageBox.information(
+                                main_window,
+                                "No MBTiles File",
+                                "You must load an MBTiles file first before drawing tracks.\n\n"
+                                "Please open an MBTiles file from File → Open MBTiles File..."
+                            )
+                        return
+                    
                     start_idx, end_idx = self.selected_trackpoint_range
                     
                     # Convert click position to GPS
@@ -1156,6 +1209,20 @@ class MapWidget(QWidget):
             # Shift+click on empty space - insert point at end of current track (or create new track if none selected)
             # Note: When user clicks "X" to unselect a track, track_selected emits -1 (not None), so we check both
             if event.modifiers() & Qt.ShiftModifier:
+                # ✅ CRITICAL: Cannot draw trackpoints without MBTiles (no map = nowhere to draw)
+                if not self.mbtiles_provider or not self.mbtiles_provider.is_loaded():
+                    logger.warning("Cannot insert trackpoint: No MBTiles file loaded")
+                    from PyQt5.QtWidgets import QMessageBox
+                    main_window = QApplication.instance().activeWindow()
+                    if main_window:
+                        QMessageBox.information(
+                            main_window,
+                            "No MBTiles File",
+                            "You must load an MBTiles file first before drawing tracks.\n\n"
+                            "Please open an MBTiles file from File → Open MBTiles File..."
+                        )
+                    return
+                
                 gps_coords = self.screen_to_gps(x, y)
                 if gps_coords and self.track_manager:
                     lat, lon = gps_coords

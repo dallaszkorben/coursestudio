@@ -101,36 +101,71 @@ class MapEditorTabHandler:
         
         try:
             # ================================================================
-            # Get MBTiles reader from provider (already loaded by main window)
+            # Always create the UI structure (even if no file is loaded)
+            # ================================================================
+            
+            # Create Characteristics Panel (Left) - always
+            self.characteristics_panel = CharacteristicsPanel()
+            self.characteristics_panel.setMinimumWidth(250)
+            self.characteristics_panel.setSizePolicy(
+                QSizePolicy.Expanding, 
+                QSizePolicy.Expanding
+            )
+            
+            # Connect signals (even if empty)
+            self.characteristics_panel.update_center_requested.connect(
+                self._on_update_center_requested
+            )
+            self.characteristics_panel.generate_zoom_levels_requested.connect(
+                self._on_generate_zoom_levels_requested
+            )
+            
+            # Create Map Viewer (Right) - always
+            self.map_viewer = MapViewer(config=self.config)
+            self.map_viewer.setMinimumWidth(300)
+            self.map_viewer.setSizePolicy(
+                QSizePolicy.Expanding,
+                QSizePolicy.Expanding
+            )
+            
+            # Create Splitter Layout (Left | Right)
+            splitter = QSplitter(Qt.Horizontal)
+            splitter.addWidget(self.characteristics_panel)
+            splitter.addWidget(self.map_viewer)
+            
+            # Set initial split sizes (30% characteristics, 70% map)
+            splitter.setSizes([300, 700])
+            
+            # Neither side can collapse
+            splitter.setCollapsible(0, False)
+            splitter.setCollapsible(1, False)
+            
+            main_layout.addWidget(splitter)
+            
+            # ================================================================
+            # Now try to load mbtiles file if available
             # ================================================================
             
             if not self.mbtiles_provider or not self.mbtiles_provider.is_loaded():
-                logger.warning("MBTiles provider not loaded, showing placeholder")
-                self._create_error_widget(main_layout, "No MBTiles file loaded. Use Track Editor to load a file.")
+                logger.warning("MBTiles provider not loaded - showing empty UI")
                 return self.widget
             
             # Get the recent mbtiles from config
             recent_mbtiles = self.config.get('appearance.tiles.recent_mbtiles')
             if not recent_mbtiles:
-                logger.warning("No recent mbtiles in config")
-                self._create_error_widget(main_layout, "MBTiles file not in config.")
+                logger.warning("No recent mbtiles in config - showing empty UI")
                 return self.widget
             
             # Config stores full path, extract just filename if needed
-            # If it's already a full path, use it directly
-            # If it's just a filename, prepend mbtiles/
             if '/' in recent_mbtiles or '\\' in recent_mbtiles:
-                # It's a full path
                 mbtiles_path = recent_mbtiles
             else:
-                # It's just a filename, prepend mbtiles/
                 mbtiles_path = f"mbtiles/{recent_mbtiles}"
             
             logger.info(f"🟢 Attempting to load mbtiles: {mbtiles_path}")
             
             if not Path(mbtiles_path).exists():
                 logger.warning(f"MBTiles file not found: {mbtiles_path}")
-                self._create_error_widget(main_layout, f"MBTiles file not found: {mbtiles_path}")
                 return self.widget
             
             self.mbtiles_reader = MBTilesReader(mbtiles_path)
@@ -142,70 +177,17 @@ class MapEditorTabHandler:
             logger.info(f"🟢 Metadata: {metadata.name}")
             logger.info(f"🟢 Available zooms: {available_zooms}")
             
-            # ================================================================
-            # Create Characteristics Panel (Left)
-            # ================================================================
-            
-            self.characteristics_panel = CharacteristicsPanel()
-            self.characteristics_panel.setMinimumWidth(250)
-            self.characteristics_panel.setSizePolicy(
-                QSizePolicy.Expanding, 
-                QSizePolicy.Expanding
-            )
-            
             # Load file metadata into characteristics panel
             self.characteristics_panel.load_mbtiles(self.mbtiles_reader)
-            
-            # Connect Update button signal to handler
-            self.characteristics_panel.update_center_requested.connect(
-                self._on_update_center_requested
-            )
-            
-            # Connect Generate Zoom Levels button signal to handler
-            self.characteristics_panel.generate_zoom_levels_requested.connect(
-                self._on_generate_zoom_levels_requested
-            )
-            
-            # ================================================================
-            # Create Map Viewer (Right)
-            # ================================================================
-            
-            self.map_viewer = MapViewer(config=self.config)
-            self.map_viewer.setMinimumWidth(300)
-            self.map_viewer.setSizePolicy(
-                QSizePolicy.Expanding,
-                QSizePolicy.Expanding
-            )
             
             # Set MBTiles provider for tile serving
             self.map_viewer.set_mbtiles_provider(self.mbtiles_provider)
             
-            # ✅ Set MBTiles reader for accurate zoom queries (queries database directly)
-            # This is critical for zoom bounds to be updated after generating new zooms
+            # ✅ Set MBTiles reader for accurate zoom queries
             self.map_viewer.set_mbtiles_reader(self.mbtiles_reader)
             
             # Load MBTiles provider into map viewer for tile serving
-            # The map viewer will display tiles from the provider
             self.map_viewer.load_mbtiles(self.mbtiles_provider)
-            
-            # ================================================================
-            # Create Splitter Layout (Left | Right)
-            # ================================================================
-            
-            splitter = QSplitter(Qt.Horizontal)
-            splitter.addWidget(self.characteristics_panel)
-            splitter.addWidget(self.map_viewer)
-            
-            # Set initial split sizes (30% characteristics, 70% map)
-            splitter.setSizes([300, 700])
-            
-            # Neither side can collapse
-            splitter.setCollapsible(0, False)  # Characteristics panel can't collapse
-            splitter.setCollapsible(1, False)  # Map viewer can't collapse
-            
-            main_layout.addWidget(splitter)
-            
-            main_layout.addWidget(splitter)
             
             logger.info("Map Editor tab created successfully with CharacteristicsPanel and MapViewer")
             

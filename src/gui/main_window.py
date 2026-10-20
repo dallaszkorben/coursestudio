@@ -27,7 +27,7 @@ from PyQt5.QtWidgets import (
     QStatusBar, QMenu, QAction, QFileDialog, QMessageBox, QDialog, QSplitter, QLabel
 )
 from PyQt5.QtGui import QIcon, QKeySequence
-from PyQt5.QtCore import Qt, QSize, pyqtSignal
+from PyQt5.QtCore import Qt, QSize, pyqtSignal, QTimer
 from PyQt5.QtWidgets import QTabWidget
 
 from config.app_config_yaml import AppConfig
@@ -184,6 +184,16 @@ class MainWindow(QMainWindow):
         # Connect signals
         self._connect_signals()
         
+        # Update status bar with loaded files
+        self._update_status_bar_files()
+        
+        # Enable actions if mbtiles is already loaded
+        if self.mbtiles_provider.is_loaded():
+            # Enable close mbtiles action and open GPX file action since file is loaded
+            self.close_mbtiles_action.setEnabled(True)
+            self.open_file_action.setEnabled(True)
+            self.toolbar_open_action.setEnabled(True)
+        
         # Open file if provided
         if gpx_file_path:
             self.open_file(gpx_file_path)
@@ -273,6 +283,14 @@ class MainWindow(QMainWindow):
         file_menu.addAction(load_mbtiles_action)
         self.load_mbtiles_action = load_mbtiles_action
         
+        # File > Close MBTiles File
+        close_mbtiles_action = QAction('Close &MBTiles File', self)
+        close_mbtiles_action.setStatusTip('Close the current mbtiles file')
+        close_mbtiles_action.triggered.connect(self.action_close_mbtiles)
+        close_mbtiles_action.setEnabled(False)  # Disabled until mbtiles is loaded
+        file_menu.addAction(close_mbtiles_action)
+        self.close_mbtiles_action = close_mbtiles_action
+        
         file_menu.addSeparator()
         
         # File > Open
@@ -280,7 +298,9 @@ class MainWindow(QMainWindow):
         open_action.setShortcut(QKeySequence.Open)
         open_action.setStatusTip('Open a GPX file')
         open_action.triggered.connect(self.action_open_file)
+        open_action.setEnabled(False)  # Disabled until mbtiles is loaded
         file_menu.addAction(open_action)
+        self.open_file_action = open_action
         
         # File > Merge GPX File
         merge_action = QAction('&Merge GPX File...', self)
@@ -312,10 +332,10 @@ class MainWindow(QMainWindow):
         
         file_menu.addSeparator()
         
-        # File > Close File
-        close_file_action = QAction('&Close File', self)
+        # File > Close GPX File
+        close_file_action = QAction('&Close GPX File', self)
         close_file_action.setShortcut(QKeySequence.Close)
-        close_file_action.setStatusTip('Close the opened file')
+        close_file_action.setStatusTip('Close the opened GPX file')
         close_file_action.triggered.connect(self.action_close_file)
         close_file_action.setEnabled(False)  # Disabled until file is opened
         file_menu.addAction(close_file_action)
@@ -445,7 +465,9 @@ class MainWindow(QMainWindow):
         open_action = QAction('Open GPX', self)
         open_action.setStatusTip('Open a GPX file')
         open_action.triggered.connect(self.action_open_file)
+        open_action.setEnabled(False)  # Disabled until mbtiles is loaded
         self.toolbar.addAction(open_action)
+        self.toolbar_open_action = open_action
         
         # Save file button
         save_action = QAction('Save GPX', self)
@@ -610,28 +632,73 @@ class MainWindow(QMainWindow):
     # ========================================================================
     
     def _create_status_bar(self):
-        """Create status bar for user feedback."""
+        """Create status bar with separate sections for MBTiles and GPX files.
+        
+        Layout:
+        [MBTiles: filename] | [GPX: filename] | [Temporary messages / Ready]
+        
+        - Left: Persistent MBTiles filename
+        - Center: Temporary notifications (merged tracks, undo/redo, etc.)
+        - Right: Persistent GPX filename
+        """
         
         status_bar = QStatusBar()
         self.setStatusBar(status_bar)
         
-        # Status message
-        self.status_label = status_bar.showMessage("Ready")
+        # Create permanent labels for MBTiles and GPX files
+        self.mbtiles_status_label = QLabel("MBTiles: None")
+        self.mbtiles_status_label.setMinimumWidth(250)
+        self.gpx_status_label = QLabel("GPX: None")
+        self.gpx_status_label.setMinimumWidth(250)
+        
+        # Add to status bar
+        status_bar.addWidget(self.mbtiles_status_label)
+        status_bar.addWidget(QLabel(" | "), 0)  # Separator
+        
+        # Center area for temporary messages (stretches to fill)
+        self.temp_status_label = QLabel("Ready")
+        status_bar.addWidget(self.temp_status_label, 1)  # Stretch factor = 1
+        
+        # Add GPX label to the right (permanent)
+        status_bar.addPermanentWidget(self.gpx_status_label)
         
         # Show initially loaded mbtiles file
-        self._show_current_mbtiles_in_status()
+        self._update_status_bar_files()
         
-        logger.info("Status bar created")
+        logger.info("Status bar created with MBTiles and GPX sections")
     
-    def _show_current_mbtiles_in_status(self):
-        """Show the currently loaded mbtiles filename in the status bar."""
-        filename = self.mbtiles_provider.get_loaded_filename()
-        if filename:
-            self.statusBar().showMessage(f"Loaded mbtiles: {filename}")
-            logger.info(f"Status bar shows: Loaded mbtiles: {filename}")
+    def _update_status_bar_files(self):
+        """Update the permanent MBTiles and GPX filename labels in status bar."""
+        
+        # Update MBTiles status
+        mbtiles_filename = self.mbtiles_provider.get_loaded_filename()
+        if mbtiles_filename:
+            self.mbtiles_status_label.setText(f"MBTiles: {mbtiles_filename}")
+            logger.debug(f"Status bar MBTiles: {mbtiles_filename}")
         else:
-            self.statusBar().showMessage("No mbtiles file loaded")
-            logger.info("No mbtiles file currently loaded")
+            self.mbtiles_status_label.setText("MBTiles: None")
+            logger.debug("Status bar MBTiles: None")
+        
+        # Update GPX status
+        if self.current_file_path:
+            gpx_filename = Path(self.current_file_path).name
+            self.gpx_status_label.setText(f"GPX: {gpx_filename}")
+            logger.debug(f"Status bar GPX: {gpx_filename}")
+        else:
+            self.gpx_status_label.setText("GPX: None")
+            logger.debug("Status bar GPX: None")
+    
+    def _show_temp_status(self, message: str, timeout_ms: int = 5000):
+        """Show a temporary message in the center of the status bar.
+        
+        Args:
+            message: The message to display
+            timeout_ms: How long to show the message (0 = permanent, 5000 = 5 seconds)
+        """
+        self.temp_status_label.setText(message)
+        if timeout_ms > 0:
+            # Reset after timeout
+            QTimer.singleShot(timeout_ms, lambda: self.temp_status_label.setText("Ready"))
     
     # ========================================================================
     # Signal Connections
@@ -731,6 +798,8 @@ class MainWindow(QMainWindow):
         1. Whether MapEditor tab is currently active
         2. Whether an mbtiles file is loaded
         
+        Also updates close mbtiles button state.
+        
         Args:
             index: Index of the newly activated tab (0=Track Editor, 1=Map Editor, 2=Settings)
         """
@@ -747,6 +816,17 @@ class MainWindow(QMainWindow):
                 # Either MapEditor not active OR file not loaded → Disable button
                 self.map_editor_handler.characteristics_panel.generate_zoom_button.setEnabled(False)
                 logger.debug("Disabled Generate Zoom Levels button (MapEditor tab not active or no file)")
+        
+        # Enable/disable Close MBTiles button and Open GPX File based on file loaded state
+        if self.mbtiles_provider and self.mbtiles_provider.is_loaded():
+            self.close_mbtiles_action.setEnabled(True)
+            self.open_file_action.setEnabled(True)
+            self.toolbar_open_action.setEnabled(True)
+        else:
+            self.close_mbtiles_action.setEnabled(False)
+            self.open_file_action.setEnabled(False)
+            self.toolbar_open_action.setEnabled(False)
+    
     
     # ========================================================================
     # Window Title Management
@@ -774,6 +854,14 @@ class MainWindow(QMainWindow):
     
     def action_open_file(self):
         """Open a GPX file."""
+        # Fail-safe check: mbtiles must be loaded
+        if not self.mbtiles_provider or not self.mbtiles_provider.is_loaded():
+            self.show_error(
+                "No MBTiles File",
+                "You must load an MBTiles file first before opening a GPX file.\n\n"
+                "Please open an MBTiles file from File → Open MBTiles File..."
+            )
+            return
         
         file_path, _ = QFileDialog.getOpenFileName(
             self,
@@ -892,7 +980,8 @@ class MainWindow(QMainWindow):
             # STEP 4: Update application state
             self.current_file_path = file_path
             self.is_modified = False
-            self._update_window_title()  # Show filename
+            self._update_window_title()  # Show filename in title
+            self._update_status_bar_files()  # Show filename in status bar
             
             # STEP 5: Enable file operations
             self.save_action.setEnabled(True)
@@ -975,7 +1064,7 @@ class MainWindow(QMainWindow):
             self.track_list_widget.refresh_tracks()
             
             # Show success message
-            self.statusBar().showMessage(f'Merged {count} track{"s" if count != 1 else ""} from {Path(file_path).name}', 5000)
+            self._show_temp_status(f'Merged {count} track{"s" if count != 1 else ""} from {Path(file_path).name}', 5000)
             logger.info(f"Merged {count} tracks from {file_path}")
             
         except Exception as e:
@@ -1006,11 +1095,12 @@ class MainWindow(QMainWindow):
         self.merge_action.setEnabled(False)
         self.toolbar_save_action.setEnabled(False)
         
-        # Update window title
+        # Update window title and status bar
         self._update_window_title()
+        self._update_status_bar_files()
         
         logger.info("File closed")
-        self.statusBar().showMessage('File closed', 3000)
+        self._show_temp_status('File closed', 3000)
     
     def save_file(self, file_path: str) -> bool:
         """
@@ -1093,7 +1183,7 @@ class MainWindow(QMainWindow):
         """Undo last action."""
         
         if not self.track_manager.can_undo():
-            self.statusBar().showMessage("Nothing to undo")
+            self._show_temp_status("Nothing to undo")
             return
         
         success = self.track_manager.undo()
@@ -1112,19 +1202,19 @@ class MainWindow(QMainWindow):
                     self.map_widget.on_track_list_selection_changed(current_index)
             
             desc = self.track_manager.get_undo_description()
-            self.statusBar().showMessage(f"Undone: {desc}", 3000)
+            self._show_temp_status(f"Undone: {desc}", 3000)
             logger.info(f"Undo: {desc}")
             
             # Update menu states
             self._update_undo_redo_menu_states()
         else:
-            self.statusBar().showMessage("Failed to undo")
+            self._show_temp_status("Failed to undo")
     
     def action_redo(self):
         """Redo last action."""
         
         if not self.track_manager.can_redo():
-            self.statusBar().showMessage("Nothing to redo")
+            self._show_temp_status("Nothing to redo")
             return
         
         success = self.track_manager.redo()
@@ -1143,13 +1233,13 @@ class MainWindow(QMainWindow):
                     self.map_widget.on_track_list_selection_changed(current_index)
             
             desc = self.track_manager.get_redo_description()
-            self.statusBar().showMessage(f"Redone: {desc}", 3000)
+            self._show_temp_status(f"Redone: {desc}", 3000)
             logger.info(f"Redo: {desc}")
             
             # Update menu states
             self._update_undo_redo_menu_states()
         else:
-            self.statusBar().showMessage("Failed to redo")
+            self._show_temp_status("Failed to redo")
     
     def _update_undo_redo_menu_states(self):
         """Update undo/redo menu item states and text."""
@@ -1177,12 +1267,12 @@ class MainWindow(QMainWindow):
     def action_zoom_in(self):
         """Zoom in."""
         logger.debug("Zoom in action triggered")
-        self.statusBar().showMessage("Zoom in")
+        self._show_temp_status("Zoom in", 1000)
     
     def action_zoom_out(self):
         """Zoom out."""
         logger.debug("Zoom out action triggered")
-        self.statusBar().showMessage("Zoom out")
+        self._show_temp_status("Zoom out", 1000)
     
     def action_load_mbtiles(self):
         """Load a different mbtiles file via file dialog."""
@@ -1240,6 +1330,8 @@ class MainWindow(QMainWindow):
                     
                     # Re-render map with new tiles
                     self.map_widget.render_map()
+                    # ✅ Re-enable crosshair now that map is loaded with MBTiles
+                    self.map_widget.enable_crosshair()
                     
                     # 🟢 RE-INITIALIZE MAP EDITOR'S MAP VIEWER WITH NEW MBTILES PROVIDER
                     # This is critical! We must call set_mbtiles_provider() to re-initialize 
@@ -1286,17 +1378,101 @@ class MainWindow(QMainWindow):
                     except Exception as e:
                         logger.warning(f"Could not update Map Editor: {e}")
                     
-                    # Get filename for status message
-                    filename = self.mbtiles_provider.get_loaded_filename()
-                    self.statusBar().showMessage(f"Loaded mbtiles: {filename}")
-                    logger.info(f"Successfully loaded mbtiles: {filename}")
+                    # ✅ Re-enable crosshair now that map is loaded with MBTiles
+                    # CRITICAL: Must be outside try block so it's always called
+                    self.map_editor_handler.map_viewer.enable_crosshair()
+                    
+                    # Update status bar with new MBTiles filename
+                    self._update_status_bar_files()
+                    logger.info(f"Successfully loaded mbtiles: {self.mbtiles_provider.get_loaded_filename()}")
                     
                     # Update MapEditor button state (file now loaded)
                     current_tab = self.main_tab_widget.currentIndex()
                     self._on_tab_changed(current_tab)
                 else:
                     QMessageBox.warning(self, "Error", "Failed to load mbtiles file. Check the log for details.")
-                    self.statusBar().showMessage("Failed to load mbtiles file")
+                    self._show_temp_status("Failed to load mbtiles file", 3000)
+    
+    def action_close_mbtiles(self):
+        """Close the currently loaded mbtiles file."""
+        if not self.mbtiles_provider or not self.mbtiles_provider.is_loaded():
+            QMessageBox.information(self, "Info", "No mbtiles file is currently loaded")
+            return
+        
+        # Get current filename for confirmation
+        current_filename = self.mbtiles_provider.get_loaded_filename()
+        
+        # Check if GPX file has unsaved changes
+        if self.is_modified:
+            reply = QMessageBox.question(
+                self,
+                "Unsaved Changes",
+                f"The GPX file has unsaved changes. Close it anyway?\n\n"
+                f"(Current mbtiles: {current_filename})",
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.No
+            )
+            if reply == QMessageBox.No:
+                return
+        
+        # Confirm closing mbtiles file
+        reply = QMessageBox.question(
+            self,
+            "Close MBTiles File",
+            f"Close the mbtiles file '{current_filename}'?\n\n"
+            f"This will also close any open GPX file.",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No
+        )
+        if reply == QMessageBox.No:
+            return
+        
+        logger.info(f"Closing mbtiles file: {current_filename}")
+        
+        # 1. Close GPX file if open
+        if self.current_file_path:
+            self.action_close_file()
+            logger.info("Closed GPX file")
+        
+        # 2. Remove from recent files (config) so it doesn't auto-load on next startup
+        self.config.set("appearance.tiles.recent_mbtiles", "")
+        # ✅ CRITICAL: Save config to disk immediately
+        if not self.config.save_to_file():
+            logger.warning("Failed to save config after clearing recent_mbtiles")
+        else:
+            logger.info("✅ Saved config with cleared recent_mbtiles")
+        
+        # 3. Unload mbtiles provider
+        self.mbtiles_provider.unload()
+        logger.info("Unloaded mbtiles provider")
+        
+        # 4. Clear TrackEditor's map_widget
+        self.map_widget.clear_map()
+        self.map_widget.min_zoom = 1
+        self.map_widget.max_zoom = 20
+        logger.info("Cleared TrackEditor map")
+        
+        # 5. Clear MapEditor
+        if self.map_editor_handler:
+            # Clear characteristics panel
+            self.map_editor_handler.characteristics_panel.clear_mbtiles()
+            # Clear map viewer
+            self.map_editor_handler.map_viewer.clear_map()
+            self.map_editor_handler.map_viewer.min_zoom = 1
+            self.map_editor_handler.map_viewer.max_zoom = 20
+            logger.info("Cleared MapEditor")
+        
+        # 6. Switch to Track Editor tab
+        self.main_tab_widget.setCurrentIndex(0)
+        logger.info("Switched to Track Editor tab")
+        
+        # 7. Update menu states - disable close mbtiles action
+        self.close_mbtiles_action.setEnabled(False)
+        
+        # 8. Update status bar
+        self._update_status_bar_files()
+        self._show_temp_status("MBTiles file closed", 3000)
+        logger.info("MBTiles file closed successfully")
     
     # ========================================================================
     # Application Operations

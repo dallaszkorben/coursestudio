@@ -699,6 +699,43 @@ class MapViewer(QWidget):
         # Always reposition buttons on top
         self.button_manager.position_all_buttons()
     
+    def clear_map(self):
+        """Clear the map display (show empty gray background).
+        
+        Also temporarily disables the crosshair so it doesn't reappear
+        if the map re-renders.
+        """
+        # Disable crosshair for cleared map
+        self.show_crosshair = False
+        
+        # Create empty gray image
+        empty_image = Image.new('RGB', (self.width() or 400, self.height() or 300), color=(192, 192, 192))
+        
+        # Convert to QPixmap
+        with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tmp:
+            tmp_path = tmp.name
+        
+        try:
+            empty_image.save(tmp_path, 'PNG')
+            pixmap = QPixmap(tmp_path)
+            self.map_label.setPixmap(pixmap)
+        finally:
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
+        
+        logger.info("MapViewer display cleared (crosshair disabled)")
+    
+    def enable_crosshair(self):
+        """Re-enable the crosshair when MBTiles is loaded.
+        
+        Called after loading new MBTiles file.
+        This immediately re-renders the map to show the crosshair.
+        """
+        self.show_crosshair = True
+        logger.debug("Crosshair re-enabled for map with MBTiles")
+        # ✅ Immediately re-render to show crosshair (don't wait for mouse event)
+        self.render_map()
+    
     def _draw_ui_controls(self, pil_image):
         """Draw button visuals on the PIL image using button manager."""
         # Ensure image is RGBA

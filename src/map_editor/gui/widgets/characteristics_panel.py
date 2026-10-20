@@ -241,19 +241,15 @@ class CharacteristicsPanel(QWidget):
         
         self.bounds_label = self._create_info_label()
         
-        # Center layout with label and button
+        # Center layout with label (Update button removed - functionality available via mark_center on map)
         center_widget = QWidget()
         center_item_layout = QHBoxLayout(center_widget)
         center_item_layout.setContentsMargins(0, 0, 0, 0)
         
         self.center_label = self._create_info_label()
-        self.recenter_button = QPushButton("Update")
-        self.recenter_button.setMaximumWidth(60)
-        self.recenter_button.setEnabled(True)  # Always enabled so user can save current map position
-        self.recenter_button.clicked.connect(self._on_update_center_clicked)
+        # ✅ REMOVED: self.recenter_button (functionality now via mark_center button on map)
         
         center_item_layout.addWidget(self.center_label)
-        center_item_layout.addWidget(self.recenter_button)
         
         bounds_layout.addWidget(QLabel("Bounds:"), 0, 0, Qt.AlignRight)
         bounds_layout.addWidget(self.bounds_label, 0, 1)
@@ -469,6 +465,37 @@ class CharacteristicsPanel(QWidget):
             self.missing_zooms_label.setText("—")
         
         logger.info(f"Loaded characteristics for: {metadata.name}")
+        
+        # Force UI refresh
+        self.update()
+        self.repaint()
+    
+    def clear_mbtiles(self) -> None:
+        """
+        Clear all MBTiles information from the characteristics panel.
+        
+        Call this when closing/unloading the mbtiles file.
+        """
+        self.mbtiles_reader = None
+        
+        # Clear all display fields
+        self.name_input.clear()
+        self.description_input.clear()
+        self.format_label.clear()
+        self.type_label.clear()
+        self.version_label.clear()
+        self.bounds_label.clear()
+        self.center_label.clear()
+        self.total_tiles_label.clear()
+        self.zoom_range_label.clear()
+        self.file_size_label.clear()
+        self.missing_zooms_label.clear()
+        self.zoom_list.clear()
+        
+        # Disable generate button
+        self.generate_zoom_button.setEnabled(False)
+        
+        logger.info("✅ Cleared mbtiles information from characteristics panel")
         
         # Force UI refresh
         self.update()

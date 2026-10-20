@@ -348,6 +348,20 @@ class MBTilesProvider:
         """
         return self._db_connection is not None and self._metadata is not None
     
+    def unload(self) -> None:
+        """
+        Unload the currently loaded mbtiles file.
+        
+        Closes the database connection and clears all cached data.
+        After calling this, is_loaded() will return False.
+        """
+        if self._db_connection:
+            self._db_connection.close()
+            self._db_connection = None
+        
+        self._metadata = None
+        self._loaded_path = None
+        self.logger.info("✅ MBTiles file unloaded")
     def get_metadata(self) -> Optional[TileMetadata]:
         """
         Get metadata from currently loaded mbtiles file.

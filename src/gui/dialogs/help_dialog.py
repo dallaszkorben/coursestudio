@@ -112,8 +112,8 @@ SAVING FILES
      Saves the file with a new name
 
 CLOSING FILES
-   • File → Close (Ctrl+W)
-     Closes the current file
+   • File → Close GPX File (Ctrl+W)
+     Closes the current GPX file
      You'll be prompted to save if there are unsaved changes
 
 RECENT FILES
@@ -324,7 +324,7 @@ FILE OPERATIONS
    Ctrl+O               Open GPX file
    Ctrl+S               Save current file
    Ctrl+Shift+S         Save As (new filename)
-   Ctrl+W               Close current file
+   Ctrl+W               Close GPX file
 
 EDIT OPERATIONS
    Ctrl+Z               Undo last change
