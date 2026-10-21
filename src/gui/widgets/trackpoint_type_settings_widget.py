@@ -153,12 +153,16 @@ class TrackpointTypeSettingsWidget(QWidget):
     
     def apply_to_config(self):
         """Apply current settings to config."""
-        body_color = self.body_color_picker.get_color_hex()
+        body_color = self.body_color_picker.get_color()
         body_size = self.body_size_slider.get_value()
-        outline_color = self.outline_color_picker.get_color_hex()
+        outline_color = self.outline_color_picker.get_color()
         outline_size = self.outline_size_slider.get_value()
         
-        self.config.set_str(f'appearance.map_display.trackpoints.{self.point_type}.body.color', body_color)
-        self.config.set_int(f'appearance.map_display.trackpoints.{self.point_type}.body.size', body_size)
-        self.config.set_str(f'appearance.map_display.trackpoints.{self.point_type}.outline.color', outline_color)
-        self.config.set_int(f'appearance.map_display.trackpoints.{self.point_type}.outline.size', outline_size)
+        logger.info(f"TrackpointTypeSettingsWidget.apply_to_config({self.point_type}): "
+                   f"body_color={body_color}, body_size={body_size}, "
+                   f"outline_color={outline_color}, outline_size={outline_size}")
+        
+        self.config.set(f'appearance.map_display.trackpoints.{self.point_type}.body.color', body_color)
+        self.config.set(f'appearance.map_display.trackpoints.{self.point_type}.body.size', body_size)
+        self.config.set(f'appearance.map_display.trackpoints.{self.point_type}.outline.color', outline_color)
+        self.config.set(f'appearance.map_display.trackpoints.{self.point_type}.outline.size', outline_size)

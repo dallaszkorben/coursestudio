@@ -19,6 +19,7 @@ from src.shared.map.map_renderer import MapRenderer
 from src.shared.map.mbtiles_provider import MBTilesProvider
 from src.shared.map.crosshair_drawer import draw_crosshair
 from src.map.map_buttons import MapButtonManager, MapButtonConfig
+from src.shared.config.crosshair_config import load_crosshair_settings
 
 logger = logging.getLogger(__name__)
 
@@ -51,23 +52,17 @@ class MapViewer(QWidget):
         # Configuration for state persistence
         self.config = config
         
-        # Crosshair settings (read from config)
-        # ✅ CRITICAL: Start with crosshair DISABLED
-        # Only enable when MBTiles is loaded via enable_crosshair()
-        if config:
-            self.crosshair_enabled_in_config = config.get_bool('appearance.map_display.Crosshair.show', True)
-            crosshair_color_str = config.get_str('appearance.map_display.Crosshair.body.color', 'FF0000')
-            crosshair_outline_str = config.get_str('appearance.map_display.Crosshair.outline.color', 'FFFFFF')
-            self.crosshair_color = self._hex_to_rgb(crosshair_color_str)
-            self.crosshair_outline_color = self._hex_to_rgb(crosshair_outline_str)
-            self.crosshair_outline_width = config.get_int('appearance.map_display.Crosshair.outline.width', 1)
-            self.crosshair_size = config.get_int('appearance.map_display.Crosshair.size', 20)
-        else:
-            self.crosshair_enabled_in_config = True
-            self.crosshair_color = (255, 0, 0)  # Red
-            self.crosshair_outline_color = (255, 255, 255)  # White
-            self.crosshair_outline_width = 1
-            self.crosshair_size = 20
+        # Crosshair settings - always load fresh to get latest values from disk
+        from config.app_config_yaml import AppConfig
+        fresh_config = AppConfig()  # Fresh config to ensure latest settings
+        
+        self.crosshair_enabled_in_config = fresh_config.get_bool('appearance.map_display.crosshair.enabled', True)
+        crosshair_color_str = fresh_config.get_str('appearance.map_display.crosshair.body.color', 'FF0000')
+        crosshair_outline_str = fresh_config.get_str('appearance.map_display.crosshair.outline.color', 'FFFFFF')
+        self.crosshair_color = self._hex_to_rgb(crosshair_color_str)
+        self.crosshair_outline_color = self._hex_to_rgb(crosshair_outline_str)
+        self.crosshair_outline_width = fresh_config.get_int('appearance.map_display.crosshair.outline.width', 1)
+        self.crosshair_size = fresh_config.get_int('appearance.map_display.crosshair.body.size', 4)
         
         # ✅ Start disabled (no mbtiles = no crosshair)
         self.show_crosshair = False
@@ -659,7 +654,7 @@ class MapViewer(QWidget):
     
     def render_map(self):
         """Render the map to display."""
-        if not self.mbtiles_provider or self.width() < 10 or self.height() < 10:
+        if not self.mbtiles_provider:
             return
         
         try:
@@ -773,3 +768,23 @@ class MapViewer(QWidget):
         # Composite overlay
         result = Image.alpha_composite(pil_image, overlay)
         return result
+    
+    def reload_settings(self):
+        """Reload crosshair settings from config and re-render map."""
+        logger.info("MapViewer.reload_settings() called")
+        
+        # Create a FRESH AppConfig instance to read updated values from disk
+        # (same pattern as MapWidget)
+        from config.app_config_yaml import AppConfig
+        config = AppConfig()
+        
+        logger.info(f"Before reload: size={self.crosshair_size}, color={self.crosshair_color}, outline_width={self.crosshair_outline_width}")
+        
+        # Reload crosshair settings using unified function with fresh config
+        load_crosshair_settings(config, self)
+        
+        logger.info(f"After reload: size={self.crosshair_size}, color={self.crosshair_color}, outline_width={self.crosshair_outline_width}")
+        
+        # Re-render map with new settings
+        self.render_map()
+        logger.info("MapViewer settings reloaded from config and map re-rendered")

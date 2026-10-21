@@ -189,7 +189,7 @@ The pruning algorithm uses a reference-point approach:
 5. Stop when reference is second-to-last point (preserve end point)
 
 **Configuration:**
-- Setting: `performance.trackpoint_optimization.min_distance_m` (default: 50 meters)
+- Setting: `performance.prune_points.min_distance_m` (default: 50 meters)
 - User can modify in `config/settings.yaml`
 - Applied per-track when user clicks button
 

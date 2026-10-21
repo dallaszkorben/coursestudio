@@ -189,6 +189,9 @@ class MapEditorTabHandler:
             # Load MBTiles provider into map viewer for tile serving
             self.map_viewer.load_mbtiles(self.mbtiles_provider)
             
+            # ✅ NEW: Enable crosshair if mbtiles is loaded
+            self.map_viewer.enable_crosshair()
+            
             logger.info("Map Editor tab created successfully with CharacteristicsPanel and MapViewer")
             
         except Exception as e:

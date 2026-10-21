@@ -2027,8 +2027,18 @@ A PyQt5 application for reading, editing, and exporting GPX navigation tracks.
             logger.warning("No track selected for pruning")
             return
         
-        # Get minimum distance from configuration
-        min_distance_m = self.config.get_int('performance.trackpoint_optimization.min_distance_m', 50)
+        # Get minimum distance from configuration (read fresh from disk to get latest value)
+        from config.app_config_yaml import AppConfig
+        fresh_config = AppConfig()
+        min_distance_m = fresh_config.get_int('performance.prune_points.min_distance_m', 50)
+        
+        logger.info(f"DEBUG: Fresh config loaded - min_distance_m from disk = {min_distance_m}")
+        
+        # Verify what's actually in the config data
+        if hasattr(fresh_config, 'config_data'):
+            import json
+            perf_section = fresh_config.config_data.get('performance', {})
+            logger.info(f"DEBUG: performance section in config = {perf_section}")
         
         # Get track object for display purposes
         track = self.track_manager.get_track_by_index(track_index)
@@ -2243,10 +2253,19 @@ A PyQt5 application for reading, editing, and exporting GPX navigation tracks.
     
     def _on_turning_points_settings_applied(self):
         """Handle turning points settings applied from settings widget."""
+        logger.info("_on_turning_points_settings_applied called")
         
         if hasattr(self, 'map_widget'):
+            logger.info("Reloading MapWidget settings")
             # Reload all settings from config file
             self.map_widget.reload_settings()
+        
+        # Also reload in MapEditor tab
+        if hasattr(self, 'map_editor_handler') and self.map_editor_handler.map_viewer:
+            logger.info("Reloading MapViewer settings")
+            self.map_editor_handler.map_viewer.reload_settings()
+        else:
+            logger.warning("MapEditor not available or map_viewer is None")
     
     def _on_show_points_dropdown_changed(self, index: int):
         """Handle show points dropdown change from Editor tab - sync to Settings toggle."""

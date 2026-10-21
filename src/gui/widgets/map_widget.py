@@ -16,6 +16,7 @@ from src.shared.map.mbtiles_provider import MBTilesProvider
 from src.shared.map.map_renderer import MapRenderer
 from src.map.map_buttons import MapButtonManager, MapButtonConfig
 from src.shared.map.crosshair_drawer import draw_crosshair
+from src.shared.config.crosshair_config import load_crosshair_settings
 
 logger = logging.getLogger(__name__)
 
@@ -280,10 +281,9 @@ class MapWidget(QWidget):
         self.selected_trackpoint_range = None  # NEW: For selecting 2 neighboring points (start_idx, end_idx)
         self.show_turning_points = True  # Show/hide turning points
         
-        # Load track display settings from config
-        if config is None:
-            from config.app_config_yaml import AppConfig
-            config = AppConfig()
+        # Load track display settings from config - always create fresh instance to get latest values from disk
+        from config.app_config_yaml import AppConfig
+        config = AppConfig()  # Always load fresh to ensure latest settings from disk
         
         # Parse colors from config (hex format: RRGGBB)
         # TrackPath - body and outline
@@ -313,16 +313,16 @@ class MapWidget(QWidget):
         self.double_selected_turning_point_outline_color = self._hex_to_rgb(config.get_str('appearance.map_display.trackpoints.DoubleSelectedPoints.outline.color', 'FFFFFF'))
         self.double_selected_turning_point_outline_width = config.get_int('appearance.map_display.trackpoints.DoubleSelectedPoints.outline.size', 2)
         
-        # Crosshair settings
+        # Crosshair settings (use lowercase 'crosshair' to match settings widget)
         # ✅ CRITICAL: Start with crosshair DISABLED
         # Only enable when MBTiles is loaded via enable_crosshair()
         # Read config preference but don't apply until mbtiles loaded
-        self.crosshair_enabled_in_config = config.get_bool('appearance.map_display.Crosshair.show', True)
+        self.crosshair_enabled_in_config = config.get_bool('appearance.map_display.crosshair.enabled', True)
         self.show_crosshair = False  # ✅ Start disabled (no mbtiles = no crosshair)
-        self.crosshair_color = self._hex_to_rgb(config.get_str('appearance.map_display.Crosshair.body.color', 'FF0000'))
-        self.crosshair_outline_color = self._hex_to_rgb(config.get_str('appearance.map_display.Crosshair.outline.color', 'FFFFFF'))
-        self.crosshair_outline_width = config.get_int('appearance.map_display.Crosshair.outline.width', 1)
-        self.crosshair_size = config.get_int('appearance.map_display.Crosshair.size', 20)
+        self.crosshair_color = self._hex_to_rgb(config.get_str('appearance.map_display.crosshair.body.color', 'FF0000'))
+        self.crosshair_outline_color = self._hex_to_rgb(config.get_str('appearance.map_display.crosshair.outline.color', 'FFFFFF'))
+        self.crosshair_outline_width = config.get_int('appearance.map_display.crosshair.outline.width', 1)
+        self.crosshair_size = config.get_int('appearance.map_display.crosshair.body.size', 4)
         
         # Zoom bounds (will be set when MBTiles is loaded, default to safe values)
         self.min_zoom = 1
@@ -1022,20 +1022,33 @@ class MapWidget(QWidget):
         self.save_zoom_level()
     
     def reload_settings(self):
-        """Reload turning points settings from config and re-render map."""
+        """Reload all settings from config and re-render map."""
         from config.app_config_yaml import AppConfig
         config = AppConfig()
         
-        # Reload all turning points settings
-        self.show_turning_points = config.get_bool('appearance.map_display.TurningPoints.show', True)
-        self.turning_point_color = self._hex_to_rgb(config.get_str('appearance.map_display.TurningPoints.color', 'FFFF00'))
-        self.selected_turning_point_color = self._hex_to_rgb(config.get_str('appearance.map_display.TurningPoints.selected.color', '0000FF'))
-        self.turning_point_size = config.get_int('appearance.map_display.TurningPoints.size', 4)
-        self.selected_turning_point_size = config.get_int('appearance.map_display.TurningPoints.selected.size', 7)
+        # Reload trackpoint settings
+        self.show_turning_points = config.get_bool('appearance.map_display.trackpoints.show', True)
         
-        # Reload double selected (range) turning points settings
-        self.double_selected_turning_point_color = self._hex_to_rgb(config.get_str('appearance.map_display.TurningPoints.doubleSelected.color', 'FFA500'))
-        self.double_selected_turning_point_size = config.get_int('appearance.map_display.TurningPoints.doubleSelected.size', 8)
+        # General trackpoints
+        self.turning_point_color = self._hex_to_rgb(config.get_str('appearance.map_display.trackpoints.GeneralPoints.body.color', 'FFFF00'))
+        self.turning_point_size = config.get_int('appearance.map_display.trackpoints.GeneralPoints.body.size', 4)
+        self.turning_point_outline_color = self._hex_to_rgb(config.get_str('appearance.map_display.trackpoints.GeneralPoints.outline.color', 'FFFFFF'))
+        self.turning_point_outline_width = config.get_int('appearance.map_display.trackpoints.GeneralPoints.outline.size', 1)
+        
+        # Selected trackpoints
+        self.selected_turning_point_color = self._hex_to_rgb(config.get_str('appearance.map_display.trackpoints.SelectedPoints.body.color', '0000FF'))
+        self.selected_turning_point_size = config.get_int('appearance.map_display.trackpoints.SelectedPoints.body.size', 7)
+        self.selected_turning_point_outline_color = self._hex_to_rgb(config.get_str('appearance.map_display.trackpoints.SelectedPoints.outline.color', 'FFFFFF'))
+        self.selected_turning_point_outline_width = config.get_int('appearance.map_display.trackpoints.SelectedPoints.outline.size', 2)
+        
+        # Double selected trackpoints
+        self.double_selected_turning_point_color = self._hex_to_rgb(config.get_str('appearance.map_display.trackpoints.DoubleSelectedPoints.body.color', 'FFA500'))
+        self.double_selected_turning_point_size = config.get_int('appearance.map_display.trackpoints.DoubleSelectedPoints.body.size', 8)
+        self.double_selected_turning_point_outline_color = self._hex_to_rgb(config.get_str('appearance.map_display.trackpoints.DoubleSelectedPoints.outline.color', 'FFFFFF'))
+        self.double_selected_turning_point_outline_width = config.get_int('appearance.map_display.trackpoints.DoubleSelectedPoints.outline.size', 2)
+        
+        # Reload crosshair settings using unified function
+        load_crosshair_settings(config, self)
         
         # Mark for re-render with new settings
         self.needs_render = True

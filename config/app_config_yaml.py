@@ -81,12 +81,20 @@ class AppConfig(QObject):
             True if successful, False otherwise
         """
         try:
+            import logging
+            logger_save = logging.getLogger(__name__)
+            logger_save.info(f"Saving config to file: {self.config_file}")
+            logger_save.info(f"Config data performance section: {self.config_data.get('performance', {})}")
+            
             with open(self.config_file, 'w') as f:
                 yaml.dump(self.config_data, f, default_flow_style=False, sort_keys=False)
-            print(f"✅ Configuration saved to: {self.config_file}")
+            
+            logger_save.info(f"✅ Configuration saved to: {self.config_file}")
             return True
         except Exception as e:
-            print(f"❌ Error saving config: {e}")
+            import logging
+            logger_save = logging.getLogger(__name__)
+            logger_save.error(f"❌ Error saving config: {e}")
             return False
     
     def get(self, path: str, default: Any = None) -> Any:

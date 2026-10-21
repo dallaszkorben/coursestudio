@@ -123,6 +123,11 @@ class TrackEditorTabHandler:
         
         track_editor_layout.addWidget(main_splitter)
         
+        # ✅ NEW: Enable crosshair if mbtiles is already loaded at startup
+        if self.mbtiles_provider and self.mbtiles_provider.is_loaded():
+            self.map_widget.enable_crosshair()
+            logger.info("Crosshair enabled during Track Editor initialization (mbtiles already loaded)")
+        
         logger.info("Track Editor tab created with Track List, Trackpoint List, and Map widgets")
         
         return self.widget

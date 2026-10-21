@@ -14,6 +14,8 @@ from PyQt5.QtCore import Qt, pyqtSignal
 from config.app_config_yaml import AppConfig
 from src.gui.widgets.track_path_settings_widget import TrackPathSettingsWidget
 from src.gui.widgets.trackpoint_type_settings_widget import TrackpointTypeSettingsWidget
+from src.gui.widgets.crosshair_settings_widget import CrosshairSettingsWidget
+from src.gui.widgets.performance_settings_widget import PerformanceSettingsWidget
 from src.gui.widgets.toggle_switch_widget import ToggleSwitchWidget
 from src.gui.widgets.custom_tab_bar import ContentAwareTabBar
 
@@ -81,6 +83,10 @@ class SettingsWidget(QWidget):
         # Create Appearance Tab
         appearance_tab = self._create_appearance_tab()
         main_tab_widget.addTab(appearance_tab, "Appearance")
+        
+        # Create Performance Tab
+        performance_tab = self._create_performance_tab()
+        main_tab_widget.addTab(performance_tab, "Performance")
         
         main_layout.addWidget(main_tab_widget)
         
@@ -182,9 +188,32 @@ class SettingsWidget(QWidget):
         self.multi_selected_point_widget.settings_changed.connect(self._on_settings_changed)
         sub_tab_widget.addTab(self.multi_selected_point_widget, "Multi-Selected Track Point")
         
+        # Crosshair Sub-Tab
+        self.crosshair_widget = CrosshairSettingsWidget(self.config)
+        self.crosshair_widget.settings_changed.connect(self._on_settings_changed)
+        sub_tab_widget.addTab(self.crosshair_widget, "Crosshair")
+        
         appearance_layout.addWidget(sub_tab_widget)
         
         return appearance_container
+    
+    def _create_performance_tab(self):
+        """Create the Performance tab."""
+        
+        # Container for performance tab
+        performance_container = QWidget()
+        performance_layout = QVBoxLayout()
+        performance_container.setLayout(performance_layout)
+        performance_layout.setContentsMargins(5, 5, 5, 5)
+        performance_layout.setSpacing(10)
+        
+        # Create Performance Settings Widget
+        self.performance_widget = PerformanceSettingsWidget(self.config)
+        self.performance_widget.settings_changed.connect(self._on_settings_changed)
+        
+        performance_layout.addWidget(self.performance_widget)
+        
+        return performance_container
     
     def _on_settings_changed(self):
         """Handle settings change - auto-save to config file."""
@@ -194,9 +223,10 @@ class SettingsWidget(QWidget):
     def _on_show_trackpoints_toggled(self, state: bool):
         """Handle show trackpoints toggle."""
         logger.debug(f"Show trackpoints toggled to: {state}")
-        self.config.set_bool('appearance.map_display.trackpoints.show', state)
-        self.config.save_to_file()
-        self.turning_points_settings_applied.emit()
+        self.config.set('appearance.map_display.trackpoints.show', state)
+        # Call _apply_all_settings instead of partial save
+        # This ensures all current settings are preserved when saving
+        self._apply_all_settings()
     
     def _apply_all_settings(self):
         """Apply all settings to config."""
@@ -211,6 +241,12 @@ class SettingsWidget(QWidget):
         
         if hasattr(self, 'multi_selected_point_widget'):
             self.multi_selected_point_widget.apply_to_config()
+        
+        if hasattr(self, 'crosshair_widget'):
+            self.crosshair_widget.apply_to_config()
+        
+        if hasattr(self, 'performance_widget'):
+            self.performance_widget.apply_to_config()
         
         self.config.save_to_file()
         self.turning_points_settings_applied.emit()

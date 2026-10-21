@@ -455,6 +455,48 @@ Critical reading for understanding non-obvious system gotchas and preventing reg
 
 ---
 
+---
+
+### [2026-10-21] Stale Config Instance Bug - Settings Not Reloading in MapEditor
+
+**Problem:** Crosshair settings changed in TrackEditor applied immediately, but MapEditor showed stale values. Changes didn't reflect (size, color, outline).
+
+**Root Cause:** 
+- MapViewer used `self.config` initialized at startup (stale in-memory data)
+- Settings saved to disk via fresh `config.save_to_file()` 
+- But MapViewer's old config object still had pre-save values
+- MapWidget worked correctly because it created `AppConfig()` fresh each reload
+
+**The Bug (Comparison):**
+```python
+# MapWidget.reload_settings() - CORRECT
+config = AppConfig()  # Fresh instance reads from disk
+load_crosshair_settings(config, self)
+
+# MapViewer.reload_settings() - WRONG (before fix)
+load_crosshair_settings(self.config, self)  # Stale in-memory values
+```
+
+**Solution:** 
+Changed MapViewer to create fresh AppConfig instance when reloading settings, matching MapWidget pattern.
+
+**Why Hard to Debug:**
+1. **Silent failure** - Rendered correctly but with wrong values, no error
+2. **Subtle difference** - Both widgets looked identical, tiny difference in one method
+3. **Timing-dependent** - Only visible after settings changed AND were saved
+4. **Required log analysis** - Couldn't find by code inspection; needed to trace actual config values in logs
+5. **Misleading symptom** - Looked like signal/slot connection issue, was actually stale object
+
+**Key Lesson:**
+When reloading settings persisted to disk, always create a **fresh config instance** to read updated values. Don't reuse objects that retain old in-memory state. This is critical for any multi-widget synchronization.
+
+**Related:** 
+- Config persistence pattern (automatic save_to_file)
+- Signal-based widget synchronization
+- Object lifecycle and stale state bugs
+
+---
+
 **Last Updated:** 2026-10-21  
 **Current Phase:** Complete (Phases 1-12 implemented)  
 **Status:** See project_specification.md for functional requirements

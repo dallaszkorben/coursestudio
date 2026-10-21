@@ -322,11 +322,11 @@ class TrackpointListWidget(QWidget):
         
         # Prune Points button - removes trackpoints closer than configured minimum distance
         # Algorithm: iterates through track, removes points closer than threshold while maintaining geographic spacing
-        # User can configure minimum distance in settings.yaml under performance.trackpoint_optimization.min_distance_m
+        # User can configure minimum distance in settings.yaml under performance.prune_points.min_distance_m
         self.prune_points_button = QPushButton("Prune Points")
         self.prune_points_button.setToolTip(
             "Remove trackpoints closer than configured minimum distance\n"
-            "(See settings.yaml: trackpoint_optimization.min_distance_m)"
+            "(See settings.yaml: prune_points.min_distance_m)"
         )
         # Add colored icon - scissors/prune icon in green
         self.prune_points_button.setIcon(self._create_prune_icon())

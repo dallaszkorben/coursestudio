@@ -14,8 +14,8 @@ appearance:
         color: E97F49
         width: 5
       outline:
-        color: '000676'
-        width: 2
+        color: '000000'
+        width: 1
       colors:
         Red: FF0000
         Deep Pink: FF1493
@@ -73,22 +73,43 @@ appearance:
         Medium Blue: 0000CD
         Dark Blue: 00008B
         Navy: 000080
+      GeneralPoints:
+        body:
+          color: FFFF00
+          size: 4
+        outline:
+          color: FFFFFF
+          size: 1
+      SelectedPoints:
+        body:
+          color: FF69B4
+          size: 8
+        outline:
+          color: FFFFFF
+          size: 1
+      DoubleSelectedPoints:
+        body:
+          color: FF00FF
+          size: 8
+        outline:
+          color: FFFFFF
+          size: 1
     turning_points:
       show: false
     crosshair:
-      show: true
+      enabled: true
       body:
-        color: FF0000
+        color: '499736'
+        size: 28
       outline:
-        color: FFFFFF
+        color: 6505FF
         width: 1
-      size: 20
   tiles:
     recent_mbtiles: /home/akoel/Projects/boat/general/Code/CourseStudio/mbtiles/OSM-OpenCPN2-Baltic.mbtiles
-    recent_zoom: 14
+    recent_zoom: 16
     recent_center:
-      lat: 56.16724673516829
-      lon: 15.598633289337158
+      lat: 56.16816664315776
+      lon: 15.594792366027832
     default_zoom: 16
     default_center:
       lat: 56.16816664315776
@@ -123,8 +144,8 @@ performance:
     max_history_memory_mb: 500
   rendering:
     map_render_timer_ms: 100
-  trackpoint_optimization:
-    min_distance_m: 50
+  prune_points:
+    min_distance_m: 200
 advanced:
   debugging:
     log_level: INFO

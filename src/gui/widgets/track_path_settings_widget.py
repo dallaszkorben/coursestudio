@@ -162,15 +162,19 @@ class TrackPathSettingsWidget(QWidget):
     
     def apply_to_config(self):
         """Apply current settings to configuration."""
-        body_color = self.body_color_picker.get_color_hex()
+        body_color = self.body_color_picker.get_color()
         body_width = self.body_width_slider.get_value()
-        outline_color = self.outline_color_picker.get_color_hex()
+        outline_color = self.outline_color_picker.get_color()
         outline_width = self.outline_width_slider.get_value()
         
-        self.config.set_str('appearance.map_display.track_path.body.color', body_color)
-        self.config.set_int('appearance.map_display.track_path.body.width', body_width)
-        self.config.set_str('appearance.map_display.track_path.outline.color', outline_color)
-        self.config.set_int('appearance.map_display.track_path.outline.width', outline_width)
+        logger.info(f"TrackPathSettingsWidget.apply_to_config: "
+                   f"body_color={body_color}, body_width={body_width}, "
+                   f"outline_color={outline_color}, outline_width={outline_width}")
+        
+        self.config.set('appearance.map_display.track_path.body.color', body_color)
+        self.config.set('appearance.map_display.track_path.body.width', body_width)
+        self.config.set('appearance.map_display.track_path.outline.color', outline_color)
+        self.config.set('appearance.map_display.track_path.outline.width', outline_width)
     
     def save_to_file(self) -> bool:
         """Save settings to file."""
