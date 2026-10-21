@@ -24,7 +24,7 @@ import gpxpy.gpx
 
 from PyQt5.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
-    QStatusBar, QMenu, QAction, QFileDialog, QMessageBox, QDialog, QSplitter, QLabel
+    QStatusBar, QMenu, QAction, QFileDialog, QMessageBox, QDialog, QSplitter, QLabel, QStyle
 )
 from PyQt5.QtGui import QIcon, QKeySequence
 from PyQt5.QtCore import Qt, QSize, pyqtSignal, QTimer
@@ -299,6 +299,8 @@ class MainWindow(QMainWindow):
         open_action.setStatusTip('Open a GPX file')
         open_action.triggered.connect(self.action_open_file)
         open_action.setEnabled(False)  # Disabled until mbtiles is loaded
+        # Add standard icon for Open
+        open_action.setIcon(self.style().standardIcon(QStyle.SP_DirOpenIcon))
         file_menu.addAction(open_action)
         self.open_file_action = open_action
         
@@ -313,20 +315,24 @@ class MainWindow(QMainWindow):
         file_menu.addSeparator()
         
         # File > Save
-        save_action = QAction('&Save', self)
+        save_action = QAction('&Save GPX', self)
         save_action.setShortcut(QKeySequence.Save)
-        save_action.setStatusTip('Save current file')
+        save_action.setStatusTip('Save current GPX file')
         save_action.triggered.connect(self.action_save_file)
         save_action.setEnabled(False)  # Disabled until file is opened
+        # Add standard icon for Save (disk/save icon)
+        save_action.setIcon(self.style().standardIcon(QStyle.SP_DriveFDIcon))
         file_menu.addAction(save_action)
         self.save_action = save_action
         
         # File > Save As
-        save_as_action = QAction('Save &As...', self)
+        save_as_action = QAction('Save GPX &As...', self)
         save_as_action.setShortcut(QKeySequence.SaveAs)
-        save_as_action.setStatusTip('Save current file with new name')
+        save_as_action.setStatusTip('Save current GPX file with new name')
         save_as_action.triggered.connect(self.action_save_file_as)
         save_as_action.setEnabled(False)  # Disabled until file is opened
+        # Add standard icon for Save As
+        save_as_action.setIcon(self.style().standardIcon(QStyle.SP_FileDialogDetailedView))
         file_menu.addAction(save_as_action)
         self.save_as_action = save_as_action
         
@@ -550,6 +556,7 @@ class MainWindow(QMainWindow):
         self.trackpoint_list_widget.show_points_combo.currentIndexChanged.connect(
             self._on_show_points_dropdown_changed
         )
+        self.trackpoint_list_widget.prune_points_requested.connect(self._on_prune_points_requested)
         
         # Connect map signals
         self.map_widget.map_ready.connect(self._on_map_ready)
@@ -1997,8 +2004,106 @@ A PyQt5 application for reading, editing, and exporting GPX navigation tracks.
         
         msg = f"Coordinate format: {coord_format.upper()}"
         self.statusBar().showMessage(msg, 2000)
+    
+    def _on_prune_points_requested(self, track_index: int):
+        """
+        Handle Prune Points button click from trackpoint list widget.
         
-        logger.debug(f"Coordinate format changed to: {coord_format}")
+        Runs pruning in a background thread to keep UI responsive.
+        Shows progress dialog that updates in real-time.
+        
+        Flow:
+        1. Create progress dialog and worker thread
+        2. Connect signals between worker and dialog
+        3. Start worker in background
+        4. Dialog updates as worker emits progress signals
+        5. When worker finishes, update UI and close dialog
+        
+        Args:
+            track_index (int): Index of track to prune (from signal)
+        """
+        # Validate track index
+        if track_index < 0:
+            logger.warning("No track selected for pruning")
+            return
+        
+        # Get minimum distance from configuration
+        min_distance_m = self.config.get_int('performance.trackpoint_optimization.min_distance_m', 50)
+        
+        # Get track object for display purposes
+        track = self.track_manager.get_track_by_index(track_index)
+        if not track:
+            logger.error(f"Could not get track {track_index}")
+            return
+        
+        logger.info(f"Starting prune for track '{track.name}' with min_distance={min_distance_m}m")
+        
+        try:
+            # Import progress dialog and worker
+            from src.gui.dialogs.prune_progress_dialog import PruneProgressDialog
+            from src.core.prune_worker import PruneWorker
+            
+            # Create progress dialog
+            progress_dialog = PruneProgressDialog(parent=self)
+            progress_dialog.start_pruning(len(track.trackpoints))
+            
+            # Create worker thread
+            self.prune_worker = PruneWorker(self.track_manager, track_index, min_distance_m)
+            
+            # Connect worker signals to dialog
+            self.prune_worker.progress.connect(lambda p, r, k: progress_dialog.update_progress(p, r, k))
+            self.prune_worker.finished.connect(lambda removed: self._on_prune_finished(removed, progress_dialog, track_index, track.name, min_distance_m))
+            self.prune_worker.error.connect(lambda err: self._on_prune_error(err, progress_dialog))
+            self.prune_worker.cancelled.connect(lambda: progress_dialog.finish_cancelled())
+            
+            # Connect cancel button to worker
+            def on_cancel():
+                progress_dialog.cancel_button.setEnabled(False)
+                self.prune_worker.cancel()
+            progress_dialog.cancel_button.clicked.connect(on_cancel)
+            
+            # Show dialog
+            progress_dialog.show()
+            
+            # Start worker in background thread
+            self.prune_worker.start()
+        
+        except Exception as e:
+            logger.error(f"Error starting prune: {e}", exc_info=True)
+            self.statusBar().showMessage(f"Error starting prune: {e}", 5000)
+    
+    def _on_prune_finished(self, removed_count, progress_dialog, track_index, track_name, min_distance_m):
+        """Handle prune completion."""
+        progress_dialog.finish_success(removed_count)
+        
+        if removed_count > 0:
+            # Update UI to show changes
+            # Update track list to show updated distance and point count
+            self.track_list_widget.update_track_info(track_index)
+            # Refresh trackpoint list widget to show updated trackpoints
+            self.trackpoint_list_widget.refresh_trackpoints()
+            # Re-render map to show updated track without removed points
+            self.map_widget.render_map()
+            
+            # Show success message to user
+            msg = f"Pruned {removed_count} point(s) from '{track_name}' (min_distance={min_distance_m}m)"
+            self.statusBar().showMessage(msg, 5000)
+            logger.info(msg)
+        else:
+            # No points were close enough to remove
+            msg = f"No points pruned from '{track_name}' (all points farther than {min_distance_m}m)"
+            self.statusBar().showMessage(msg, 5000)
+            logger.info(msg)
+        
+        # Schedule dialog to close after 2 seconds
+        from PyQt5.QtCore import QTimer
+        QTimer.singleShot(2000, progress_dialog.close)
+    
+    def _on_prune_error(self, error_msg, progress_dialog):
+        """Handle prune error."""
+        progress_dialog.finish_error(error_msg)
+        logger.error(f"Prune error: {error_msg}")
+        self.statusBar().showMessage(f"Prune error: {error_msg}", 5000)
     
     def _on_map_ready(self):
         """Handle map ready signal."""

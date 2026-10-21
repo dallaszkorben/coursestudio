@@ -1387,6 +1387,160 @@ class TrackManager:
         
         cmd = MoveTrackpointCommand(self, track_index, point_index, latitude, longitude, altitude)
         return self.history.execute(cmd)
+    
+    def prune_trackpoints_by_distance(self, track_index: int, min_distance_m: float, progress_dialog=None, progress_callback=None, cancel_check=None) -> int:
+        """
+        Prune trackpoints that are closer than minimum distance.
+        
+        This implements the deduplication algorithm to remove 'close' trackpoints
+        while maintaining proper geographic spacing and track quality.
+        
+        ALGORITHM OVERVIEW:
+        ==================
+        The algorithm removes trackpoints that are too close together, effectively
+        reducing redundant data while keeping meaningful waypoints. It works as follows:
+        
+        1. Start with first trackpoint as 'reference_point'
+        2. Check distance from reference to 'next_point'
+        3. If distance < threshold:
+           - Remove the next_point (it's too close)
+           - Keep reference_point unchanged (cumulative distance to next-next point)
+           - Accumulate distance (will add to distance of next-next point)
+        4. If distance >= threshold:
+           - Keep the next_point (it's far enough)
+           - Make next_point the new reference_point
+           - Reset accumulated distance to 0
+        5. Repeat until reference_point is second-to-last point
+        
+        EXAMPLE:
+        ========
+        Track: P1 --5m-- P2 --15m-- P3 --30m-- P4  (min_distance=50m)
+        
+        Step 1: ref=P1, next=P2, dist=5m < 50m → Remove P2, ref stays P1
+        Step 2: ref=P1, next=P3, dist=5+15=20m < 50m → Remove P3, ref stays P1
+        Step 3: ref=P1, next=P4, dist=20+30=50m >= 50m → Keep P4, ref=P4
+        Result: P1 --50m-- P4
+        
+        Args:
+            track_index (int): Index of track to prune
+            min_distance_m (float): Minimum distance in meters between points
+        
+        Returns:
+            int: Number of points removed
+        
+        Raises:
+            IndexError: If track_index is invalid
+        
+        Side Effects:
+            - Modifies track.trackpoints list (removes items)
+            - Updates track.distance_km (recalculates from updated trackpoints)
+            - Sets track.is_dirty = True (marks file as modified)
+        """
+        # Validate track index
+        if not 0 <= track_index < len(self.tracks):
+            raise IndexError(f"Invalid track index: {track_index}")
+        
+        track = self.tracks[track_index]
+        
+        # Short circuit for tracks with <= 2 points (can't prune, need at least 2 points)
+        if len(track.trackpoints) <= 2:
+            logger.info(f"Track '{track.name}' has {len(track.trackpoints)} points, no pruning needed")
+            return 0
+        
+        # Import distance calculation function
+        from src.track_editor.core.calculator import haversine_distance
+        
+        logger.info(f"Starting prune for track '{track.name}' with min_distance={min_distance_m}m")
+        logger.debug(f"Initial trackpoints: {len(track.trackpoints)}")
+        
+        # Build new trackpoint list by iterating through original
+        # This is cleaner than tracking indices to delete
+        new_trackpoints = []
+        reference_point = track.trackpoints[0]  # Start with first point
+        new_trackpoints.append(reference_point)
+        cumulative_distance = 0.0
+        
+        # Log initial state
+        logger.info(f"Point 0 (REFERENCE): P0")
+        logger.debug(f"  Coordinates: ({reference_point.latitude:.6f}, {reference_point.longitude:.6f})")
+        
+        # Log all trackpoint coordinates for debugging
+        logger.debug(f"\n=== ALL TRACKPOINT COORDINATES ===")
+        for idx, pt in enumerate(track.trackpoints):
+            logger.debug(f"  P{idx}: ({pt.latitude:.6f}, {pt.longitude:.6f})")
+        logger.debug(f"=== END COORDINATES ===\n")
+        
+        # Iterate through remaining points
+        for i in range(1, len(track.trackpoints)):
+            # Check if cancellation requested
+            if cancel_check and cancel_check():
+                logger.info(f"Pruning cancelled by user at point {i}/{len(track.trackpoints)}")
+                return 0  # Return 0 to indicate cancellation (no changes made)
+            
+            # Update progress dialog if provided
+            if progress_dialog and progress_dialog.is_cancelled():
+                logger.info(f"Pruning cancelled by user at point {i}/{len(track.trackpoints)}")
+                return 0  # Return 0 to indicate cancellation (no changes made)
+            
+            current_point = track.trackpoints[i]
+            
+            # Calculate distance from reference to current point
+            dist = haversine_distance(
+                reference_point.latitude, reference_point.longitude,
+                current_point.latitude, current_point.longitude
+            ) * 1000  # Convert kilometers to meters
+            
+            cumulative_distance += dist
+            
+            # Log segment distance clearly
+            logger.info(f"  P{i}: segment_distance={dist:.1f}m, cumulative={cumulative_distance:.1f}m")
+            logger.debug(f"    Ref P({reference_point.latitude:.6f}, {reference_point.longitude:.6f}) → "
+                        f"Curr P({current_point.latitude:.6f}, {current_point.longitude:.6f})")
+            
+            # Update progress via callback if provided
+            if progress_callback:
+                progress_callback(i, len(new_trackpoints) - 1, i - (len(new_trackpoints) - 1))
+            
+            # Update progress dialog if provided
+            if progress_dialog:
+                progress_dialog.update_progress(i, len(new_trackpoints) - 1, i - (len(new_trackpoints) - 1))
+            
+            # Determine if this is the last point
+            is_last_point = (i == len(track.trackpoints) - 1)
+            
+            if cumulative_distance < min_distance_m:
+                # Too close - skip this point but keep accumulating distance
+                logger.debug(
+                    f"    → REMOVE P{i}: cumulative={cumulative_distance:.1f}m < threshold={min_distance_m}m"
+                )
+                # Don't add to new_trackpoints
+                # Keep cumulative_distance and reference_point unchanged
+                # Continue to accumulate distance to next point
+            else:
+                # Far enough - keep this point and make it new reference
+                logger.debug(
+                    f"    → KEEP P{i}: cumulative={cumulative_distance:.1f}m >= threshold={min_distance_m}m"
+                )
+                new_trackpoints.append(current_point)
+                reference_point = current_point  # New reference
+                logger.info(f"Point {i} (NEW REFERENCE): P{i}")
+                cumulative_distance = 0.0  # Reset distance counter
+        # Replace trackpoints with pruned list
+        original_count = len(track.trackpoints)
+        track.trackpoints = new_trackpoints
+        removed_count = original_count - len(new_trackpoints)
+        
+        logger.debug(f"Kept {len(new_trackpoints)} points out of {original_count}")
+        if removed_count > 0:
+            # Recalculate track statistics (distance, etc.) with new trackpoints
+            self.recalculate_distance(track_index)
+            logger.info(f"✅ Pruned {removed_count} points from track '{track.name}' "
+                       f"({len(track.trackpoints)} points remain)")
+        else:
+            logger.info(f"✅ No points pruned from track '{track.name}' "
+                       f"(all {len(track.trackpoints)} points farther than {min_distance_m}m)")
+        
+        return removed_count
 
     def remove_trackpoint_with_history(self, track_index: int, point_index: int) -> bool:
         """

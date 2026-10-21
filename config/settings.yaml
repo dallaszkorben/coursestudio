@@ -85,10 +85,10 @@ appearance:
       size: 20
   tiles:
     recent_mbtiles: /home/akoel/Projects/boat/general/Code/CourseStudio/mbtiles/OSM-OpenCPN2-Baltic.mbtiles
-    recent_zoom: 11
+    recent_zoom: 14
     recent_center:
-      lat: 56.1779915582819
-      lon: 15.706822872161865
+      lat: 56.16724673516829
+      lon: 15.598633289337158
     default_zoom: 16
     default_center:
       lat: 56.16816664315776
@@ -123,6 +123,8 @@ performance:
     max_history_memory_mb: 500
   rendering:
     map_render_timer_ms: 100
+  trackpoint_optimization:
+    min_distance_m: 50
 advanced:
   debugging:
     log_level: INFO
@@ -145,3 +147,6 @@ internal_state:
 map:
   last_state:
     show_turning_points: true
+Coordinates:
+  last_state:
+    format: dms

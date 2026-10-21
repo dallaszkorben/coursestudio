@@ -85,7 +85,7 @@ class TrackEditorTabHandler:
         right_splitter = QSplitter(Qt.Vertical)
         
         # Trackpoint List Widget (top)
-        self.trackpoint_list_widget = TrackpointListWidget(self.track_manager, None)
+        self.trackpoint_list_widget = TrackpointListWidget(self.track_manager, None, self.track_list_widget)
         self.trackpoint_list_widget.setMinimumHeight(50)
         self.trackpoint_list_widget.setMinimumWidth(1)  # Allow horizontal shrinking
         self.trackpoint_list_widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)

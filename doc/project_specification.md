@@ -167,6 +167,82 @@ Two methods:
 - Update track summary in list view
 - Refresh map visualization
 
+#### 2.5.7 Prune Trackpoints by Distance
+**Requirement:** Remove trackpoints that are closer than configured minimum distance
+
+**Purpose:**
+Remove redundant 'close' trackpoints from tracks while maintaining proper geographic spacing. 
+Useful for cleaning up dense GPS recordings or merging multiple track segments with excessive detail.
+
+**Algorithm:**
+The pruning algorithm uses a reference-point approach:
+1. Start with first trackpoint as 'reference_point'
+2. Calculate cumulative distance to next trackpoint
+3. If distance < minimum threshold:
+   - Remove the next trackpoint (too close)
+   - Keep reference unchanged
+   - Accumulate distance to next-next point
+4. If distance >= minimum threshold:
+   - Keep the next trackpoint
+   - Make it new reference_point
+   - Reset accumulated distance
+5. Stop when reference is second-to-last point (preserve end point)
+
+**Configuration:**
+- Setting: `performance.trackpoint_optimization.min_distance_m` (default: 50 meters)
+- User can modify in `config/settings.yaml`
+- Applied per-track when user clicks button
+
+**UI:**
+- Button: "Prune Points" (next to "Clear Selection" in TrackEditor tab)
+- Available only when a track is selected
+- Shows progress dialog during pruning with:
+  - Real-time progress bar (points processed / total points)
+  - Statistics: removed count, kept count, processed count
+  - Status messages showing progress
+  - Cancel button to stop pruning (changes are not reverted)
+- Results shown in status bar: "Pruned X point(s)" or "No points pruned"
+- Dialog auto-closes after 2 seconds on success
+
+**Implementation:**
+- Runs in background thread (PruneWorker) to keep UI responsive
+- Uses progress callbacks for real-time updates
+- Supports cancellation via `worker.cancel()`
+- Updates track list, trackpoint list, and map after completion
+- Marks track as dirty (unsaved changes)
+
+**Icons:**
+- Button icon: Blue circle with slash (clear/deselect concept)
+- Indicates removal/filtering of trackpoints
+
+**Example:**
+```
+Track: P1 --5m-- P2 --15m-- P3 --30m-- P4 (min_distance=50m)
+
+Step 1: ref=P1, next=P2, dist=5m < 50m    → Remove P2
+Step 2: ref=P1, next=P3, dist=20m < 50m   → Remove P3
+Step 3: ref=P1, next=P4, dist=50m >= 50m  → Keep P4, ref=P4
+Result: P1 --50m-- P4
+```
+
+**Distance Calculation:**
+- Uses Haversine formula for accurate great-circle distance
+- Handles Earth's curvature correctly
+- Results in meters
+
+**Side Effects:**
+- Modifies track.trackpoints list
+- Recalculates track.distance_km
+- Updates track list display (distance and point count)
+- Marks track as dirty (unsaved changes)
+- Does NOT support undo/redo (changes are permanent)
+
+**Constraints:**
+- Requires minimum 3 trackpoints (can't prune if only 2 remain)
+- Always preserves first and last trackpoints
+- Cannot remove end point
+- Cancellation stops pruning but keeps changes made so far
+
 ---
 
 ### 2.6 Undo/Redo System

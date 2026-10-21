@@ -180,6 +180,8 @@ class TrackpointListWidget(QWidget):
     point_double_clicked = pyqtSignal(int)  # Emitted with point index
     coordinate_format_changed = pyqtSignal(str)  # Emitted with new format
     history_changed = pyqtSignal()  # Emitted when history changes (undo/redo available)
+    prune_points_requested = pyqtSignal(int)  # Emitted with track index when "Prune Points" button clicked
+                                             # Signal carries the track index so handler knows which track to prune
     
     # Column indices
     COL_INDEX = 0
@@ -188,13 +190,14 @@ class TrackpointListWidget(QWidget):
     COL_ELEVATION = 3
     COL_TIMESTAMP = 4
     
-    def __init__(self, track_manager: TrackManager, map_widget=None):
+    def __init__(self, track_manager: TrackManager, map_widget=None, track_list_widget=None):
         """
         Initialize Trackpoint List Widget.
         
         Args:
             track_manager (TrackManager): Reference to track manager
             map_widget (MapWidget): Reference to map widget (optional)
+            track_list_widget (TrackListWidget): Reference to track list widget (optional)
         
         Example:
         manager = TrackManager()
@@ -205,6 +208,7 @@ class TrackpointListWidget(QWidget):
         
         self.track_manager = track_manager
         self.map_widget = map_widget
+        self.track_list_widget = track_list_widget
         self.current_track_index = -1
         self.current_selection = -1
         self._updating_from_map = False  # Flag to prevent feedback loops
@@ -311,11 +315,97 @@ class TrackpointListWidget(QWidget):
         
         self.clear_button = QPushButton("Clear Selection")
         self.clear_button.setToolTip("Clear current selection")
+        # Add colored icon - clear/reset icon in blue
+        self.clear_button.setIcon(self._create_clear_icon())
+        self.clear_button.setEnabled(False)  # Disabled until track selected
         button_layout.addWidget(self.clear_button)
+        
+        # Prune Points button - removes trackpoints closer than configured minimum distance
+        # Algorithm: iterates through track, removes points closer than threshold while maintaining geographic spacing
+        # User can configure minimum distance in settings.yaml under performance.trackpoint_optimization.min_distance_m
+        self.prune_points_button = QPushButton("Prune Points")
+        self.prune_points_button.setToolTip(
+            "Remove trackpoints closer than configured minimum distance\n"
+            "(See settings.yaml: trackpoint_optimization.min_distance_m)"
+        )
+        # Add colored icon - scissors/prune icon in green
+        self.prune_points_button.setIcon(self._create_prune_icon())
+        self.prune_points_button.setEnabled(False)  # Disabled until track selected
+        button_layout.addWidget(self.prune_points_button)
         
         button_layout.addStretch()
         
         main_layout.addLayout(button_layout)
+    
+    def _create_clear_icon(self):
+        """Create a clear selection icon - shows points being deselected."""
+        from PyQt5.QtGui import QIcon, QPixmap, QPainter, QColor, QPen
+        from PyQt5.QtCore import Qt
+        
+        pixmap = QPixmap(24, 24)
+        pixmap.fill(QColor(0, 0, 0, 0))  # Transparent background
+        
+        painter = QPainter(pixmap)
+        painter.setRenderHint(QPainter.Antialiasing)
+        
+        # Draw 3 points (dots) to represent trackpoints
+        painter.setBrush(QColor(230, 230, 230))  # Light gray - unselected
+        painter.setPen(QColor(180, 180, 180))
+        painter.drawEllipse(3, 4, 4, 4)
+        painter.drawEllipse(10, 4, 4, 4)
+        painter.drawEllipse(17, 4, 4, 4)
+        
+        # Draw a slash through them to show clearing
+        pen = QPen(QColor(231, 76, 60))  # Red - indicates removal
+        pen.setWidth(2)
+        pen.setCapStyle(Qt.RoundCap)
+        painter.setPen(pen)
+        painter.drawLine(2, 18, 22, 6)
+        
+        painter.end()
+        return QIcon(pixmap)
+    
+    def _create_prune_icon(self):
+        """Create a prune icon - shows points being removed/filtered."""
+        from PyQt5.QtGui import QIcon, QPixmap, QPainter, QColor, QPen
+        from PyQt5.QtCore import Qt
+        
+        pixmap = QPixmap(24, 24)
+        pixmap.fill(QColor(0, 0, 0, 0))  # Transparent background
+        
+        painter = QPainter(pixmap)
+        painter.setRenderHint(QPainter.Antialiasing)
+        
+        # Draw a track line with points
+        pen = QPen(QColor(52, 73, 94))  # Dark blue - track
+        pen.setWidth(2)
+        painter.setPen(pen)
+        
+        # Draw track path
+        painter.drawLine(3, 18, 8, 12)
+        painter.drawLine(8, 12, 13, 8)
+        painter.drawLine(13, 8, 18, 15)
+        
+        # Draw 4 points on the track
+        painter.setBrush(QColor(46, 204, 113))  # Green - kept points
+        painter.setPen(QColor(39, 174, 96))
+        painter.drawEllipse(2, 17, 3, 3)   # Start point
+        painter.drawEllipse(7, 11, 3, 3)   # Kept point
+        painter.drawEllipse(12, 7, 3, 3)   # Kept point
+        painter.drawEllipse(17, 14, 3, 3)  # End point
+        
+        # Draw X marks on removed points (faded/crossed out)
+        painter.setBrush(QColor(0, 0, 0, 0))  # Transparent
+        pen = QPen(QColor(231, 76, 60))  # Red - removed points
+        pen.setWidth(1)  # Must be int, not float
+        pen.setCapStyle(Qt.RoundCap)
+        painter.setPen(pen)
+        painter.drawEllipse(9, 13, 5, 5)   # Ghost removed point 1
+        painter.drawLine(9, 13, 14, 18)
+        painter.drawLine(14, 13, 9, 18)
+        
+        painter.end()
+        return QIcon(pixmap)
     
     def _connect_signals(self):
         """Connect internal signals."""
@@ -336,6 +426,8 @@ class TrackpointListWidget(QWidget):
         
         # Button signals
         self.clear_button.clicked.connect(self.clear_selection)
+        # Connect Prune Points button to handler that will execute the pruning algorithm
+        self.prune_points_button.clicked.connect(self._on_prune_points_clicked)
     
     # ========================================================================
     # Track Management
@@ -366,11 +458,13 @@ class TrackpointListWidget(QWidget):
             self.current_track_index = -1
             self.table_widget.setRowCount(0)  # Clear the table
             logger.debug("Trackpoint list cleared (no track selected)")
+            self._update_button_states()  # Disable buttons when no track selected
             return True
         
         track = self.track_manager.get_track_by_index(track_index)
         if not track:
             logger.warning(f"Invalid track index: {track_index}")
+            self._update_button_states()  # Disable buttons if selection fails
             return False
         
         self.current_track_index = track_index
@@ -380,7 +474,32 @@ class TrackpointListWidget(QWidget):
         # This was missing before, causing trackpoints to only appear after manual refresh
         self.refresh_trackpoints()
         
+        # Enable buttons now that a track is selected
+        self._update_button_states()
+        
         return True
+    
+    def _update_button_states(self):
+        """
+        Update enable/disable state of action buttons based on track selection.
+        
+        Buttons are enabled only when a track is selected:
+        - Clear Selection: Allows user to deselect trackpoints
+        - Prune Points: Requires a track to operate on
+        
+        When no track selected:
+        - Both buttons disabled (grayed out, no action)
+        """
+        has_track = self.current_track_index >= 0
+        
+        # Enable/disable based on track selection
+        if hasattr(self, 'clear_button'):
+            self.clear_button.setEnabled(has_track)
+        if hasattr(self, 'prune_points_button'):
+            self.prune_points_button.setEnabled(has_track)
+        
+        logger.debug(f"Button states updated: track_selected={has_track}, "
+                    f"clear_enabled={has_track}, prune_enabled={has_track}")
     
     def get_current_track_index(self) -> int:
         """Get currently displayed track index."""
@@ -622,6 +741,34 @@ class TrackpointListWidget(QWidget):
             main_window.map_widget.render_map()
         
         logger.debug("Point selection cleared")
+    
+    def _on_prune_points_clicked(self):
+        """
+        Handle Prune Points button click.
+        
+        This method is called when user clicks the "Prune Points" button.
+        It validates that a track is selected and then emits the prune_points_requested signal
+        with the track index, which is handled by main_window.py
+        
+        The signal is used instead of direct call to allow:
+        - Separation of concerns (GUI layer vs business logic)
+        - Better testability
+        - Proper signal/slot connection pattern in PyQt
+        
+        Flow:
+            1. User clicks "Prune Points" button
+            2. This method is called (slot)
+            3. We check if a track is selected (current_track_index >= 0)
+            4. If valid, emit signal with track index
+            5. MainWindow handles it and calls TrackManager.prune_trackpoints_by_distance()
+        """
+        if self.current_track_index < 0:
+            logger.warning("No track selected for pruning")
+            return
+        
+        logger.info(f"Prune Points requested for track {self.current_track_index}")
+        # Emit signal - MainWindow will catch this and execute the actual pruning
+        self.prune_points_requested.emit(self.current_track_index)
     
     # ========================================================================
     # Signal Handlers
@@ -989,9 +1136,11 @@ class TrackpointListWidget(QWidget):
             self.table_widget.itemSelectionChanged.connect(self._on_selection_changed)
             
             # Update track info in track list (distance and point count)
-            main_window = QApplication.instance().activeWindow()
-            if main_window and hasattr(main_window, 'track_list_widget'):
-                main_window.track_list_widget.update_track_info(self.current_track_index)
+            if self.track_list_widget:
+                logger.info(f"Updating track list info for track {self.current_track_index}")
+                self.track_list_widget.update_track_info(self.current_track_index)
+            else:
+                logger.warning(f"track_list_widget not set, cannot update track list")
             
             # Re-render map
             if self.map_widget:

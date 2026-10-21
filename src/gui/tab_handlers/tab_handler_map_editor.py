@@ -623,9 +623,17 @@ class MapEditorTabHandler:
             processor = TileProcessor(self.mbtiles_reader, self.current_mbtiles_path)
             logger.info("🟢 Created TileProcessor")
             
-            # Create progress dialog
-            progress_dialog = ZoomGenerationProgressDialog(parent=self.widget)
-            logger.info("🟢 Created progress dialog")
+            # Create progress dialog with target_zoom and total tiles
+            progress_dialog = ZoomGenerationProgressDialog(
+                parent=self.widget,
+                target_zoom=target_zoom,
+                total_tiles=plan.tile_count
+            )
+            logger.info(f"🟢 Created progress dialog for Z{target_zoom} ({plan.tile_count:,} tiles)")
+            
+            # ⚠️ Start tracking generation (initializes start_time for speed/remaining calculations)
+            progress_dialog.start_generation(target_zoom, plan.tile_count)
+            logger.info(f"🟢 Started progress tracking for Z{target_zoom}")
             
             # Create worker and thread
             worker = ZoomGenerationWorker(processor, plan, target_zoom)
@@ -641,6 +649,19 @@ class MapEditorTabHandler:
             
             logger.info("🟢 Connected worker signals to progress dialog")
             
+            # ⚠️ CRITICAL FIX (2026-10-21): Monitor cancellation and propagate to worker
+            # Problem: When user clicks Cancel button in progress dialog, worker doesn't know
+            # and keeps running, ignoring the cancellation. Result: "Cache evicted" logs forever.
+            # Solution: Use a timer to check if dialog was cancelled and call worker.cancel()
+            from PyQt5.QtCore import QTimer
+            cancel_monitor = QTimer()
+            def check_cancellation():
+                if progress_dialog.is_cancelled():
+                    logger.warning(f"⚠️ Cancellation detected for Z{target_zoom}, stopping worker...")
+                    worker.cancel()  # Tell worker to stop immediately
+                    cancel_monitor.stop()
+            cancel_monitor.timeout.connect(check_cancellation)
+            
             # Connect thread
             thread.started.connect(worker.run)
             
@@ -648,10 +669,15 @@ class MapEditorTabHandler:
             self.zoom_generation_thread = thread
             self.zoom_generation_worker = worker
             self.zoom_progress_dialog = progress_dialog
+            self.cancel_monitor = cancel_monitor
             
             # Start thread
             thread.start()
             logger.info(f"🟢 Started generation thread for Z{target_zoom}")
+            
+            # Start cancellation monitor (check every 500ms if user clicked Cancel)
+            cancel_monitor.start(500)
+            logger.info("🟢 Started cancellation monitor")
             
             # Show progress dialog (modal - blocks until generation complete or user cancels)
             progress_dialog.exec_()
@@ -665,6 +691,11 @@ class MapEditorTabHandler:
     def _on_single_zoom_finished(self, thread: 'QThread', progress_dialog, target_zoom: int) -> None:
         """Handle successful single zoom generation completion."""
         logger.info(f"🟢 Z{target_zoom} generation finished successfully")
+        
+        # ⚠️ Stop cancellation monitor
+        if hasattr(self, 'cancel_monitor') and self.cancel_monitor:
+            self.cancel_monitor.stop()
+            logger.debug("Stopped cancellation monitor after successful generation")
         
         # Stop thread
         thread.quit()
@@ -708,6 +739,11 @@ class MapEditorTabHandler:
         """Handle single zoom generation error."""
         logger.error(f"🔴 Error generating Z{target_zoom}: {error_msg}")
         
+        # ⚠️ Stop cancellation monitor
+        if hasattr(self, 'cancel_monitor') and self.cancel_monitor:
+            self.cancel_monitor.stop()
+            logger.debug("Stopped cancellation monitor after error")
+        
         # Stop thread
         thread.quit()
         thread.wait()
@@ -735,6 +771,11 @@ class MapEditorTabHandler:
     def _on_single_zoom_cancelled(self, thread: 'QThread', progress_dialog, target_zoom: int) -> None:
         """Handle single zoom generation cancellation."""
         logger.info(f"🟢 Z{target_zoom} generation cancelled by user")
+        
+        # ⚠️ Stop cancellation monitor
+        if hasattr(self, 'cancel_monitor') and self.cancel_monitor:
+            self.cancel_monitor.stop()
+            logger.debug("Stopped cancellation monitor")
         
         # Stop thread
         thread.quit()

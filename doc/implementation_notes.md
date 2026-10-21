@@ -355,3 +355,106 @@ Critical reading for understanding non-obvious system gotchas and preventing reg
 **Last Updated:** 2026-10-20  
 **Current Phase:** Complete (Phases 1-11 implemented)  
 **Status:** See project_specification.md for functional requirements
+
+
+### [2026-10-21] Background Thread Workers for UI-Blocking Operations
+
+**Decision:** Use QThread workers for long-running operations (Prune Points, Zoom Generation)
+
+**Rationale:**
+- Prune algorithm processes 1000+ trackpoints → can block UI for several seconds
+- User expects responsive progress feedback (progress bar, cancel button)
+- Qt's main thread cannot process events while algorithm runs → UI freezes
+- Solution: Move algorithm to background thread, use signals for updates
+
+**Implementation Pattern (PruneWorker):**
+1. Create worker class (extends QObject, not QThread)
+2. Define signals: `progress(processed, removed, kept)`, `finished(count)`, `error(msg)`, `cancelled()`
+3. Move to thread: `worker.moveToThread(thread)`
+4. Connect signals to slots before starting: `worker.progress.connect(dialog.update_progress)`
+5. Start thread: `thread.start()`
+6. Worker runs in separate thread; main thread stays responsive
+7. Progress updates trigger Qt signals → UI updates in main thread
+
+**Key Design Choices:**
+1. Worker receives progress callbacks: `progress_callback(processed, removed, kept)`
+2. Cancellation via flag: `worker.cancel()` sets `_cancel_requested = True`, loop checks it
+3. Dialog stores references: `self.prune_worker = worker` prevents garbage collection
+4. Timer monitors cancellation: Check every 500ms if user clicked Cancel button
+
+**Lessons Learned:**
+- Signals MUST be connected before thread starts (otherwise signals are ignored)
+- Do NOT extend QThread; extend QObject and moveToThread() instead (Qt best practice)
+- Worker methods run in thread context; access to UI only via signals
+- Progress callbacks allow algorithm to remain agnostic of UI (clean separation)
+- Cancel flags checked in loop allow graceful shutdown (no exceptions needed)
+
+---
+
+### [2026-10-21] MBTiles Auto-Save on Zoom Generation
+
+**Decision:** Generated zoom levels are automatically committed to mbtiles file via SQLite transactions
+
+**Rationale:**
+- User generates zoom level Z5 → expects to close app and reopen with Z5 still there
+- Tiles should be persisted atomically (either all written or none, no partial state)
+- Temporary database prevents orphaned incomplete tiles if generation crashes
+
+**Implementation Pattern:**
+1. Zoom generation creates temporary SQLite database (safe location)
+2. Tiles generated to temp database (original mbtiles untouched during generation)
+3. After all tiles complete: `commit_generated_tiles()` runs atomic transaction:
+   - Opens real mbtiles file
+   - `BEGIN TRANSACTION`
+   - `INSERT OR IGNORE` all tiles from temp → real database
+   - Updates metadata: `INSERT OR REPLACE INTO metadata (name='generated_zoom_N', value='true')`
+   - `COMMIT` (all-or-nothing)
+   - Cleanup: delete temp database
+4. If generation cancelled/fails: temp database cleaned up, real mbtiles untouched
+
+**Key Design Choices:**
+1. Atomic transaction ensures consistency (SQLite ACID guarantees)
+2. Temporary database isolation prevents UI from seeing incomplete data
+3. Metadata marking allows knowing which zooms were generated
+4. `INSERT OR IGNORE` prevents duplicate tiles if regenerating same zoom
+
+**Lessons Learned:**
+- SQLite transactions are atomic at database level (crash-safe)
+- Temporary files provide safety without complex state management
+- Metadata table is the authoritative source for generated zoom levels
+- No explicit "Save" needed—persistence happens automatically on completion
+
+---
+
+### [2026-10-21] Track List Update After Point Deletion
+
+**Decision:** Pass track_list_widget reference to TrackpointListWidget to enable direct updates
+
+**Rationale:**
+- When user deletes a trackpoint, track distance changes (18 km → 17.5 km)
+- Track list on left must update to show new distance and point count
+- Attempted `QApplication.activeWindow()` → unreliable (wrong window returned)
+- Solution: Pass direct reference at construction time
+
+**Implementation Pattern:**
+1. TrackpointListWidget constructor accepts: `track_list_widget=None` parameter
+2. Store as instance variable: `self.track_list_widget = track_list_widget`
+3. After trackpoint deletion: `self.track_list_widget.update_track_info(track_index)`
+4. `update_track_info()` gets track from manager and refreshes single row
+
+**Key Design Choices:**
+1. Pass reference at construction (early binding, guaranteed available)
+2. Call `update_track_info()` not `refresh_tracks()` (partial update, faster)
+3. TrackListWidget queried from manager for fresh distance data
+
+**Lessons Learned:**
+- `activeWindow()` unreliable when multiple widgets have focus
+- Direct reference passing is more reliable than dynamic window lookup
+- Single-item update methods faster than full-list refresh
+- UI synchronization requires cross-widget communication (accept as design pattern)
+
+---
+
+**Last Updated:** 2026-10-21  
+**Current Phase:** Complete (Phases 1-12 implemented)  
+**Status:** See project_specification.md for functional requirements
