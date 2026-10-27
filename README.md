@@ -2,19 +2,43 @@
 
 A PyQt5-based desktop application for viewing, editing, and manipulating GPX (GPS Exchange Format) files with interactive map visualization. Designed for marine navigation and track management with support for Garmin GPS devices.
 
-### Screenshots
+## Screenshots & Features by Tab
 
-**Editor Tab - Main Interface**
+### Track Editor Tab - GPS Track Editing
 
-![Editor Tab](wiki/editor-tab-general.jpg)
+![Track Editor Tab](wiki/track-editor-tab-general.jpg)
 
-The main interface showing the track list on the left, trackpoints in the center, and interactive map with pan/zoom controls.
+The main Track Editor interface for GPX file manipulation:
+- **Left Panel:** Track list showing all tracks in the current file with distance and point count
+- **Top-Right Panel:** Trackpoint list with coordinates in DMS or Decimal format, elevation, and timestamps
+- **Bottom-Right Panel:** Interactive map with real-time track visualization, pan/zoom controls, and trackpoint markers
+- Full undo/redo support for all edits
+- Drag trackpoints on the map to reposition them
+- Prune points by minimum distance with progress tracking
 
-**Settings Tab - Appearance Configuration**
+### Map Editor Tab - MBTiles Tile File Editing
 
-![Settings Tab](wiki/setting-tab-appearance-track_path-tab.jpg)
+![Map Editor Tab](wiki/map-editor-tab-general.jpg)
 
-Customize track colors, point sizes, and other visual properties with real-time map updates.
+The Map Editor for managing MBTiles tile files:
+- **Left Panel:** Characteristics panel showing file metadata, available zoom levels, and statistics
+- **Right Panel:** Interactive map viewer for previewing tiles and managing zoom levels
+- Generate missing zoom levels from existing tiles
+- Mark map center and zoom as defaults
+- Pan and zoom the map to explore tile coverage
+- Recenter to marked default position
+
+### Settings Tab - Appearance Configuration
+
+![Settings Tab](wiki/settings-tab-general.jpg)
+
+Customize visual appearance and behavior:
+- **Track Path Settings:** Configure track line color, width, outline color, and outline width
+- **Turning Points Settings:** Customize general, single-selected, and multi-selected trackpoint appearance
+- **Crosshair Settings:** Enable/disable crosshair and customize appearance
+- **Performance Settings:** Configure pruning distance and other performance parameters
+- Real-time map updates as you change settings
+- All settings auto-saved to config file
 
 ## Features
 
@@ -184,31 +208,107 @@ Change format in Trackpoints window using the **Format** dropdown.
 
 ## Architecture
 
-### Directory Structure
+### Directory Structure (Feature-Based Organization)
 
 ```
 CourseStudio/
 ├── src/
 │   ├── main.py                    # Application entry point
-│   ├── core/
-│   │   ├── track_manager.py       # GPX data management
-│   │   ├── gpx_handler.py         # GPX parsing
-│   │   └── calculator.py          # Distance/math utilities
-│   ├── gui/
+│   ├── features/                  # Feature-based modules
+│   │   ├── track_editor/          # Track editing feature
+│   │   │   ├── core/
+│   │   │   │   ├── track_manager.py
+│   │   │   │   ├── gpx_handler.py
+│   │   │   │   ├── calculator.py
+│   │   │   │   ├── command_history.py
+│   │   │   │   └── __init__.py
+│   │   │   ├── ui/
+│   │   │   │   ├── widgets/
+│   │   │   │   │   ├── map_widget.py
+│   │   │   │   │   ├── track_list_widget.py
+│   │   │   │   │   ├── trackpoint_list_widget.py
+│   │   │   │   │   └── __init__.py
+│   │   │   │   ├── dialogs/
+│   │   │   │   │   ├── add_trackpoint_dialog.py
+│   │   │   │   │   └── __init__.py
+│   │   │   │   └── __init__.py
+│   │   │   └── __init__.py
+│   │   ├── map_editor/            # Map tile editing feature
+│   │   │   ├── core/
+│   │   │   │   ├── mbtiles_reader.py
+│   │   │   │   ├── tile_processor.py
+│   │   │   │   ├── zoom_generator.py
+│   │   │   │   └── __init__.py
+│   │   │   ├── ui/
+│   │   │   │   ├── widgets/
+│   │   │   │   │   ├── map_viewer.py
+│   │   │   │   │   ├── characteristics_panel.py
+│   │   │   │   │   └── __init__.py
+│   │   │   │   ├── dialogs/
+│   │   │   │   │   └── __init__.py
+│   │   │   │   └── __init__.py
+│   │   │   └── __init__.py
+│   │   └── settings/              # Settings/configuration feature
+│   │       ├── ui/
+│   │       │   ├── widgets/
+│   │       │   │   ├── settings_widget.py
+│   │       │   │   ├── color_picker_widget.py
+│   │       │   │   ├── crosshair_settings_widget.py
+│   │       │   │   ├── track_path_settings_widget.py
+│   │       │   │   ├── trackpoint_type_settings_widget.py
+│   │       │   │   ├── performance_settings_widget.py
+│   │       │   │   ├── slider_setting_widget.py
+│   │       │   │   ├── toggle_switch_widget.py
+│   │       │   │   ├── turning_points_settings_widget.py
+│   │       │   │   └── __init__.py
+│   │       │   ├── tab_handler_settings.py
+│   │       │   └── __init__.py
+│   │       └── __init__.py
+│   ├── shared/                    # Shared/reusable components
+│   │   ├── core/
+│   │   │   ├── prune_worker.py
+│   │   │   ├── zoom_generation_worker.py
+│   │   │   ├── coordinate_formatter.py
+│   │   │   └── __init__.py
+│   │   ├── map/                   # Shared map utilities
+│   │   │   ├── mbtiles_provider.py
+│   │   │   ├── map_renderer.py
+│   │   │   ├── crosshair_drawer.py
+│   │   │   ├── mbtiles_file_loader.py
+│   │   │   ├── map_buttons.py
+│   │   │   ├── map_button_manager.py
+│   │   │   ├── map_button_widget.py
+│   │   │   ├── tile_server.py
+│   │   │   └── __init__.py
+│   │   ├── ui/                    # Shared UI components
+│   │   │   ├── dialogs/
+│   │   │   │   ├── help_dialog.py
+│   │   │   │   ├── prune_progress_dialog.py
+│   │   │   │   ├── zoom_generation_progress_dialog.py
+│   │   │   │   ├── zoom_selection_dialog.py
+│   │   │   │   └── __init__.py
+│   │   │   ├── widgets/
+│   │   │   │   ├── custom_tab_bar.py
+│   │   │   │   └── __init__.py
+│   │   │   └── __init__.py
+│   │   ├── config/
+│   │   │   ├── crosshair_config.py
+│   │   │   └── __init__.py
+│   │   └── __init__.py
+│   ├── gui/                       # Application shell
 │   │   ├── main_window.py         # Main application window
-│   │   └── widgets/
-│   │       ├── map_widget.py      # Interactive map display
-│   │       ├── track_list_widget.py      # Track list UI
-│   │       └── trackpoint_list_widget.py # Trackpoint list UI
-│   └── map/
-│       ├── map_renderer.py        # Tile rendering
-│       ├── mbtiles_provider.py    # MBTiles data source
-│       └── tile_server.py         # Tile management
+│   │   ├── tab_handlers/          # Tab orchestration layer
+│   │   │   ├── tab_handler_track_editor.py
+│   │   │   ├── tab_handler_map_editor.py
+│   │   │   ├── tab_handler_settings.py
+│   │   │   └── __init__.py
+│   │   └── __init__.py
+│   └── __init__.py
 ├── config/
 │   ├── settings.yaml              # Configuration file (YAML format)
 │   └── app_config_yaml.py         # Config loader for YAML
 ├── mbtiles/
-│   └── Sweden-Raster-Z10-Z16.mbtiles  # Sample tile data
+│   └── (MBTiles tile files)       # Map tile data
 ├── tests/
 │   ├── test_*.py                  # Unit tests
 │   └── gpx/
@@ -222,11 +322,11 @@ CourseStudio/
 │   ├── UI_DEBUGGING_HARD_PROBLEMS.md  # UI debugging guide
 │   ├── TRACKPOINT_OPERATIONS.md   # Trackpoint operations documentation
 │   ├── RECENT_IMPROVEMENTS.md     # Recent improvements and fixes
-│   ├── TODO_LIST.md               # Development TODO list
 │   └── ... (additional documentation files)
 ├── wiki/
-│   ├── editor-tab-general.jpg     # Screenshots of editor tab
-│   └── setting-tab-appearance-track_path-tab.jpg  # Screenshots of settings tab
+│   ├── track-editor-tab-general.jpg     # Track Editor tab screenshot
+│   ├── map-editor-tab-general.jpg       # Map Editor tab screenshot
+│   └── settings-tab-general.jpg         # Settings tab screenshot
 ├── requirements.txt               # Python dependencies
 └── README.md                      # This file
 ```
@@ -236,31 +336,33 @@ CourseStudio/
 **MainWindow** (`src/gui/main_window.py`)
 - Main application window
 - File operations (open, save, close)
-- Signal coordination between widgets
+- Signal coordination between tabs
 - Menu and toolbar management
+- Tab switching coordination
 
-**MapWidget** (`src/gui/widgets/map_widget.py`)
-- Interactive map rendering
-- Pan and zoom handling
-- Track visualization
-- Web Mercator projection for accurate positioning
+**Feature-Specific Classes:**
 
-**TrackManager** (`src/core/track_manager.py`)
-- Load/save GPX files
-- Track and trackpoint management
-- Undo/redo support
-- Distance calculations
+**Track Editor:**
+- **TrackManager** (`src/features/track_editor/core/track_manager.py`) - Load/save GPX files, track management, undo/redo
+- **GPXHandler** (`src/features/track_editor/core/gpx_handler.py`) - GPX file parsing and serialization
+- **MapWidget** (`src/features/track_editor/ui/widgets/map_widget.py`) - Interactive map rendering with pan/zoom
+- **TrackListWidget** (`src/features/track_editor/ui/widgets/track_list_widget.py`) - Display all tracks
+- **TrackpointListWidget** (`src/features/track_editor/ui/widgets/trackpoint_list_widget.py`) - Display trackpoints with format conversion
 
-**TrackListWidget** (`src/gui/widgets/track_list_widget.py`)
-- Display all tracks
-- Track selection
-- Track metadata display
+**Map Editor:**
+- **MBTilesReader** (`src/features/map_editor/core/mbtiles_reader.py`) - Read MBTiles file metadata and zoom levels
+- **TileProcessor** (`src/features/map_editor/core/tile_processor.py`) - Process tiles and generate missing zoom levels
+- **MapViewer** (`src/features/map_editor/ui/widgets/map_viewer.py`) - Interactive map viewer for MBTiles preview
 
-**TrackpointListWidget** (`src/gui/widgets/trackpoint_list_widget.py`)
-- Display trackpoints for selected track
-- Coordinate format conversion
-- Trackpoint selection
-- Show/hide points toggle
+**Settings:**
+- **SettingsWidget** (`src/features/settings/ui/widgets/settings_widget.py`) - Main settings container
+- Various setting widgets (color picker, sliders, toggles) for customizing appearance
+
+**Shared Components:**
+- **MapRenderer** (`src/shared/map/map_renderer.py`) - Renders tiles from MBTiles provider
+- **MBTilesProvider** (`src/shared/map/mbtiles_provider.py`) - Tile data source
+- **MapButtonManager** (`src/shared/map/map_button_manager.py`) - Handles map control buttons (zoom, recenter)
+- **CoordinateFormatter** (`src/shared/core/coordinate_formatter.py`) - DMS/Decimal coordinate conversion
 
 ## Map Data
 

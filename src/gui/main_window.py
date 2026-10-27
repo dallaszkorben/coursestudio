@@ -31,17 +31,17 @@ from PyQt5.QtCore import Qt, QSize, pyqtSignal, QTimer
 from PyQt5.QtWidgets import QTabWidget
 
 from config.app_config_yaml import AppConfig
-from src.track_editor.core.gpx_handler import GPXHandler
-from src.track_editor.core.track_manager import TrackManager
-from src.track_editor.gui.widgets.track_list_widget import TrackListWidget
-from src.track_editor.gui.widgets.trackpoint_list_widget import TrackpointListWidget
-from src.gui.widgets.map_widget import MapWidget
-from src.gui.widgets.settings_widget import SettingsWidget
-from src.gui.dialogs.help_dialog import HelpDialog
+from src.features.track_editor.core.gpx_handler import GPXHandler
+from src.features.track_editor.core.track_manager import TrackManager
+from src.features.track_editor.ui.widgets.track_list_widget import TrackListWidget
+from src.features.track_editor.ui.widgets.trackpoint_list_widget import TrackpointListWidget
+from src.features.track_editor.ui.widgets.map_widget import MapWidget
+from src.features.settings.ui.widgets.settings_widget import SettingsWidget
+from src.shared.ui.dialogs.help_dialog import HelpDialog
 from src.shared.map.mbtiles_provider import MBTilesProvider
 from src.gui.tab_handlers.tab_handler_track_editor import TrackEditorTabHandler
 from src.gui.tab_handlers.tab_handler_map_editor import MapEditorTabHandler
-from src.gui.tab_handlers.tab_handler_settings import SettingsTabHandler
+from src.features.settings.ui.tab_handler_settings import SettingsTabHandler
 
 
 # ============================================================================
@@ -1372,7 +1372,7 @@ class MainWindow(QMainWindow):
                     # Use MBTilesFileLoader to determine optimal configuration
                     # This will read center/zoom from mbtiles metadata instead of keeping old position
                     try:
-                        from src.map_editor.core.mbtiles_reader import MBTilesReader
+                        from src.features.map_editor.core.mbtiles_reader import MBTilesReader
                         from src.shared.map.mbtiles_file_loader import MBTilesFileLoader
                         
                         reader = MBTilesReader(mbtiles_path)
@@ -1459,7 +1459,7 @@ class MainWindow(QMainWindow):
                     # 🟢 UPDATE MAP EDITOR TAB'S CHARACTERISTICS PANEL
                     # Load new reader and update Map Editor's characteristics panel
                     try:
-                        from src.map_editor.core.mbtiles_reader import MBTilesReader
+                        from src.features.map_editor.core.mbtiles_reader import MBTilesReader
                         new_reader = MBTilesReader(mbtiles_path)
                         self.map_editor_handler.characteristics_panel.load_mbtiles(new_reader)
                         logger.info(f"🟢 Updated Map Editor characteristics panel with: {new_reader.get_metadata().name}")
@@ -1645,7 +1645,7 @@ A PyQt5 application for reading, editing, and exporting GPX navigation tracks.
             return
         
         # Import here to avoid circular imports
-        from src.gui.dialogs.add_trackpoint_dialog import AddTrackpointDialog
+        from src.shared.ui.dialogs.add_trackpoint_dialog import AddTrackpointDialog
         
         # Get current track point count for dialog
         trackpoints = self.track_manager.get_selected_trackpoints()
@@ -2050,8 +2050,8 @@ A PyQt5 application for reading, editing, and exporting GPX navigation tracks.
         
         try:
             # Import progress dialog and worker
-            from src.gui.dialogs.prune_progress_dialog import PruneProgressDialog
-            from src.core.prune_worker import PruneWorker
+            from src.shared.ui.dialogs.prune_progress_dialog import PruneProgressDialog
+            from src.shared.core.prune_worker import PruneWorker
             
             # Create progress dialog
             progress_dialog = PruneProgressDialog(parent=self)

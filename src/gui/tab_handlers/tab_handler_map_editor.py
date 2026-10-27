@@ -20,9 +20,9 @@ from PyQt5.QtWidgets import (
 )
 from PyQt5.QtCore import Qt
 
-from src.map_editor.core.mbtiles_reader import MBTilesReader
-from src.map_editor.gui.widgets.characteristics_panel import CharacteristicsPanel
-from src.map_editor.gui.widgets.map_viewer import MapViewer
+from src.features.map_editor.core.mbtiles_reader import MBTilesReader
+from src.features.map_editor.ui.widgets.characteristics_panel import CharacteristicsPanel
+from src.features.map_editor.ui.widgets.map_viewer import MapViewer
 from src.shared.map.mbtiles_file_loader import MBTilesFileLoader
 
 logger = logging.getLogger(__name__)
@@ -491,8 +491,8 @@ class MapEditorTabHandler:
                 return
             
             # Import here to avoid circular imports
-            from src.core.zoom_generator import ZoomGenerator
-            from src.gui.dialogs.zoom_selection_dialog import ZoomSelectionDialog
+            from src.features.map_editor.core.zoom_generator import ZoomGenerator
+            from src.shared.ui.dialogs.zoom_selection_dialog import ZoomSelectionDialog
             
             logger.info("🟢 Creating zoom generator...")
             generator = ZoomGenerator(self.mbtiles_reader)
@@ -610,9 +610,9 @@ class MapEditorTabHandler:
             target_zoom: Zoom level to generate
         """
         try:
-            from src.core.tile_processor import TileProcessor
-            from src.core.zoom_generation_worker import ZoomGenerationWorker
-            from src.gui.dialogs.zoom_generation_progress_dialog import ZoomGenerationProgressDialog
+            from src.features.map_editor.core.tile_processor import TileProcessor
+            from src.shared.core.zoom_generation_worker import ZoomGenerationWorker
+            from src.shared.ui.dialogs.zoom_generation_progress_dialog import ZoomGenerationProgressDialog
             from PyQt5.QtCore import QThread
             
             logger.info(f"🟢 Creating generation plan for Z{target_zoom}")

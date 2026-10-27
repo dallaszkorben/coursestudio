@@ -9,7 +9,7 @@ Classes:
 
 import logging
 
-from src.gui.widgets.settings_widget import SettingsWidget
+from src.features.settings.ui.widgets.settings_widget import SettingsWidget
 
 logger = logging.getLogger(__name__)
 
