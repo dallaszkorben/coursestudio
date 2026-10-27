@@ -533,7 +533,7 @@ Contributions are welcome! Please:
 
 ## Author
 
-Mikael - Initial development and design
+Akoel - Initial development and design
 
 ## Changelog
 
