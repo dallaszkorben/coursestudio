@@ -175,8 +175,15 @@ Remove redundant 'close' trackpoints from tracks while maintaining proper geogra
 Useful for cleaning up dense GPS recordings or merging multiple track segments with excessive detail.
 
 **Algorithm:**
-The pruning algorithm uses a reference-point approach:
-1. Start with first trackpoint as 'reference_point'
+The pruning algorithm uses a reference-point approach with cumulative distance accumulation:
+
+**CRITICAL RULES:**
+- **ALWAYS preserve the start point (P1)** - first trackpoint is never removed
+- **ALWAYS preserve the end point (Pn)** - last trackpoint is never removed, regardless of distance
+- All intermediate points are evaluated for removal based on distance threshold
+
+**Steps:**
+1. Start with first trackpoint as 'reference_point' (always kept)
 2. Calculate cumulative distance to next trackpoint
 3. If distance < minimum threshold:
    - Remove the next trackpoint (too close)
@@ -186,7 +193,14 @@ The pruning algorithm uses a reference-point approach:
    - Keep the next trackpoint
    - Make it new reference_point
    - Reset accumulated distance
-5. Stop when reference is second-to-last point (preserve end point)
+5. Always keep the last trackpoint when reached (regardless of distance from previous reference)
+
+**Example:**
+Track: P1 --20m-- P2 --25m-- P3  (min_distance=200m)
+- P1: Always kept (start point)
+- P2: cumulative=20m < 200m → REMOVE
+- P3: Always kept (end point, regardless of being 45m < 200m)
+- Result: P1 --45m cumulative-- P3
 
 **Configuration:**
 - Setting: `performance.prune_points.min_distance_m` (default: 50 meters)

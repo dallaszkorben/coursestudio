@@ -25,6 +25,8 @@ class HelpDialog(QDialog):
         
         # Add help tabs
         tabs.addTab(self._create_getting_started_tab(), "Getting Started")
+        tabs.addTab(self._create_track_editor_tab(), "Track Editor")
+        tabs.addTab(self._create_map_editor_tab(), "Map Editor")
         tabs.addTab(self._create_file_operations_tab(), "File Operations")
         tabs.addTab(self._create_map_navigation_tab(), "Map Navigation")
         tabs.addTab(self._create_trackpoint_management_tab(), "Trackpoint Management")
@@ -58,37 +60,186 @@ class HelpDialog(QDialog):
         """Getting Started help tab."""
         text = """GETTING STARTED WITH COURSESTUDIO
 
-1. OPENING A GPX FILE
+CourseStudio has two main tabs:
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+TRACK EDITOR TAB
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+For viewing and editing GPX track files:
+   • Opens and displays GPX files with tracks and trackpoints
+   • Shows track list, trackpoint details, and interactive map
+   • Edit trackpoints (move, add, delete)
+   • Visualize routes with customizable colors
+   • Save and manage GPX files
+
+Start Here:
+   1. Click File → Open to load a GPX file
+   2. Select a track from the track list
+   3. View trackpoints in the list
+   4. See the track on the map
+
+See "Track Editor" tab for detailed information.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+MAP EDITOR TAB
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+For interactive map tile editing:
+   • Load base MBTiles map (Swedish archipelago data)
+   • Paint and draw on the map
+   • Save edited tiles to create custom map data
+   • Zoom and pan the map while editing
+
+Start Here:
+   1. Click the "Map Editor" tab
+   2. Click "Load Base Map" to load the MBTiles file
+   3. Use drawing tools to paint on the map
+   4. Click "Save Map" to save your changes
+
+See "Map Editor" tab for detailed information.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+GENERAL INFORMATION
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+SETTINGS
+   • Click Settings tab to configure appearance
+   • Customize colors, sizes, and display options
+   • Settings auto-save and persist between sessions
+
+LAYOUT
+   • Drag splitter handles to resize panels
+   • Adjust layout to your preference
+   • Window size and position are remembered
+
+For more details, see other help tabs:
+   • "Track Editor" - GPX file editing guide
+   • "Map Editor" - Map tile editing guide
+   • "File Operations" - Saving and managing files
+   • "Keyboard Shortcuts" - Quick keys and hotkeys
+"""
+        return self._create_text_widget(text)
+    
+    def _create_track_editor_tab(self):
+        """Track Editor help tab."""
+        text = """TRACK EDITOR TAB
+
+The Track Editor allows you to view and edit GPX files with tracks and trackpoints.
+
+OPENING A GPX FILE
    • Click File → Open or press Ctrl+O
    • Select your GPX file from the file browser
    • The tracks and trackpoints will load automatically
 
-2. VIEWING TRACKS
+VIEWING TRACKS
    • Select a track from the Track List (left panel)
    • The track will appear on the map
    • All trackpoints are displayed as circles
 
-3. LAYOUT
+LAYOUT
    • The window has two splitters:
      - HORIZONTAL: Resize between Track List and Map/Trackpoints
      - VERTICAL: Resize between Trackpoints list and Map
    • Drag the splitter handles to adjust panel sizes
 
-4. COORDINATE FORMATS
+COORDINATE FORMATS
    • Two formats are supported:
      - DMS (Degrees Minutes Seconds): 57°30'45.5"N 12°15'30.2"E
      - Decimal: 57.5126°N 12.2584°E
    • Switch formats using the Format dropdown in Trackpoints list
 
-5. SETTINGS
+EDITING TRACKPOINTS
+   • Double-click a trackpoint in the list to edit it
+   • Or drag it on the map to reposition
+   • Changes apply immediately
+
+ADDING TRACKPOINTS
+   • Click on the map between two existing points
+   • A new point will be inserted
+   • Drag immediately to position it
+
+DELETING TRACKPOINTS
+   • Select a trackpoint in the list
+   • Press Delete or Ctrl+D
+   • Or right-click → Delete
+   • The point is removed immediately
+
+MULTI-SELECTION
+   • Shift+Click to select a range of trackpoints
+   • Both points appear selected on the map
+
+SETTINGS
    • Click Settings tab to configure appearance
+   • Customize track colors, point sizes, and more
    • Changes apply immediately to the map
    • Settings are auto-saved
 
-NEXT STEPS
+For more details:
    • See "File Operations" for saving and managing files
    • See "Map Navigation" to learn map controls
+   • See "Trackpoint Management" for editing details
    • See "Keyboard Shortcuts" for quick keys
+"""
+        return self._create_text_widget(text)
+    
+    def _create_map_editor_tab(self):
+        """Map Editor help tab."""
+        text = """MAP EDITOR TAB
+
+The Map Editor allows you to edit MBTiles map data interactively.
+
+GETTING STARTED
+   1. Click the "Map Editor" tab at the top
+   2. Click "Load Base Map" button to load the MBTiles file
+   3. Wait for the map to display (Swedish archipelago base map)
+   4. Use the drawing tools to edit the map
+   5. Click "Save Map" to save your changes
+
+MAP DISPLAY
+   • The map shows the Swedish archipelago data
+   • Pan by clicking and dragging
+   • Zoom with scroll wheel or +/- buttons
+   • Recenter with the circular button
+
+DRAWING ON THE MAP
+   • Use the available drawing tools to paint
+   • Changes appear on the map in real-time
+   • Multiple drawing modes available:
+     - Pen/Brush tool
+     - Eraser tool
+     - Color selection
+     - Line drawing
+     - Shapes
+
+COLORS AND SETTINGS
+   • Click color buttons to change drawing color
+   • Adjust brush size with sliders
+   • Preview your changes on the map immediately
+
+SAVING YOUR CHANGES
+   • Click "Save Map" to write changes to the MBTiles file
+   • A backup is automatically created
+   • You can close and reopen the file with your edits preserved
+
+ZOOM LEVELS
+   • The map supports multiple zoom levels
+   • Different zoom levels may have different tile data
+   • You can edit at any supported zoom level
+
+UNDO/REDO
+   • Use Ctrl+Z to undo changes
+   • Use Ctrl+Y to redo undone changes
+
+TIPS
+   • Start with base map loaded to see existing map data
+   • Use different colors to mark different features
+   • Save frequently to preserve your work
+   • You can always load a fresh base map to start over
+
+For map controls and keyboard shortcuts:
+   • See "Map Navigation" for pan and zoom controls
+   • See "Keyboard Shortcuts" for detailed hotkeys
 """
         return self._create_text_widget(text)
     
